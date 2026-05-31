@@ -61,14 +61,20 @@
       "output": "release"
     },
     "files": [
-      "out/**/*",
-      "bin/**/*",
-      "!node_modules/**/*"
+      "out/**/*"
     ],
     "extraResources": [
       {
         "from": "bin",
         "to": "bin"
+      },
+      {
+        "from": "extension",
+        "to": "extension"
+      },
+      {
+        "from": "resources",
+        "to": "resources"
       }
     ],
     "win": {
@@ -76,7 +82,13 @@
         "nsis",
         "portable"
       ],
-      "icon": "resources/icon.ico"
+      "icon": "resources/icon.png"
+    },
+    "mac": {
+      "icon": "resources/icon.png"
+    },
+    "linux": {
+      "icon": "resources/icon.png"
     },
     "nsis": {
       "oneClick": false,

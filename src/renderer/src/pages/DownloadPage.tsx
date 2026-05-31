@@ -7,1090 +7,54 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { trpc } from "../lib/trpc";
 import { Dropdown } from "../components/Dropdown";
 import {
-  Plus,
-  Play,
-  Pause,
-  Trash2,
-  Eye,
-  FileVideo,
-  CheckCircle2,
-  AlertCircle,
-  Copy,
-  Check,
-  Search,
-  Film,
-  Terminal,
-  Code,
-  Settings,
-  Trash2 as TrashIcon,
-  Shield,
-  Download,
-  X,
-  Folder,
-  Save,
-  AlertCircle as AlertWarn,
-  Cpu,
-  ChevronDown,
-  ChevronRight,
-  Globe,
-  Info,
+  Plus, Play, Pause, Trash2, Eye, FileVideo, CheckCircle2, AlertCircle,
+  Copy, Check, Search, Film, Terminal, Code, Settings, Trash2 as TrashIcon,
+  Shield, Download, X, Folder, Save, AlertCircle as AlertWarn, Cpu,
+  ChevronDown, ChevronRight, Globe, Info,
 } from "lucide-react";
+import { NewTaskModal } from "../components/download/NewTaskModal";
+import { SettingsPanel } from "../components/download/SettingsPanel";
+import { TaskCard } from "../components/download/TaskCard";
+import type {
+  AppSettings,
+  DownloadPageProps,
+  DownloadTask,
+  LogMessage,
+} from "./download/types";
+import {
+  extractVideoCode,
+  formatBytes,
+  formatSpeed,
+  generateN3u8DLCommand,
+  getCoverUrlFromName,
+  toProxiedAssetUrl,
+} from "./download/utils";
 
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
-
-type TaskStatus =
-  | "PENDING"
-  | "PARSING"
-  | "DOWNLOADING"
-  | "PAUSED"
-  | "COMPLETED"
-  | "FAILED";
-
-interface DownloadTask {
-  id: string;
-  name: string;
+interface ExtensionPushedTask {
+  id?: string;
   url: string;
-  status: TaskStatus;
-  totalSize: number;
-  progress: number;
-  speed: number;
-  fileSize: number;
-  downloadedSize: number;
-  totalSegments: number;
-  downloadedSegments: number;
-  format: "MP4" | "MKV" | "TS";
-  headers: string;
-  savePath: string;
-  threads: number;
-  creationTime: string;
-  logs: string[];
-  encryptionType?: string;
-  resolution?: string;
+  name: string;
   coverUrl?: string;
   previewUrl?: string;
+  quality?: string;
+  source?: string;
+  pageUrl?: string;
+  referer: string;
+  refererOrigin: string;
+  refererSource: string;
+  pushedAt: string;
 }
 
-interface LogMessage {
-  id: string;
-  timestamp: string;
-  level: "INFO" | "SUCCESS" | "WARNING" | "ERROR" | "DEBUG";
-  text: string;
-}
+const EXTENSION_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
 
-interface AppSettings {
-  video_path: string;
-  temp_path: string;
-  defaultFormat: "MP4" | "MKV" | "TS";
-  defaultThreads: number;
-  maxConcurrentTasks: number;
-  autoMerge: boolean;
-  proxyUrl: string;
-  nm3u8dlPath: string;
-}
-
-interface DownloadPageProps {
-  settings: AppSettings;
-  onSettingsChange: (settings: AppSettings) => void;
-  onAddSystemLog: (
-    text: string,
-    level: "INFO" | "WARNING" | "SUCCESS" | "ERROR",
-  ) => void;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Utility helpers                                                     */
-/* ------------------------------------------------------------------ */
-
-function formatBytes(bytes: number, decimals = 2): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return (
-    parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + " " + sizes[i]
-  );
-}
-
-// 从任务名提取番号，生成封面 URL（通过 CDN 代理）
-function getCoverUrlFromName(name: string): string | undefined {
-  const match = name.match(/[A-Z]{2,6}-\d{3,5}/i);
-  if (!match) return undefined;
-  const code = match[0].toLowerCase();
-  return `cdn://fourhoi.com/${code}-uncensored-leak/cover-n.jpg`;
-}
-
-function formatSpeed(bytesPerSec: number): string {
-  if (bytesPerSec === 0) return "0 KB/s";
-  const mbs = bytesPerSec / (1024 * 1024);
-  if (mbs >= 1) return `${mbs.toFixed(2)} MB/s`;
-  return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
-}
-
-function parseHeadersText(text: string): string {
-  if (!text.trim()) return "{}";
-  const obj: Record<string, string> = {};
-  text.split("\n").forEach((line) => {
-    const idx = line.indexOf(":");
-    if (idx > 0) {
-      const key = line.substring(0, idx).trim();
-      const value = line.substring(idx + 1).trim();
-      if (key && value) obj[key] = value;
-    }
+function buildExtensionHeaders(task: ExtensionPushedTask): string {
+  return JSON.stringify({
+    "User-Agent": EXTENSION_USER_AGENT,
+    Referer: task.referer,
+    Origin: task.refererOrigin,
   });
-  return JSON.stringify(obj);
 }
-
-function generateN3u8DLCommand(task: DownloadTask): string {
-  const parts: string[] = [];
-  parts.push('"N_m3u8DL-RE.exe"');
-  parts.push(`"${task.url}"`);
-  if (task.savePath) parts.push(`--save-dir "${task.savePath}"`);
-  if (task.name)
-    parts.push(`--save-name "${task.name.replace(/[\\/:*?"<>|]/g, "_")}"`);
-  if (task.format === "MP4") {
-    parts.push("--auto-select");
-    parts.push("--mp4-real-time-decryption");
-  } else if (task.format === "MKV") {
-    parts.push("--auto-select");
-    parts.push("--mkv-real-time-decryption");
-  } else {
-    parts.push("--auto-select");
-  }
-  if (task.threads) parts.push(`--thread-count ${task.threads}`);
-  if (task.headers) {
-    try {
-      const h = JSON.parse(task.headers);
-      Object.entries(h).forEach(([k, v]) => {
-        if (k && v) parts.push(`--headers "${k}: ${v}"`);
-      });
-    } catch {
-      task.headers.split("\n").forEach((l) => {
-        const t = l.trim();
-        if (t && t.includes(":")) parts.push(`--headers "${t}"`);
-      });
-    }
-  }
-  parts.push("--check-segments-count true");
-  parts.push("--log-level info");
-  return parts.join(" ");
-}
-
-/* ------------------------------------------------------------------ */
-/*  Status badge                                                       */
-/* ------------------------------------------------------------------ */
-
-function getStatusBadge(status: TaskStatus) {
-  switch (status) {
-    case "DOWNLOADING":
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/90 text-white px-2 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
-          <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-pulse" />
-          下载中
-        </span>
-      );
-    case "PAUSED":
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] bg-slate-900/80 text-slate-200 px-2 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
-          <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-          已暂停
-        </span>
-      );
-    case "COMPLETED":
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-500/90 text-white px-2 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
-          <CheckCircle2 className="w-3 h-3" />
-          已完成
-        </span>
-      );
-    case "PARSING":
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] bg-sky-500/90 text-white px-2 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
-          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-          解析中
-        </span>
-      );
-    case "FAILED":
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] bg-rose-500/90 text-white px-2 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
-          <AlertCircle className="w-3 h-3" />
-          失败
-        </span>
-      );
-    case "PENDING":
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] bg-slate-900/70 text-slate-200 px-2 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-          排队中
-        </span>
-      );
-    default:
-      return (
-        <span className="inline-flex items-center gap-1 text-[10px] bg-slate-900/70 text-slate-200 px-2 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
-          等待中
-        </span>
-      );
-  }
-}
-
-/* ================================================================== */
-/*  NewTaskModal                                                       */
-/* ================================================================== */
-
-interface NewTaskModalProps {
-  onClose: () => void;
-  onAddTask: (task: {
-    name: string;
-    url: string;
-    format: "MP4" | "MKV" | "TS";
-    headers: string;
-    threads: number;
-    savePath: string;
-    encryptionType?: string;
-    resolution?: string;
-    fileSize?: number;
-    totalSegments?: number;
-    coverUrl?: string;
-    previewUrl?: string;
-  }) => void;
-  defaultSavePath: string;
-  defaultFormat: "MP4" | "MKV" | "TS";
-  defaultThreads: number;
-}
-
-const REFERER_PRESETS = [
-  { name: "missav.ai", url: "https://missav.ai/", icon: "M" },
-  { name: "supjav.com", url: "https://supjav.com/", icon: "S" },
-];
-
-function NewTaskModal({
-  onClose,
-  onAddTask,
-  defaultSavePath,
-  defaultFormat,
-  defaultThreads,
-}: NewTaskModalProps) {
-  const [url, setUrl] = useState("");
-  const [name, setName] = useState("");
-  const [format, setFormat] = useState<"MP4" | "MKV" | "TS">(defaultFormat);
-  const [threads, setThreads] = useState<number>(defaultThreads);
-  const [savePath, setSavePath] = useState(defaultSavePath);
-  const [coverUrl, setCoverUrl] = useState("");
-  const [previewUrl, setPreviewUrl] = useState("");
-  const [headersText, setHeadersText] = useState(
-    "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\nReferer: https://missav.ai\nCookie: ",
-  );
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
-  const [selectedRefererIndex, setSelectedRefererIndex] = useState<number>(0);
-  const [cmdCopied, setCmdCopied] = useState(false);
-
-  // 命令预览字符串（供预览区展示与复制共用）
-  const safeName = (name || "视频标题").replace(/[\\/:*?"<>|]/g, "_");
-  const decryptFlag =
-    format === "MP4"
-      ? " --mp4-real-time-decryption"
-      : format === "MKV"
-        ? " --mkv-real-time-decryption"
-        : "";
-  const commandPreview = `N_m3u8DL-RE.exe "${url || "URL"}" --save-dir "${savePath}" --save-name "${safeName}" --thread-count ${threads} --auto-select${decryptFlag} --check-segments-count true`;
-
-  const handleCopyCommand = async () => {
-    try {
-      await navigator.clipboard.writeText(commandPreview);
-      setCmdCopied(true);
-      setTimeout(() => setCmdCopied(false), 1500);
-    } catch {
-      /* 忽略复制失败 */
-    }
-  };
-
-  const selectRefererPreset = (index: number) => {
-    const preset = REFERER_PRESETS[index];
-    setSelectedRefererIndex(index);
-    setHeadersText(
-      `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\nReferer: ${preset.url}\nCookie: `,
-    );
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!url.trim()) {
-      setErrorMsg("请先填写 HLS/M3U8 音视频流地址");
-      return;
-    }
-    if (
-      !url.toLowerCase().includes(".m3u8") &&
-      !url.toLowerCase().includes("/video") &&
-      !url.toLowerCase().startsWith("http") &&
-      !url.includes("#EXTM3U")
-    ) {
-      setErrorMsg(
-        "似乎不是一个有效的 HLS/M3U8 播放列表链接，请确认 URL 是否正确",
-      );
-      return;
-    }
-    const finalName =
-      name.trim() || `视频流_${Date.now().toString().slice(-6)}`;
-    onAddTask({
-      name: finalName,
-      url: url.trim(),
-      format,
-      headers: parseHeadersText(headersText),
-      threads,
-      savePath,
-      coverUrl: coverUrl.trim() || undefined,
-      previewUrl: previewUrl.trim() || undefined,
-    });
-    onClose();
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-slate-900/20 flex justify-end anim-fade-in"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="bg-white border-l border-slate-200 w-full max-w-105 rounded-2xl text-slate-600 overflow-hidden shadow-2xl flex flex-col h-full anim-slide-right">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 bg-white">
-          <div className="flex items-center gap-2">
-            <div className="bg-amber-100 p-2 rounded-lg border border-amber-200">
-              <Plus className="w-4 h-4 text-amber-700" />
-            </div>
-            <div>
-              <h3 className="text-xs font-bold font-sans text-slate-800 tracking-wider">
-                新建 M3U8 下载任务
-              </h3>
-              <p className="text-[10px] text-black">
-                调用 N_m3u8DL-RE 核心进行定制下载分流
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-black hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <form
-          onSubmit={handleSubmit}
-          className="p-6 overflow-y-scroll space-y-5 flex-1 text-xs bg-white"
-        >
-          {/* Referer Presets */}
-          <div>
-            <label className="text-black font-semibold block mb-2">
-              快速设置 Referer 源
-            </label>
-            <div className="grid grid-cols-2 gap-2.5">
-              {REFERER_PRESETS.map((preset, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => selectRefererPreset(idx)}
-                  className={`p-3 rounded-xl border text-left transition-all duration-200 cursor-pointer relative ${
-                    selectedRefererIndex === idx
-                      ? "border-amber-500 bg-amber-50 text-slate-800 shadow-sm ring-1 ring-amber-500"
-                      : "border-slate-200 bg-slate-50 text-slate-600 hover:border-amber-300 hover:bg-amber-50/50"
-                  }`}
-                >
-                  {selectedRefererIndex === idx && (
-                    <div className="absolute top-1.5 right-1.5 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center">
-                      <svg
-                        className="w-2.5 h-2.5 text-white"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`w-6 h-6 rounded-full text-white text-[10px] font-bold flex items-center justify-center ${
-                        selectedRefererIndex === idx
-                          ? "bg-amber-500"
-                          : "bg-slate-400"
-                      }`}
-                    >
-                      {preset.icon}
-                    </span>
-                    <div>
-                      <div
-                        className={`font-bold text-[11px] ${selectedRefererIndex === idx ? "text-slate-800" : "text-slate-600"}`}
-                      >
-                        {preset.name}
-                      </div>
-                      <div className="text-[9px] text-black truncate font-mono">
-                        {preset.url}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <p className="text-[10px] text-black mt-1.5">
-              点击选择 Referer 源，用于绕过防盗链验证
-            </p>
-          </div>
-
-          <div className="h-px bg-slate-200 my-2" />
-
-          {/* Form Fields */}
-          <div className="space-y-3.5">
-            {/* URL */}
-            <div>
-              <label className="text-black font-semibold block mb-1.5">
-                M3U8 播放流链接 <span className="text-rose-500">*</span>
-              </label>
-              <div className="relative flex-1">
-                <textarea
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="请粘贴以 index.m3u8 结尾的链接..."
-                  className="w-full bg-amber-50/60 border border-amber-200/70 text-slate-800 placeholder-slate-400 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:border-amber-500 focus:bg-amber-50 transition min-h-20"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Name */}
-            <div>
-              <label className="text-black font-semibold block mb-1.5">
-                保存视频名称
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="不填则使用原始标题命名"
-                className="w-full bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 rounded-lg px-3 py-2.5 text-xs focus:outline-none focus:border-amber-500 transition"
-              />
-            </div>
-
-            {/* Advanced Toggle */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-amber-50/60 hover:border-amber-300 transition-all cursor-pointer focus:outline-none"
-              >
-                <span className="flex items-center gap-2">
-                  <Settings className="w-4 h-4 text-amber-600" />
-                  <span className="text-xs font-bold text-slate-700">
-                    进阶请求头与线程控制
-                  </span>
-                </span>
-                <ChevronDown
-                  className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${showAdvanced ? "rotate-180" : ""}`}
-                />
-              </button>
-
-              {showAdvanced && (
-                <div className="mt-3.5 space-y-3.5 p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                  {/* Save directory */}
-                  <div>
-                    <label className="text-black font-semibold block mb-1">
-                      覆盖保存路径
-                    </label>
-                    <input
-                      type="text"
-                      value={savePath}
-                      onChange={(e) => setSavePath(e.target.value)}
-                      placeholder="C:\Downloads\AVPlayPro\"
-                      className="w-full bg-white border border-slate-200 text-slate-700 rounded-lg px-3 py-1.5 text-[11px] font-mono focus:outline-none focus:border-amber-500 transition"
-                    />
-                  </div>
-
-                  {/* Headers */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-black font-semibold">
-                        HTTP 协议头 (一行一个, 英文冒号分隔)
-                      </label>
-                    </div>
-                    <textarea
-                      value={headersText}
-                      onChange={(e) => setHeadersText(e.target.value)}
-                      rows={4}
-                      className="w-full bg-white border border-slate-200 text-slate-700 font-mono text-[10px] rounded-lg p-2.5 focus:outline-none focus:border-amber-500 leading-relaxed"
-                      placeholder={
-                        "示例:\nUser-Agent: test-agent\nCookie: token=abcd123"
-                      }
-                    />
-                  </div>
-
-                  {/* Cover URL */}
-                  <div>
-                    <label className="text-black font-semibold block mb-1">
-                      封面图 URL（列表缩略图）
-                    </label>
-                    <input
-                      type="text"
-                      value={coverUrl}
-                      onChange={(e) => setCoverUrl(e.target.value)}
-                      placeholder="https://..../cover.jpg"
-                      className="w-full bg-white border border-slate-200 text-slate-700 rounded-lg px-3 py-1.5 text-[11px] font-mono focus:outline-none focus:border-amber-500 transition"
-                    />
-                  </div>
-
-                  {/* Preview URL */}
-                  <div>
-                    <label className="text-black font-semibold block mb-1">
-                      预览视频 URL（鼠标悬停播放，建议 mp4 短片）
-                    </label>
-                    <input
-                      type="text"
-                      value={previewUrl}
-                      onChange={(e) => setPreviewUrl(e.target.value)}
-                      placeholder="https://..../preview.mp4"
-                      className="w-full bg-white border border-slate-200 text-slate-700 rounded-lg px-3 py-1.5 text-[11px] font-mono focus:outline-none focus:border-amber-500 transition"
-                    />
-                  </div>
-
-                  <div className="flex gap-2 p-2 bg-amber-50 rounded-lg border border-amber-100 text-[9px] text-slate-500 leading-normal">
-                    <Shield className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      有些流媒体服务器严格校验{" "}
-                      <code className="text-amber-700 bg-white px-1 rounded font-mono border border-amber-100">
-                        Referer
-                      </code>
-                      。若遇到分片下载403错误，请在头部选项重设防盗链来源。
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Command Preview —— core-engine-preview 终端卡片 */}
-          <div className="rounded-xl border border-slate-200 overflow-hidden bg-slate-50">
-            {/* 标题栏：红黄绿三点 + 标题 + 复制按钮 */}
-            <div className="flex items-center justify-between px-3 py-2 bg-slate-100 border-b border-slate-200">
-              <div className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-400" />
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-              </div>
-              <span className="text-[10px] font-mono font-semibold text-slate-400 tracking-wider">
-                核心引擎预览
-              </span>
-              <button
-                type="button"
-                onClick={handleCopyCommand}
-                className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 hover:text-amber-600 transition cursor-pointer"
-              >
-                {cmdCopied ? (
-                  <>
-                    <Check className="w-3 h-3 text-emerald-500" /> 已复制
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3 h-3" /> 复制
-                  </>
-                )}
-              </button>
-            </div>
-            {/* 命令内容 */}
-            <div className="p-3 text-[10px] font-mono text-black select-all break-all leading-relaxed overflow-y-auto max-h-22">
-              {commandPreview}
-            </div>
-          </div>
-
-          {/* Error */}
-          {errorMsg && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-center gap-2 font-semibold">
-              <span className="font-bold">!</span> {errorMsg}
-            </div>
-          )}
-        </form>
-
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-white">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-500 transition rounded-lg text-xs font-semibold cursor-pointer"
-          >
-            取消
-          </button>
-          <button
-            onClick={handleSubmit}
-            className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold transition rounded-lg text-xs cursor-pointer"
-          >
-            创建任务
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ================================================================== */
-/*  SettingsPanel                                                      */
-/* ================================================================== */
-
-interface SettingsPanelProps {
-  settings: AppSettings;
-  onSaveSettings: (settings: AppSettings) => void;
-  onAddSystemLog: (
-    text: string,
-    level: "INFO" | "WARNING" | "SUCCESS" | "ERROR",
-  ) => void;
-  onClose: () => void;
-}
-
-function SettingsPanel({
-  settings,
-  onSaveSettings,
-  onAddSystemLog,
-  onClose,
-}: SettingsPanelProps) {
-  const [videoPath, setVideoPath] = useState(settings.video_path);
-  const [tempPath, setTempPath] = useState(settings.temp_path);
-  const [proxyUrl, setProxyUrl] = useState(settings.proxyUrl);
-  const [showProxy, setShowProxy] = useState(false);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSaveSettings({
-      ...settings,
-      video_path: videoPath,
-      temp_path: tempPath,
-      proxyUrl,
-    });
-    onAddSystemLog("Electron 核心: 系统配置已更新。", "SUCCESS");
-  };
-
-  const handleSelectFolder = async (
-    setter: (val: string) => void,
-    label: string,
-    currentPath: string,
-  ) => {
-    try {
-      const selected = await trpc.dialog.selectFolder.query({
-        currentPath,
-      });
-      if (selected) {
-        setter(selected);
-        onAddSystemLog(`已将 [${label}] 路径设置为 ${selected}`, "SUCCESS");
-      }
-    } catch (err) {
-      onAddSystemLog(`选择文件夹失败: ${err}`, "ERROR");
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-slate-900/20 flex items-center justify-center p-4 text-slate-600 font-sans anim-fade-in"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] anim-scale-in">
-        {/* Title */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 bg-white">
-          <div className="flex items-center gap-3">
-            <div className="bg-indigo-50 p-2 rounded-lg border border-indigo-100">
-              <Cpu className="w-5 h-5 text-indigo-600" />
-            </div>
-            <div>
-              <h2 className="text-sm font-sans font-extrabold text-slate-800 tracking-wider">
-                系统核心配置
-              </h2>
-              <p className="text-[10px] text-black mt-0.5">
-                配置 N_m3u8DL-RE 运行环境及本地媒体库路径
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-black hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="p-6 overflow-y-auto space-y-6 bg-white"
-        >
-          {/* Paths */}
-          <div className="space-y-5">
-            <h3 className="text-xs font-bold text-slate-700 border-l-2 border-amber-500 pl-2 tracking-wide">
-              媒体存储路径
-            </h3>
-
-            <div className="p-3 bg-amber-50 border border-amber-100 rounded-lg text-[11px] text-slate-500">
-              <span className="font-bold text-amber-700">目录结构说明:</span>{" "}
-              每个视频存放在独立子文件夹中，包含：
-              <code className="ml-1 text-[10px] bg-white border border-amber-100 px-1.5 py-0.5 text-amber-700 font-mono rounded">
-                video.mp4
-              </code>
-              <code className="ml-1 text-[10px] bg-white border border-amber-100 px-1.5 py-0.5 text-amber-700 font-mono rounded">
-                cover.jpg
-              </code>
-              <code className="ml-1 text-[10px] bg-white border border-amber-100 px-1.5 py-0.5 text-amber-700 font-mono rounded">
-                preview.mp4
-              </code>
-            </div>
-
-            {/* Video Path */}
-            <div>
-              <label className="text-xs font-semibold text-black block mb-1.5">
-                视频存放目录（子文件夹结构）
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={videoPath}
-                  onChange={(e) => setVideoPath(e.target.value)}
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 focus:outline-none focus:border-amber-500 transition"
-                  placeholder="M:\video\videos\"
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleSelectFolder(setVideoPath, "视频目录", videoPath)
-                  }
-                  className="p-2 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition cursor-pointer"
-                >
-                  <Folder className="w-3.5 h-3.5 text-amber-400" />
-                </button>
-              </div>
-            </div>
-
-            {/* Temp Path */}
-            <div>
-              <label className="text-xs font-semibold text-black block mb-1.5">
-                下载临时目录
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={tempPath}
-                  onChange={(e) => setTempPath(e.target.value)}
-                  className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 focus:outline-none focus:border-amber-500 transition"
-                  placeholder="M:\video\temp\"
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    handleSelectFolder(setTempPath, "临时目录", tempPath)
-                  }
-                  className="p-2 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition cursor-pointer"
-                >
-                  <Folder className="w-3.5 h-3.5 text-amber-400" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Proxy */}
-          <div className="space-y-4">
-            <button
-              type="button"
-              onClick={() => setShowProxy(!showProxy)}
-              className="flex items-center gap-2 text-xs font-bold text-slate-700 border-l-2 border-amber-500 pl-2 tracking-wide w-full text-left cursor-pointer"
-            >
-              {showProxy ? (
-                <ChevronDown className="w-3.5 h-3.5" />
-              ) : (
-                <ChevronRight className="w-3.5 h-3.5" />
-              )}
-              网络与代理
-              <span className="text-[10px] text-black font-normal">
-                （可选）
-              </span>
-            </button>
-
-            {showProxy && (
-              <div className="pl-4 pt-2">
-                <div>
-                  <label className="text-xs font-semibold text-black block mb-1.5 flex items-center justify-between">
-                    <span>代理服务器地址</span>
-                    <span className="text-[10px] text-amber-400 font-semibold">
-                      支持 HTTP/SOCKS5
-                    </span>
-                  </label>
-                  <input
-                    type="text"
-                    value={proxyUrl}
-                    onChange={(e) => setProxyUrl(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 focus:outline-none focus:border-amber-500 transition placeholder-slate-400"
-                    placeholder="https://127.0.0.1:7890"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Warning */}
-          <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-3">
-            <AlertWarn className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-            <div className="text-[11px] text-slate-500 leading-normal font-sans">
-              <span className="font-extrabold text-amber-700">
-                核心运行说明:
-              </span>{" "}
-              本系统通过封装{" "}
-              <code className="text-[10px] bg-white border border-amber-100 px-1.5 py-0.5 text-amber-700 font-mono rounded font-bold mx-1">
-                N_m3u8DL-RE
-              </code>{" "}
-              实现自动化流媒体处理。所有合并操作由工具原生完成，确保最高质量与稳定性。
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 border border-slate-200 transition rounded-lg text-xs font-semibold cursor-pointer"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              className="flex items-center gap-1.5 px-6 py-2 bg-amber-500 hover:bg-amber-600 text-xs text-white font-bold rounded-lg shadow-sm transition cursor-pointer"
-            >
-              <Save className="w-3.5 h-3.5" />
-              保存配置
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-/* ================================================================== */
-/*  TaskCard                                                           */
-/* ================================================================== */
-
-interface TaskCardProps {
-  task: DownloadTask;
-  isSelected: boolean;
-  copiedTaskId: string | null;
-  index: number;
-  onSelectTask: (id: string) => void;
-  onTriggerPauseResume: (id: string) => void;
-  onDeleteTask: (id: string) => void;
-  onCopyCommand: (e: React.MouseEvent, task: DownloadTask) => void;
-}
-
-function TaskCard({
-  task,
-  isSelected,
-  copiedTaskId,
-  index,
-  onSelectTask,
-  onTriggerPauseResume,
-  onDeleteTask,
-  onCopyCommand,
-}: TaskCardProps) {
-  const [hovered, setHovered] = useState(false);
-  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  const handleEnter = () => {
-    if (hoverTimer.current) clearTimeout(hoverTimer.current);
-    hoverTimer.current = setTimeout(() => setHovered(true), 250);
-  };
-
-  const handleLeave = () => {
-    if (hoverTimer.current) clearTimeout(hoverTimer.current);
-    setHovered(false);
-  };
-
-  const handleVideoReady = () => {
-    const el = videoRef.current;
-    if (!el) return;
-    try {
-      el.currentTime = 0;
-      const p = el.play();
-      if (p && typeof p.catch === "function") p.catch(() => {});
-    } catch {
-      /* noop */
-    }
-  };
-
-  const showPreview = hovered && !!task.previewUrl;
-
-  return (
-    <div
-      onClick={() => onSelectTask(task.id)}
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
-      style={{ ["--i" as string]: Math.min(index, 12) }}
-      className={`anim-fade-stagger group relative flex flex-col bg-white rounded-xl border overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${
-        isSelected
-          ? "border-amber-500 ring-2 ring-amber-500/30"
-          : "border-slate-200 shadow-sm"
-      }`}
-    >
-      {/* Cover / Preview */}
-      <div className="relative aspect-video w-full overflow-hidden bg-slate-900">
-        {task.coverUrl || getCoverUrlFromName(task.name) ? (
-          <img
-            src={task.coverUrl || getCoverUrlFromName(task.name)}
-            alt={task.name}
-            loading="lazy"
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-            onError={(e) => {
-              // 加载失败时隐藏图片，显示占位符
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
-            <Film className="w-10 h-10 text-slate-600" />
-          </div>
-        )}
-
-        {showPreview && (
-          <video
-            ref={videoRef}
-            src={task.previewUrl}
-            muted
-            loop
-            playsInline
-            preload="auto"
-            onLoadedData={handleVideoReady}
-            className="absolute inset-0 w-full h-full object-cover animate-[fadeIn_0.3s_ease] bg-black"
-          />
-        )}
-
-        <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
-        <div className="absolute top-2 left-2 z-10">
-          {getStatusBadge(task.status)}
-        </div>
-
-        <div className="absolute top-2 right-2 z-10 flex gap-1">
-          <span className="text-[9px] bg-black/60 text-white px-1.5 py-0.5 font-mono rounded backdrop-blur-sm">
-            {task.format}
-          </span>
-          {task.resolution && (
-            <span className="text-[9px] bg-black/60 text-amber-300 px-1.5 py-0.5 font-mono rounded backdrop-blur-sm">
-              {task.resolution}
-            </span>
-          )}
-        </div>
-
-        {/* Progress bar */}
-        {task.status !== "COMPLETED" && (
-          <div className="absolute bottom-0 left-0 right-0 z-10">
-            {task.status === "DOWNLOADING" && (
-              <div className="flex items-center justify-between px-2 pb-1 text-[9px] font-mono text-white drop-shadow">
-                <span>{task.progress.toFixed(1)}%</span>
-                <span>{formatSpeed(task.speed)}</span>
-              </div>
-            )}
-            <div className="w-full bg-black/40 h-1">
-              <div
-                className="bg-gradient-to-r from-amber-400 to-amber-500 h-1 transition-all duration-300"
-                style={{ width: `${task.progress}%` }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Info + Actions */}
-      <div className="flex flex-col gap-1.5 p-3">
-        <div
-          className="font-semibold text-[13px] text-slate-800 truncate group-hover:text-amber-700 transition-colors"
-          title={task.name}
-        >
-          {task.name}
-        </div>
-        <div
-          className="text-[10px] font-mono text-black truncate tracking-tight"
-          title={task.url}
-        >
-          {task.url}
-        </div>
-
-        <div className="flex items-center justify-between mt-1">
-          <div className="flex items-center gap-2 text-[10px] text-black font-mono min-w-0">
-            <span className="truncate">
-              {task.totalSize > 0
-                ? `${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)}`
-                : task.fileSize > 0
-                  ? formatBytes(task.fileSize)
-                  : "未知大小"}
-            </span>
-            {task.encryptionType && task.encryptionType !== "NONE" && (
-              <span className="text-slate-500">* {task.encryptionType}</span>
-            )}
-          </div>
-
-          <div
-            className="flex items-center gap-1.5 text-black shrink-0"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={(e) => onCopyCommand(e, task)}
-              className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:bg-amber-50 hover:text-amber-700 transition cursor-pointer"
-              title="复制 N_m3u8DL-RE 调取指令"
-            >
-              {copiedTaskId === task.id ? (
-                <Check className="w-3.5 h-3.5 text-emerald-500" />
-              ) : (
-                <Copy className="w-3.5 h-3.5" />
-              )}
-            </button>
-
-            {task.status === "COMPLETED" ? (
-              <button
-                className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-emerald-600 hover:bg-emerald-50 transition cursor-pointer"
-                title="已完成"
-              >
-                <Eye className="w-3.5 h-3.5" />
-              </button>
-            ) : (
-              <button
-                onClick={() => onTriggerPauseResume(task.id)}
-                className={`p-1.5 rounded-lg bg-slate-50 border border-slate-200 transition cursor-pointer ${
-                  task.status === "DOWNLOADING"
-                    ? "text-amber-600 hover:bg-amber-50"
-                    : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
-                }`}
-                title={task.status === "DOWNLOADING" ? "暂停下载" : "继续下载"}
-                disabled={task.status === "FAILED"}
-              >
-                {task.status === "DOWNLOADING" ? (
-                  <Pause className="w-3.5 h-3.5" />
-                ) : (
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                )}
-              </button>
-            )}
-
-            <button
-              onClick={() => onDeleteTask(task.id)}
-              className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-              title="删除任务"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ================================================================== */
-/*  DownloadPage (main export)                                         */
-/* ================================================================== */
 
 export function DownloadPage({
   settings,
@@ -1098,20 +62,9 @@ export function DownloadPage({
   onAddSystemLog,
 }: DownloadPageProps) {
   /* ---- state ---- */
-  const [tasks, setTasks] = useState<DownloadTask[]>(() => {
-    try {
-      const saved = localStorage.getItem("avplaypro_tasks_v4");
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [];
-  });
-  const [logs, setLogs] = useState<LogMessage[]>(() => {
-    try {
-      const saved = localStorage.getItem("avplaypro_logs_v4");
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [];
-  });
+  const [tasks, setTasks] = useState<DownloadTask[]>([]);
+  const [logs, setLogs] = useState<LogMessage[]>([]);
+  const [storageLoaded, setStorageLoaded] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -1129,6 +82,7 @@ export function DownloadPage({
   const activeDownloadId = useRef<string | null>(null);
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
+  const consumingExtensionPushesRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   // 队列调度器引用（供进度回调在 useEffect 内调用最新版本）
   const startNextRef = useRef<() => void>(() => {});
@@ -1156,12 +110,45 @@ export function DownloadPage({
 
   /* ---- persist ---- */
   useEffect(() => {
-    localStorage.setItem("avplaypro_tasks_v4", JSON.stringify(tasks));
-  }, [tasks]);
+    let disposed = false;
+
+    trpc.storage.getDownloadState
+      .query()
+      .then((state) => {
+        if (disposed) return;
+        setTasks(Array.isArray(state.tasks) ? (state.tasks as DownloadTask[]) : []);
+        setLogs(Array.isArray(state.logs) ? (state.logs as LogMessage[]) : []);
+      })
+      .catch((err: any) => {
+        if (disposed) return;
+        setLogs((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            timestamp: new Date().toLocaleTimeString([], {
+              hour12: false,
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            }),
+            level: "ERROR",
+            text: `Electron 存储读取失败: ${err?.message || err}`,
+          },
+        ]);
+      })
+      .finally(() => {
+        if (!disposed) setStorageLoaded(true);
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
 
   useEffect(() => {
-    localStorage.setItem("avplaypro_logs_v4", JSON.stringify(logs));
-  }, [logs]);
+    if (!storageLoaded) return;
+    void trpc.storage.saveDownloadState.mutate({ tasks, logs });
+  }, [logs, storageLoaded, tasks]);
 
   /* ---- auto-scroll ---- */
   useEffect(() => {
@@ -1335,15 +322,17 @@ export function DownloadPage({
         );
       }
 
-      // 封面/预览下载日志（没有活动任务时）显示到系统日志
-      if (!id && line.includes("封面/预览")) {
+      // Cover/preview logs are surfaced in the bottom console.
+      if (!id && line.includes("\u5c01\u9762/\u9884\u89c8")) {
         addLog(
           line,
-          line.includes("✅")
+          success
             ? "SUCCESS"
-            : line.includes("❌")
+            : line.includes("\u5931\u8d25")
               ? "ERROR"
-              : "INFO",
+              : line.includes("\u8df3\u8fc7")
+                ? "WARNING"
+                : "INFO",
         );
       }
 
@@ -1401,9 +390,64 @@ export function DownloadPage({
 
   /* ---- add new task ---- */
   const handleAddNewTask = useCallback(
-    (data: any) => {
+    async (data: any): Promise<boolean> => {
+      const code = extractVideoCode(data.name) || extractVideoCode(data.url);
+
+      if (code) {
+        const duplicateTasks = tasksRef.current.filter((task) => {
+          const taskCode = extractVideoCode(task.name) || extractVideoCode(task.url);
+          return taskCode === code;
+        });
+
+        let duplicateVideos: Array<{ name?: string; id?: string }> = [];
+        try {
+          const libraryVideos = await trpc.videos.list.query({
+            path: settings.video_path,
+          });
+          duplicateVideos = libraryVideos.filter((video: any) => {
+            const videoCode =
+              extractVideoCode(video.name) ||
+              extractVideoCode(video.id) ||
+              extractVideoCode(video.url);
+            return videoCode === code;
+          });
+        } catch (err: any) {
+          addLog(
+            "\u68c0\u67e5\u672c\u5730\u89c6\u9891\u5e93\u91cd\u590d\u5931\u8d25: " + (err?.message || err),
+            "WARNING",
+          );
+        }
+
+        if (duplicateTasks.length > 0 || duplicateVideos.length > 0) {
+          const details = [
+            duplicateTasks.length > 0
+              ? "\u5df2\u6709\u4e0b\u8f7d\u4efb\u52a1: " + duplicateTasks.map((task) => task.name).join(", ")
+              : "",
+            duplicateVideos.length > 0
+              ? "\u672c\u5730\u89c6\u9891\u5e93\u5df2\u6709\u89c6\u9891: " +
+                duplicateVideos.map((video) => video.name || video.id || code).join(", ")
+              : "",
+          ].filter(Boolean);
+
+          const confirmed = window.confirm(
+            "\u68c0\u6d4b\u5230\u756a\u53f7 " +
+              code +
+              " \u5df2\u5b58\u5728\u3002\n" +
+              details.join("\n") +
+              "\n\n\u662f\u5426\u4ecd\u7136\u6dfb\u52a0\u5f53\u524d\u4efb\u52a1\uff1f",
+          );
+
+          if (!confirmed) {
+            addLog("\u5df2\u53d6\u6d88\u6dfb\u52a0\u91cd\u590d\u756a\u53f7\u4efb\u52a1: " + code, "WARNING");
+            return false;
+          }
+
+          addLog("\u7528\u6237\u786e\u8ba4\u6dfb\u52a0\u91cd\u590d\u756a\u53f7\u4efb\u52a1: " + code, "WARNING");
+        }
+      }
+
       const newTask: DownloadTask = {
-        id: `task-${Date.now()}`,
+        id: "task-" + Date.now(),
         name: data.name,
         url: data.url,
         status: "PENDING",
@@ -1421,25 +465,108 @@ export function DownloadPage({
         creationTime: new Date().toISOString(),
         encryptionType: data.encryptionType,
         resolution: data.resolution,
-        coverUrl: data.coverUrl || undefined,
-        previewUrl: data.previewUrl || undefined,
-        logs: [`[系统] 任务已创建。目标地址: ${data.url}`],
+        coverUrl: toProxiedAssetUrl(data.coverUrl) || undefined,
+        previewUrl: toProxiedAssetUrl(data.previewUrl) || undefined,
+        sourcePageUrl: data.sourcePageUrl || data.pageUrl || undefined,
+        referer: data.referer || undefined,
+        refererSource: data.refererSource || undefined,
+        logs: [
+          "[\u7cfb\u7edf] \u4efb\u52a1\u5df2\u521b\u5efa\u3002\u76ee\u6807\u5730\u5740: " + data.url,
+          ...(data.referer
+            ? [
+                `[插件] Referer source: ${data.refererSource || "unknown"} | ${data.referer}`,
+              ]
+            : []),
+        ],
       };
 
       setTasks((prev) => [newTask, ...prev]);
       setSelectedTaskId(newTask.id);
       addLog(
-        `已添加新下载任务: ${newTask.name} | URL: ${newTask.url} | 格式: ${newTask.format} | 保存: ${newTask.savePath}`,
+        "\u5df2\u6dfb\u52a0\u65b0\u4e0b\u8f7d\u4efb\u52a1: " +
+          newTask.name +
+          " | URL: " +
+          newTask.url +
+          " | \u683c\u5f0f: " +
+          newTask.format +
+          " | \u4fdd\u5b58: " +
+          newTask.savePath +
+          (newTask.referer
+            ? " | Referer: " +
+              (newTask.refererSource || "unknown") +
+              " -> " +
+              newTask.referer
+            : ""),
         "SUCCESS",
       );
 
-      // 添加任务只是加入列表，绝不自动开始下载。
-      // 由用户手动点击单个任务的开始按钮，或开启“队列下载”后再触发。
+      return true;
     },
-    [addLog],
+    [addLog, settings.video_path],
   );
 
-  /* ---- 实际启动某个任务（串行，单进程） ---- */
+  useEffect(() => {
+    if (!storageLoaded) return;
+
+    const consumePushedTasks = async () => {
+      if (consumingExtensionPushesRef.current) return;
+      consumingExtensionPushesRef.current = true;
+
+      try {
+        const pushedTasks = await trpc.extension.consumePushedTasks.mutate();
+        for (const task of pushedTasks as ExtensionPushedTask[]) {
+          if (!task?.url) continue;
+
+          addLog(
+            `[插件] 收到推送: ${task.name || task.url} | Referer: ${task.refererSource} -> ${task.referer}`,
+            "INFO",
+          );
+
+          await handleAddNewTask({
+            name: task.name || "M3U8 Task",
+            url: task.url,
+            format: settings.defaultFormat,
+            headers: buildExtensionHeaders(task),
+            threads: settings.defaultThreads,
+            savePath: settings.video_path,
+            resolution: task.quality,
+            coverUrl: task.coverUrl,
+            previewUrl: task.previewUrl,
+            sourcePageUrl: task.pageUrl,
+            referer: task.referer,
+            refererSource: task.refererSource,
+          });
+        }
+      } catch (err: any) {
+        addLog(`插件推送队列读取失败: ${err?.message || err}`, "ERROR");
+      } finally {
+        consumingExtensionPushesRef.current = false;
+      }
+    };
+
+    void consumePushedTasks();
+
+    const unlisten = window.electronAPI?.extension?.onTaskPushed?.(() => {
+      void consumePushedTasks();
+    });
+    const timer = window.setInterval(() => {
+      void consumePushedTasks();
+    }, 3000);
+
+    return () => {
+      unlisten?.();
+      window.clearInterval(timer);
+    };
+  }, [
+    addLog,
+    handleAddNewTask,
+    settings.defaultFormat,
+    settings.defaultThreads,
+    settings.video_path,
+    storageLoaded,
+  ]);
+
+  /* ---- actual task start ---- */
   const startTask = useCallback(
     (id: string) => {
       const t = tasksRef.current.find((x) => x.id === id);
@@ -1449,6 +576,7 @@ export function DownloadPage({
         return;
 
       activeDownloadId.current = t.id;
+      addLog(`\u5f00\u59cb\u4e0b\u8f7d\u4efb\u52a1: ${t.name}`, "INFO");
 
       // 每个任务创建独立文件夹: {savePath}/{任务名}/
       const taskDir =
@@ -1685,13 +813,13 @@ export function DownloadPage({
   const getLogLevelColor = (level: string) => {
     switch (level) {
       case "SUCCESS":
-        return "text-emerald-900";
+        return "text-emerald-600";
       case "WARNING":
-        return "text-orange-900 font-medium";
+        return "text-orange-600 font-medium";
       case "ERROR":
-        return "text-red-900 font-medium";
+        return "text-red-600 font-medium";
       case "DEBUG":
-        return "text-sky-900";
+        return "text-sky-600";
       default:
         return "text-slate-600";
     }
@@ -1701,13 +829,13 @@ export function DownloadPage({
   const getLogLevelBadge = (level: string) => {
     switch (level) {
       case "SUCCESS":
-        return "bg-emerald-50/70 text-emerald-900 border-emerald-100";
+        return "bg-emerald-50/70 text-emerald-600 border-emerald-100";
       case "WARNING":
-        return "bg-orange-50/70 text-orange-900 border-orange-100";
+        return "bg-orange-50/70 text-orange-600 border-orange-100";
       case "ERROR":
-        return "bg-red-50/70 text-red-900 border-red-100";
+        return "bg-red-50/70 text-red-600 border-red-100";
       case "DEBUG":
-        return "bg-sky-50/70 text-sky-900 border-sky-100";
+        return "bg-sky-50/70 text-sky-600 border-sky-100";
       default:
         return "bg-slate-100 text-slate-500 border-slate-200";
     }

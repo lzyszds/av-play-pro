@@ -13,4 +13,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('download-progress', handler)
     },
   },
+  extension: {
+    onTaskPushed: (callback: (event: any, data: any) => void) => {
+      const handler = (_event: any, data: any) => callback(_event, data)
+      ipcRenderer.on('extension-task-pushed', handler)
+      return () => ipcRenderer.removeListener('extension-task-pushed', handler)
+    },
+  },
 })

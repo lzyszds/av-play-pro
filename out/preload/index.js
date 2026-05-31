@@ -9,5 +9,12 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
       electron.ipcRenderer.on("download-progress", handler);
       return () => electron.ipcRenderer.removeListener("download-progress", handler);
     }
+  },
+  extension: {
+    onTaskPushed: (callback) => {
+      const handler = (_event, data) => callback(_event, data);
+      electron.ipcRenderer.on("extension-task-pushed", handler);
+      return () => electron.ipcRenderer.removeListener("extension-task-pushed", handler);
+    }
   }
 });

@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "M3U8 嗅探器 Pro",
+  "version": "1.0.0",
+  "description": "自动嗅探页面中的 m3u8 视频链接",
+  "permissions": ["storage"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["injected.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
+    }
+  ]
+}

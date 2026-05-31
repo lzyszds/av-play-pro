@@ -2,8 +2,11 @@ import React, { useState, useEffect } from "react";
 import { TitleBar } from "./components/TitleBar";
 import { DownloadPage } from "./pages/DownloadPage";
 import { PlayerPage } from "./pages/PlayerPage";
+import { WebPage } from "./pages/WebPage";
+import { trpc } from "./lib/trpc";
+import type { AppSettings } from "./pages/download/types";
 
-type Page = "download" | "player";
+type Page = "download" | "player" | "web";
 
 const DEFAULT_SETTINGS = {
   video_path: "M:\\video\\videos\\",
@@ -14,24 +17,43 @@ const DEFAULT_SETTINGS = {
   autoMerge: true,
   proxyUrl: "",
   nm3u8dlPath: "N_m3u8DL-RE.exe",
-};
+} satisfies AppSettings;
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>("download");
-  const [settings, setSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem("avplaypro_settings_v4");
-      if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
-    } catch {}
-    return DEFAULT_SETTINGS;
-  });
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [systemLogs, setSystemLogs] = useState<
     Array<{ text: string; level: string; time: string }>
   >([]);
 
   useEffect(() => {
-    localStorage.setItem("avplaypro_settings_v4", JSON.stringify(settings));
-  }, [settings]);
+    let disposed = false;
+    trpc.storage.getSettings
+      .query()
+      .then((saved) => {
+        if (!disposed) {
+          setSettings({
+            ...DEFAULT_SETTINGS,
+            ...(saved as Partial<AppSettings>),
+          });
+        }
+      })
+      .finally(() => {
+        if (!disposed) setSettingsLoaded(true);
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    void trpc.storage.saveSettings.mutate(
+      settings as unknown as Record<string, unknown>,
+    );
+  }, [settings, settingsLoaded]);
 
   const addSystemLog = (
     text: string,
@@ -49,23 +71,21 @@ export default function App() {
         onPageChange={setCurrentPage}
         systemLogs={systemLogs}
       />
-      <div
-        key={currentPage}
-        className="flex-1 min-h-0 overflow-hidden anim-fade-in-up"
-      >
-        {currentPage === "download" && (
+      <div className="flex-1 min-h-0 overflow-hidden anim-fade-in-up">
+        <div className={currentPage === "download" ? "h-full" : "hidden"}>
           <DownloadPage
             settings={settings}
             onSettingsChange={setSettings}
             onAddSystemLog={addSystemLog}
           />
-        )}
+        </div>
         {currentPage === "player" && (
           <PlayerPage
             videoPath={settings.video_path}
             onAddSystemLog={addSystemLog}
           />
         )}
+        {currentPage === "web" && <WebPage onAddSystemLog={addSystemLog} />}
       </div>
     </div>
   );

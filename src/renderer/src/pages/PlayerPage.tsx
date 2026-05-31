@@ -13,7 +13,12 @@ import { LocalVideoCard } from "../components/player/LocalVideoCard";
 import type { PlayerPageProps, VideoItem } from "./player/types";
 import { Play, FileVideo, Radio, RefreshCw, ChevronDown, Search, X, Trash2, Download } from "lucide-react";
 
-export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
+export function PlayerPage({
+  videoPath,
+  onAddSystemLog,
+  pendingPlayName,
+  onConsumePendingPlay,
+}: PlayerPageProps) {
   // Plyr 播放器实例
   const plyrRef = useRef<Plyr | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -158,6 +163,38 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
       loadSource(activeStream.url, autoPlay);
     }
   }, [activeStream.url, loadSource]);
+
+  // 监听 <video> loadedmetadata，用真实像素覆盖 "local" 等占位文本
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.videoWidth;
+      const h = el.videoHeight;
+      if (w > 0 && h > 0) {
+        setActiveStream((s) => ({ ...s, resolution: `${w}×${h}` }));
+      }
+    };
+    el.addEventListener("loadedmetadata", update);
+    el.addEventListener("resize", update);
+    return () => {
+      el.removeEventListener("loadedmetadata", update);
+      el.removeEventListener("resize", update);
+    };
+  }, []);
+
+  // 「立即查看」：等本地视频列表加载完毕后,按 name 匹配并自动播放
+  useEffect(() => {
+    if (!pendingPlayName || localVideos.length === 0) return;
+    const target = localVideos.findIndex((v) => v.name === pendingPlayName);
+    if (target >= 0) {
+      isFirstLoad.current = false; // 跳转过来直接自动播放
+      handleLoadLocalVideo(localVideos[target], target);
+      onConsumePendingPlay?.();
+    }
+    // 找不到时不消费，等下次 refreshVideoList 后再试
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingPlayName, localVideos]);
 
   // 本地路径转 file:// 协议（直接在前端转换，不需要走 IPC）
   const convertLocalPath = (filePath: string): string => {

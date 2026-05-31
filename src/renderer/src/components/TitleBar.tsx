@@ -1,6 +1,20 @@
 import React from "react";
-import { Download, Globe, Minus, Play, Square, Terminal, X } from "lucide-react";
+import {
+  Download,
+  Globe,
+  Minus,
+  Play,
+  Square,
+  Terminal,
+  X,
+  Volume2,
+  VolumeX,
+  Sun,
+  Moon,
+  Monitor,
+} from "lucide-react";
 import { trpc } from "../lib/trpc";
+import type { ThemeMode } from "../pages/download/types";
 
 type Page = "download" | "player" | "web";
 
@@ -8,6 +22,10 @@ interface TitleBarProps {
   currentPage: Page;
   onPageChange: (page: Page) => void;
   systemLogs: Array<{ text: string; level: string; time: string }>;
+  notifySound: boolean;
+  onToggleSound: () => void;
+  theme: ThemeMode;
+  onCycleTheme: () => void;
 }
 
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
@@ -19,11 +37,22 @@ const pages: Array<{ key: Page; label: string; icon: typeof Download }> = [
   { key: "web", label: "网页", icon: Globe },
 ];
 
+const themeMeta: Record<ThemeMode, { icon: typeof Sun; label: string }> = {
+  system: { icon: Monitor, label: "跟随系统" },
+  light: { icon: Sun, label: "浅色" },
+  dark: { icon: Moon, label: "深色" },
+};
+
 export const TitleBar: React.FC<TitleBarProps> = ({
   currentPage,
   onPageChange,
   systemLogs,
+  notifySound,
+  onToggleSound,
+  theme,
+  onCycleTheme,
 }) => {
+  const ThemeIcon = themeMeta[theme].icon;
   return (
     <div
       className="h-9 bg-slate-900 flex items-center justify-between select-none shrink-0"
@@ -74,6 +103,27 @@ export const TitleBar: React.FC<TitleBarProps> = ({
       </div>
 
       <div className="flex items-center h-full" style={noDrag}>
+        <button
+          type="button"
+          onClick={onToggleSound}
+          title={notifySound ? "提示音已开启 (点击关闭)" : "提示音已关闭 (点击开启)"}
+          className="w-9 h-full flex items-center justify-center text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition cursor-pointer"
+        >
+          {notifySound ? (
+            <Volume2 className="w-3.5 h-3.5" />
+          ) : (
+            <VolumeX className="w-3.5 h-3.5" />
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={onCycleTheme}
+          title={`主题：${themeMeta[theme].label} (点击切换)`}
+          className="w-9 h-full flex items-center justify-center text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition cursor-pointer"
+        >
+          <ThemeIcon className="w-3.5 h-3.5" />
+        </button>
+        <div className="w-px h-4 bg-slate-700 mx-1" />
         <button
           type="button"
           onClick={() => trpc.window.minimize.mutate()}

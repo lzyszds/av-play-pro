@@ -6,6 +6,8 @@ import { dialogRouter } from "./routers/dialogRouter";
 import { fileRouter } from "./routers/fileRouter";
 import { extensionRouter } from "./routers/extensionRouter";
 import { storageRouter } from "./routers/storageRouter";
+import { loggerRouter } from "./routers/loggerRouter";
+import { systemRouter } from "./routers/systemRouter";
 
 export const appRouter = t.router({
   download: downloadRouter,
@@ -15,6 +17,8 @@ export const appRouter = t.router({
   file: fileRouter,
   extension: extensionRouter,
   storage: storageRouter,
+  logger: loggerRouter,
+  system: systemRouter,
 });
 
 export type AppRouter = typeof appRouter;

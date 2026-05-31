@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "plyr/dist/plyr.css";
 
+/* Tailwind v4：class 策略的深色模式（与 .dark on <html> 配合） */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* 主色调：将 amber 整条色阶重映射为玫瑰金 (rose)，全局生效 */
 @theme {
   --color-amber-50: #fff1f2;
@@ -29,6 +32,12 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
 }
 
 /* Plyr 主题覆盖 */

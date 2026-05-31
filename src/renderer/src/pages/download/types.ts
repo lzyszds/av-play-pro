@@ -40,6 +40,9 @@ export interface LogMessage {
   text: string;
 }
 
+export type ThemeMode = "system" | "light" | "dark";
+export type CloseAction = "ask" | "tray" | "quit";
+
 export interface AppSettings {
   video_path: string;
   temp_path: string;
@@ -49,6 +52,10 @@ export interface AppSettings {
   autoMerge: boolean;
   proxyUrl: string;
   nm3u8dlPath: string;
+  theme: ThemeMode;
+  closeAction: CloseAction;
+  notifyOnComplete: boolean;
+  notifySound: boolean;
 }
 
 export interface DownloadPageProps {
@@ -58,4 +65,5 @@ export interface DownloadPageProps {
     text: string,
     level: "INFO" | "WARNING" | "SUCCESS" | "ERROR",
   ) => void;
+  onPlayCompletedTask: (task: DownloadTask) => void;
 }

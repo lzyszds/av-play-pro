@@ -24,6 +24,7 @@
     "@trpc/react-query": "^11.17.0",
     "@trpc/server": "^11.17.0",
     "axios": "^1.16.1",
+    "electron-log": "^5.4.4",
     "electron-store": "^8.2.0",
     "electron-trpc-experimental": "^1.0.0-alpha.1",
     "electron-updater": "^6.3.9",
@@ -75,6 +76,10 @@
       {
         "from": "resources",
         "to": "resources"
+      },
+      {
+        "from": "assets",
+        "to": "assets"
       }
     ],
     "win": {

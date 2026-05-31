@@ -6,10 +6,15 @@ import { setupLocalMediaProtocol } from "./protocols/localMediaProtocol";
 import { registerAppProtocolSchemes } from "./protocols/registerSchemes";
 import { startExtensionPushServer } from "./extensions/pushServer";
 import { setupMissavWebSession } from "./webview/missavWebSession";
+import { initLogger, installGlobalErrorHandlers, log } from "./logger";
+import { markQuitting } from "./tray";
 
 registerAppProtocolSchemes();
 
 app.whenReady().then(async () => {
+  initLogger();
+  installGlobalErrorHandlers();
+
   electronApp.setAppUserModelId("com.avplaypro.app");
 
   app.on("browser-window-created", (_, window) => {
@@ -25,6 +30,12 @@ app.whenReady().then(async () => {
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
+
+  log.info("[app] ready");
+});
+
+app.on("before-quit", () => {
+  markQuitting();
 });
 
 app.on("window-all-closed", () => {

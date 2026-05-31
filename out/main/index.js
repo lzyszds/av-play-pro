@@ -9,6 +9,7 @@ const observable = require("@trpc/server/observable");
 const https = require("https");
 const http = require("http");
 const child_process = require("child_process");
+const log = require("electron-log/main");
 const stream = require("stream");
 function _interopNamespaceDefault(e) {
   const n = Object.create(null, { [Symbol.toStringTag]: { value: "Module" } });
@@ -1045,7 +1046,7 @@ const extensionRouter = t.router({
 function getDownloadStatePath() {
   return path__namespace.join(electron.app.getPath("userData"), "download-state.json");
 }
-function getSettingsPath() {
+function getSettingsPath$1() {
   return path__namespace.join(electron.app.getPath("userData"), "settings.json");
 }
 function readDownloadState() {
@@ -1069,7 +1070,7 @@ function writeDownloadState(state) {
 const storageRouter = t.router({
   getSettings: t.procedure.query(() => {
     try {
-      const file = getSettingsPath();
+      const file = getSettingsPath$1();
       if (!fs__namespace.existsSync(file)) return {};
       return JSON.parse(fs__namespace.readFileSync(file, "utf8"));
     } catch {
@@ -1077,7 +1078,7 @@ const storageRouter = t.router({
     }
   }),
   saveSettings: t.procedure.input((input) => input).mutation(({ input }) => {
-    const file = getSettingsPath();
+    const file = getSettingsPath$1();
     fs__namespace.mkdirSync(path__namespace.dirname(file), { recursive: true });
     fs__namespace.writeFileSync(file, JSON.stringify(input || {}, null, 2), "utf8");
     return { success: true };
@@ -1093,6 +1094,103 @@ const storageRouter = t.router({
     return { success: true };
   })
 });
+let initialized = false;
+function initLogger() {
+  if (initialized) return log;
+  initialized = true;
+  log.transports.file.resolvePathFn = (variables) => {
+    return path__namespace.join(
+      electron.app.getPath("userData"),
+      "logs",
+      variables.fileName || "main.log"
+    );
+  };
+  log.transports.file.maxSize = 5 * 1024 * 1024;
+  log.transports.file.level = "info";
+  log.transports.console.level = electron.app.isPackaged ? "warn" : "debug";
+  log.transports.console.format = "[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}";
+  log.initialize();
+  log.info(`[logger] initialized | userData=${electron.app.getPath("userData")}`);
+  return log;
+}
+function installGlobalErrorHandlers() {
+  process.on("uncaughtException", (err) => {
+    log.error("[uncaughtException]", err);
+  });
+  process.on("unhandledRejection", (reason) => {
+    log.error("[unhandledRejection]", reason);
+  });
+  electron.app.on("render-process-gone", (_event, _wc, details) => {
+    log.error("[render-process-gone]", details);
+  });
+  electron.app.on("child-process-gone", (_event, details) => {
+    log.error("[child-process-gone]", details);
+  });
+}
+const loggerRouter = t.router({
+  write: t.procedure.input(
+    (input) => input
+  ).mutation(({ input }) => {
+    const tag = input.scope ? `[renderer:${input.scope}]` : "[renderer]";
+    const fn = log[input.level] || log.info;
+    fn(tag, input.message);
+    return { success: true };
+  })
+});
+const systemRouter = t.router({
+  // 用户未设置时的默认媒体路径（跨平台兜底）
+  getDefaultPaths: t.procedure.query(() => {
+    const videos = electron.app.getPath("videos");
+    return {
+      video_path: path__namespace.join(videos, "AVPlayPro") + path__namespace.sep,
+      temp_path: path__namespace.join(electron.app.getPath("temp"), "AVPlayPro") + path__namespace.sep
+    };
+  }),
+  // 主进程系统通知（绕过浏览器弹通知，能命中 Windows 行动中心）
+  notify: t.procedure.input(
+    (input) => input
+  ).mutation(({ input }) => {
+    if (!electron.Notification.isSupported()) return { success: false };
+    const n = new electron.Notification({
+      title: input.title,
+      body: input.body,
+      silent: input.silent ?? true
+      // 系统声音由前端 tips.mp3 接管
+    });
+    n.on("click", () => {
+      const win = getMainWindow();
+      if (!win) return;
+      if (win.isMinimized()) win.restore();
+      if (!win.isVisible()) win.show();
+      win.focus();
+    });
+    n.show();
+    return { success: true };
+  }),
+  // 目标盘剩余空间（字节）。失败返回 -1
+  getDiskFree: t.procedure.input((input) => input).query(async ({ input }) => {
+    try {
+      let probe = input.path;
+      while (probe && !fs__namespace.existsSync(probe)) {
+        const parent = path__namespace.dirname(probe);
+        if (!parent || parent === probe) break;
+        probe = parent;
+      }
+      if (!probe || !fs__namespace.existsSync(probe)) return { free: -1, total: -1 };
+      const s = await fs__namespace.promises.statfs(probe);
+      return { free: s.bsize * s.bavail, total: s.bsize * s.blocks };
+    } catch {
+      return { free: -1, total: -1 };
+    }
+  }),
+  // 任务栏进度条（Win/Mac dock）
+  setTaskbarProgress: t.procedure.input((input) => input).mutation(({ input }) => {
+    const win = getMainWindow();
+    if (!win) return { success: false };
+    win.setProgressBar(input.progress);
+    return { success: true };
+  })
+});
 const appRouter = t.router({
   download: downloadRouter,
   videos: videosRouter,
@@ -1100,8 +1198,60 @@ const appRouter = t.router({
   dialog: dialogRouter,
   file: fileRouter,
   extension: extensionRouter,
-  storage: storageRouter
+  storage: storageRouter,
+  logger: loggerRouter,
+  system: systemRouter
 });
+let tray = null;
+let isQuitting = false;
+function getIsQuitting() {
+  return isQuitting;
+}
+function markQuitting() {
+  isQuitting = true;
+}
+function resolveTrayIcon() {
+  const candidates = [
+    path.join(__dirname, "../../resources/icon.png"),
+    path.join(process.resourcesPath || "", "resources", "icon.png"),
+    path.join(process.resourcesPath || "", "icon.png")
+  ];
+  return candidates.find((p) => fs.existsSync(p));
+}
+function setupTray(window) {
+  if (tray) return tray;
+  const iconPath = resolveTrayIcon();
+  const image = iconPath ? electron.nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 }) : electron.nativeImage.createEmpty();
+  tray = new electron.Tray(image);
+  tray.setToolTip("AVPlayPro");
+  const showWindow = () => {
+    if (window.isDestroyed()) return;
+    if (window.isMinimized()) window.restore();
+    window.show();
+    window.focus();
+  };
+  const buildMenu = () => electron.Menu.buildFromTemplate([
+    {
+      label: window.isVisible() ? "隐藏主窗口" : "显示主窗口",
+      click: () => window.isVisible() ? window.hide() : showWindow()
+    },
+    { type: "separator" },
+    {
+      label: "退出 AVPlayPro",
+      click: () => {
+        isQuitting = true;
+        electron.app.quit();
+      }
+    }
+  ]);
+  tray.setContextMenu(buildMenu());
+  tray.on("double-click", showWindow);
+  tray.on("click", showWindow);
+  window.on("show", () => tray?.setContextMenu(buildMenu()));
+  window.on("hide", () => tray?.setContextMenu(buildMenu()));
+  log.info("[tray] initialized");
+  return tray;
+}
 function resolveAppIcon() {
   const candidates = [
     path.join(__dirname, "../../resources/icon.png"),
@@ -1109,6 +1259,33 @@ function resolveAppIcon() {
     path.join(process.resourcesPath || "", "icon.png")
   ];
   return candidates.find((p) => fs.existsSync(p));
+}
+function getSettingsPath() {
+  return path.join(electron.app.getPath("userData"), "settings.json");
+}
+function readCloseAction() {
+  try {
+    const file = getSettingsPath();
+    if (!fs.existsSync(file)) return "ask";
+    const data = JSON.parse(fs.readFileSync(file, "utf8"));
+    return data.closeAction ?? "ask";
+  } catch {
+    return "ask";
+  }
+}
+function writeCloseAction(action) {
+  try {
+    const file = getSettingsPath();
+    fs.mkdirSync(path.join(file, ".."), { recursive: true });
+    const prev = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+    fs.writeFileSync(
+      file,
+      JSON.stringify({ ...prev, closeAction: action }, null, 2),
+      "utf8"
+    );
+  } catch (err) {
+    log.error("[createMainWindow] writeCloseAction failed", err);
+  }
 }
 function createMainWindow() {
   const appIcon = resolveAppIcon();
@@ -1130,6 +1307,33 @@ function createMainWindow() {
   });
   setMainWindow(window);
   main.createIPCHandler({ router: appRouter, windows: [window] });
+  setupTray(window);
+  window.on("close", (event) => {
+    if (getIsQuitting()) return;
+    let action = readCloseAction();
+    if (action === "ask") {
+      event.preventDefault();
+      const result = electron.dialog.showMessageBoxSync(window, {
+        type: "question",
+        buttons: ["最小化到托盘", "彻底退出", "取消"],
+        defaultId: 0,
+        cancelId: 2,
+        title: "关闭确认",
+        message: "关闭主窗口时希望执行哪种操作？",
+        detail: "选择后会被记住，可在「设置 → 关闭主窗口时」修改。"
+      });
+      if (result === 2) return;
+      action = result === 0 ? "tray" : "quit";
+      writeCloseAction(action);
+    }
+    if (action === "tray") {
+      event.preventDefault();
+      window.hide();
+      return;
+    }
+    markQuitting();
+    electron.app.quit();
+  });
   window.on("ready-to-show", () => {
     window?.show();
   });
@@ -1137,9 +1341,8 @@ function createMainWindow() {
     electron.shell.openExternal(details.url);
     return { action: "deny" };
   });
-  console.log(
-    "[主进程] ELECTRON_RENDERER_URL:",
-    process.env["ELECTRON_RENDERER_URL"]
+  log.info(
+    `[主进程] ELECTRON_RENDERER_URL=${process.env["ELECTRON_RENDERER_URL"]}`
   );
   if (process.env["ELECTRON_RENDERER_URL"]) {
     window.loadURL(process.env["ELECTRON_RENDERER_URL"]);
@@ -1694,6 +1897,8 @@ async function setupMissavWebSession() {
 }
 registerAppProtocolSchemes();
 electron.app.whenReady().then(async () => {
+  initLogger();
+  installGlobalErrorHandlers();
   utils.electronApp.setAppUserModelId("com.avplaypro.app");
   electron.app.on("browser-window-created", (_, window) => {
     utils.optimizer.watchWindowShortcuts(window);
@@ -1706,6 +1911,10 @@ electron.app.whenReady().then(async () => {
   electron.app.on("activate", () => {
     if (electron.BrowserWindow.getAllWindows().length === 0) createMainWindow();
   });
+  log.info("[app] ready");
+});
+electron.app.on("before-quit", () => {
+  markQuitting();
 });
 electron.app.on("window-all-closed", () => {
   if (process.platform !== "darwin") electron.app.quit();

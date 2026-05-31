@@ -60,6 +60,7 @@ export function DownloadPage({
   settings,
   onSettingsChange,
   onAddSystemLog,
+  onPlayCompletedTask,
 }: DownloadPageProps) {
   /* ---- state ---- */
   const [tasks, setTasks] = useState<DownloadTask[]>([]);
@@ -82,6 +83,17 @@ export function DownloadPage({
   const activeDownloadId = useRef<string | null>(null);
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
+  // 让 IPC 回调访问最新设置（避免 effect 因 settings 变化而重订阅）
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  // 任务栏进度 IPC 节流（最少 200ms 一次）
+  const lastTaskbarPushRef = useRef(0);
+  // 提示音预加载
+  const tipsAudioRef = useRef<HTMLAudioElement | null>(null);
+  if (!tipsAudioRef.current && typeof Audio !== "undefined") {
+    tipsAudioRef.current = new Audio("./tips.mp3");
+    tipsAudioRef.current.preload = "auto";
+  }
   const consumingExtensionPushesRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   // 队列调度器引用（供进度回调在 useEffect 内调用最新版本）
@@ -145,9 +157,13 @@ export function DownloadPage({
     };
   }, []);
 
+  // 防抖落盘：避免每次 setTasks 都写 JSON 文件
   useEffect(() => {
     if (!storageLoaded) return;
-    void trpc.storage.saveDownloadState.mutate({ tasks, logs });
+    const timer = window.setTimeout(() => {
+      void trpc.storage.saveDownloadState.mutate({ tasks, logs });
+    }, 500);
+    return () => window.clearTimeout(timer);
   }, [logs, storageLoaded, tasks]);
 
   /* ---- auto-scroll ---- */
@@ -279,6 +295,17 @@ export function DownloadPage({
       // 解析速度和大小
       const info = parseProgressInfo(line);
 
+      // 更新任务栏进度条（节流 200ms,N_m3u8DL-RE 输出极频繁）
+      if (id && !done && info.percent != null) {
+        const now = Date.now();
+        if (now - lastTaskbarPushRef.current >= 200) {
+          lastTaskbarPushRef.current = now;
+          void trpc.system.setTaskbarProgress
+            .mutate({ progress: Math.max(0, Math.min(1, info.percent / 100)) })
+            .catch(() => {});
+        }
+      }
+
       // 如果有活动下载任务，更新任务日志
       if (id) {
         setTasks((prev) =>
@@ -346,6 +373,29 @@ export function DownloadPage({
             : `下载任务结束（任务 ${finished ?? ""}）。`,
           success ? "SUCCESS" : "WARNING",
         );
+
+        // 清除任务栏进度
+        void trpc.system.setTaskbarProgress.mutate({ progress: -1 }).catch(() => {});
+
+        // 系统通知 + 提示音
+        const finishedTask = tasksRef.current.find((t) => t.id === finished);
+        const taskName = finishedTask?.name || "下载任务";
+        const s = settingsRef.current;
+        if (s.notifyOnComplete) {
+          void trpc.system.notify
+            .mutate({
+              title: success ? "下载完成" : "下载失败",
+              body: success ? `${taskName} 已完成` : `${taskName} 异常退出`,
+              silent: true,
+            })
+            .catch(() => {});
+        }
+        if (s.notifySound && tipsAudioRef.current) {
+          try {
+            tipsAudioRef.current.currentTime = 0;
+            void tipsAudioRef.current.play().catch(() => {});
+          } catch {}
+        }
 
         // 当前任务结束 → 自动启动队列中的下一个（串行下载）
         setTimeout(() => startNextRef.current(), 400);
@@ -575,6 +625,20 @@ export function DownloadPage({
       if (t.status === "DOWNLOADING" && activeDownloadId.current === t.id)
         return;
 
+      // \u542f\u52a8\u524d\u68c0\u67e5\u76ee\u6807\u76d8\u5269\u4f59\u7a7a\u95f4\uff08<5GB \u7ed9\u8b66\u544a\uff09
+      void (async () => {
+        try {
+          const disk = await trpc.system.getDiskFree.query({ path: t.savePath });
+          if (disk.free > 0 && disk.free < 5 * 1024 * 1024 * 1024) {
+            const gb = (disk.free / 1024 / 1024 / 1024).toFixed(2);
+            addLog(
+              `\u26a0\ufe0f \u76ee\u6807\u76d8\u5269\u4f59\u7a7a\u95f4\u4ec5 ${gb} GB\uff0c\u5efa\u8bae\u6e05\u7406\u540e\u518d\u4e0b\u8f7d (${t.savePath})`,
+              "WARNING",
+            );
+          }
+        } catch {}
+      })();
+
       activeDownloadId.current = t.id;
       addLog(`\u5f00\u59cb\u4e0b\u8f7d\u4efb\u52a1: ${t.name}`, "INFO");
 
@@ -766,6 +830,50 @@ export function DownloadPage({
     });
   }, [addLog]);
 
+  /* ---- 选中卡片：自动切到「选中详情」 ---- */
+  const handleSelectTask = useCallback((id: string) => {
+    setSelectedTaskId(id);
+    setActiveSubTab("metadata");
+  }, []);
+
+  /* ---- 立即查看（已完成任务跳到播放器） ---- */
+  const handlePlayCompleted = useCallback(
+    (task: DownloadTask) => {
+      if (task.status !== "COMPLETED") return;
+      onPlayCompletedTask(task);
+    },
+    [onPlayCompletedTask],
+  );
+
+  /* ---- 重抓封面/预览 ---- */
+  const handleRefetchCover = useCallback(
+    async (task: DownloadTask) => {
+      const codeMatch = task.name.match(/[A-Z]{2,6}-\d{3,5}/i);
+      const videoCode = codeMatch
+        ? codeMatch[0].toUpperCase()
+        : task.name.split(" ")[0];
+      const taskDir =
+        task.savePath.replace(/[\/\\]$/, "") +
+        "\\" +
+        task.name.replace(/[\\/:*?"<>|]/g, "_");
+      addLog(`正在重新抓取封面和预览: ${task.name} (番号: ${videoCode})...`, "INFO");
+      try {
+        const r = await trpc.download.downloadCoverPreview.mutate({
+          id: videoCode,
+          name: task.name,
+          saveDir: taskDir,
+        });
+        addLog(
+          r.success ? `封面已重抓: ${task.name}` : `封面重抓失败: ${r.error || ""}`,
+          r.success ? "SUCCESS" : "ERROR",
+        );
+      } catch (err: any) {
+        addLog(`封面重抓失败: ${err?.message || err}`, "ERROR");
+      }
+    },
+    [addLog],
+  );
+
   /* ---- copy command ---- */
   const handleCopyCommand = useCallback(
     (e: React.MouseEvent, task: DownloadTask) => {
@@ -860,7 +968,7 @@ export function DownloadPage({
   return (
     <div className="h-full flex flex-col min-h-0">
       {/* ====== LEFT: Task List ====== */}
-      <div className="flex-1 overflow-y-auto p-6 min-h-50 bg-[#fffaf5]">
+      <div className="flex-1 overflow-y-auto p-6 min-h-50 bg-[#fffaf5] dark:bg-slate-950">
         {/* Queue Control Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
@@ -979,10 +1087,12 @@ export function DownloadPage({
                 index={index}
                 isSelected={selectedTaskId === task.id}
                 copiedTaskId={copiedTaskId}
-                onSelectTask={setSelectedTaskId}
+                onSelectTask={handleSelectTask}
                 onTriggerPauseResume={handleTriggerPauseResume}
                 onDeleteTask={handleDeleteTask}
                 onCopyCommand={handleCopyCommand}
+                onPlayCompleted={handlePlayCompleted}
+                onRefetchCover={handleRefetchCover}
               />
             ))}
           </div>
@@ -990,9 +1100,9 @@ export function DownloadPage({
       </div>
 
       {/* ====== RIGHT: Diagnostics / Detail Panel ====== */}
-      <div className="h-58 bg-[#fffaf5] flex flex-col shrink-0 select-text border-t border-slate-200 text-slate-600 font-mono">
+      <div className="h-58 bg-[#fffaf5] dark:bg-slate-950 flex flex-col shrink-0 select-text border-t border-slate-200 text-slate-600 font-mono">
         {/* Sub-tabs header */}
-        <div className="flex items-center justify-between gap-2 px-3 bg-[#fffaf5] border-b border-slate-100 text-xs overflow-x-auto">
+        <div className="flex items-center justify-between gap-2 px-3 bg-[#fffaf5] dark:bg-slate-950 border-b border-slate-100 text-xs overflow-x-auto">
           <div className="flex items-center gap-4">
             <button
               onClick={() => setActiveSubTab("console")}
@@ -1010,7 +1120,7 @@ export function DownloadPage({
               onClick={() => setActiveSubTab("metadata")}
               className={`flex items-center gap-1.5 px-4 py-2 border-b-2 text-black transition cursor-pointer whitespace-nowrap ${
                 activeSubTab === "metadata"
-                  ? "border-sky-500 bg-[#fffaf5]"
+                  ? "border-sky-500 bg-[#fffaf5] dark:bg-slate-950"
                   : "border-transparent  hover:text-sky-500"
               }`}
             >
@@ -1061,7 +1171,7 @@ export function DownloadPage({
               </>
             ) : (
               selectedTask && (
-                <span className="text-[10px] bg-[#fffaf5] text-slate-500 px-2.5 py-0.5 rounded-full select-none border border-slate-200 font-mono">
+                <span className="text-[10px] bg-[#fffaf5] dark:bg-slate-950 text-slate-500 px-2.5 py-0.5 rounded-full select-none border border-slate-200 font-mono">
                   当前任务 ID: {selectedTask.id}
                 </span>
               )
@@ -1070,12 +1180,12 @@ export function DownloadPage({
         </div>
 
         {/* Panel body */}
-        <div className="flex flex-1 overflow-y-auto bg-[#fffaf5] relative">
+        <div className="flex flex-1 overflow-y-auto bg-[#fffaf5] dark:bg-slate-950 relative">
           {/* Console logs */}
           {activeSubTab === "console" && (
             <div
               ref={scrollRef}
-              className="h-full flex-1 overflow-y-auto space-y-1 text-[10.5px] leading-relaxed select-text bg-[#fffaf5] p-4"
+              className="h-full flex-1 overflow-y-auto space-y-1 text-[10.5px] leading-relaxed select-text bg-[#fffaf5] dark:bg-slate-950 p-4"
             >
               {filteredLogs.length === 0 ? (
                 <div className="text-black text-center py-6">

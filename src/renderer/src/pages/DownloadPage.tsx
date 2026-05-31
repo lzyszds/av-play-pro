@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { trpc } from "../lib/trpc";
+import { Dropdown } from "../components/Dropdown";
 import {
   Plus,
   Play,
@@ -184,7 +185,7 @@ function getStatusBadge(status: TaskStatus) {
   switch (status) {
     case "DOWNLOADING":
       return (
-        <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/90 text-slate-950 px-2 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
+        <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/90 text-white px-2 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
           <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-pulse" />
           下载中
         </span>
@@ -215,6 +216,13 @@ function getStatusBadge(status: TaskStatus) {
         <span className="inline-flex items-center gap-1 text-[10px] bg-rose-500/90 text-white px-2 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
           <AlertCircle className="w-3 h-3" />
           失败
+        </span>
+      );
+    case "PENDING":
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] bg-slate-900/70 text-slate-200 px-2 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+          排队中
         </span>
       );
     default:
@@ -339,8 +347,13 @@ function NewTaskModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/20 flex justify-end">
-      <div className="bg-white border-l border-slate-200 w-full max-w-[420px] text-slate-600 overflow-hidden shadow-2xl flex flex-col h-full">
+    <div
+      className="fixed inset-0 z-50 bg-slate-900/20 flex justify-end anim-fade-in"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-white border-l border-slate-200 w-full max-w-105 rounded-2xl text-slate-600 overflow-hidden shadow-2xl flex flex-col h-full anim-slide-right">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 bg-white">
           <div className="flex items-center gap-2">
@@ -498,58 +511,17 @@ function NewTaskModal({
                     />
                   </div>
 
-                  {/* 线程数 & 输出格式 */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-black font-semibold block mb-1">
-                        下载线程数：{threads}
-                      </label>
-                      <input
-                        type="range"
-                        min={1}
-                        max={32}
-                        value={threads}
-                        onChange={(e) => setThreads(Number(e.target.value))}
-                        className="w-full accent-amber-500 cursor-pointer"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-black font-semibold block mb-1">
-                        输出格式
-                      </label>
-                      <div className="flex gap-1">
-                        {(["MP4", "MKV", "TS"] as const).map((f) => (
-                          <button
-                            key={f}
-                            type="button"
-                            onClick={() => setFormat(f)}
-                            className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
-                              format === f
-                                ? "border-amber-500 bg-amber-500 text-slate-950"
-                                : "border-slate-200 bg-white text-slate-500 hover:border-amber-300"
-                            }`}
-                          >
-                            {f}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
                   {/* Headers */}
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-black font-semibold">
-                        定制 HTTP 协议头 (一行一个, 英文冒号分隔)
+                        HTTP 协议头 (一行一个, 英文冒号分隔)
                       </label>
-                      <span className="text-[10px] text-black font-mono">
-                        User-Agent / Cookie / Origin
-                      </span>
                     </div>
                     <textarea
                       value={headersText}
                       onChange={(e) => setHeadersText(e.target.value)}
-                      rows={3}
+                      rows={4}
                       className="w-full bg-white border border-slate-200 text-slate-700 font-mono text-[10px] rounded-lg p-2.5 focus:outline-none focus:border-amber-500 leading-relaxed"
                       placeholder={
                         "示例:\nUser-Agent: test-agent\nCookie: token=abcd123"
@@ -586,7 +558,7 @@ function NewTaskModal({
                   </div>
 
                   <div className="flex gap-2 p-2 bg-amber-50 rounded-lg border border-amber-100 text-[9px] text-slate-500 leading-normal">
-                    <Shield className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                    <Shield className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <div>
                       有些流媒体服务器严格校验{" "}
                       <code className="text-amber-700 bg-white px-1 rounded font-mono border border-amber-100">
@@ -610,7 +582,7 @@ function NewTaskModal({
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
               </div>
               <span className="text-[10px] font-mono font-semibold text-slate-400 tracking-wider">
-                core-engine-preview
+                核心引擎预览
               </span>
               <button
                 type="button"
@@ -623,7 +595,7 @@ function NewTaskModal({
                   </>
                 ) : (
                   <>
-                    <Copy className="w-3 h-3" /> copy
+                    <Copy className="w-3 h-3" /> 复制
                   </>
                 )}
               </button>
@@ -653,7 +625,7 @@ function NewTaskModal({
           </button>
           <button
             onClick={handleSubmit}
-            className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-bold transition rounded-lg text-xs cursor-pointer"
+            className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold transition rounded-lg text-xs cursor-pointer"
           >
             创建任务
           </button>
@@ -718,8 +690,13 @@ function SettingsPanel({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/20 flex items-center justify-center p-4 text-slate-600 font-sans">
-      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+    <div
+      className="fixed inset-0 z-50 bg-slate-900/20 flex items-center justify-center p-4 text-slate-600 font-sans anim-fade-in"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="bg-white border border-slate-200 rounded-xl w-full max-w-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] anim-scale-in">
         {/* Title */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-slate-200 bg-white">
           <div className="flex items-center gap-3">
@@ -859,7 +836,7 @@ function SettingsPanel({
 
           {/* Warning */}
           <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-3">
-            <AlertWarn className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <AlertWarn className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
             <div className="text-[11px] text-slate-500 leading-normal font-sans">
               <span className="font-extrabold text-amber-700">
                 核心运行说明:
@@ -882,7 +859,7 @@ function SettingsPanel({
             </button>
             <button
               type="submit"
-              className="flex items-center gap-1.5 px-6 py-2 bg-amber-500 hover:bg-amber-600 text-xs text-slate-950 font-bold rounded-lg shadow-sm transition cursor-pointer"
+              className="flex items-center gap-1.5 px-6 py-2 bg-amber-500 hover:bg-amber-600 text-xs text-white font-bold rounded-lg shadow-sm transition cursor-pointer"
             >
               <Save className="w-3.5 h-3.5" />
               保存配置
@@ -902,6 +879,7 @@ interface TaskCardProps {
   task: DownloadTask;
   isSelected: boolean;
   copiedTaskId: string | null;
+  index: number;
   onSelectTask: (id: string) => void;
   onTriggerPauseResume: (id: string) => void;
   onDeleteTask: (id: string) => void;
@@ -912,6 +890,7 @@ function TaskCard({
   task,
   isSelected,
   copiedTaskId,
+  index,
   onSelectTask,
   onTriggerPauseResume,
   onDeleteTask,
@@ -950,7 +929,8 @@ function TaskCard({
       onClick={() => onSelectTask(task.id)}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
-      className={`group relative flex flex-col bg-white rounded-xl border overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${
+      style={{ ["--i" as string]: Math.min(index, 12) }}
+      className={`anim-fade-stagger group relative flex flex-col bg-white rounded-xl border overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${
         isSelected
           ? "border-amber-500 ring-2 ring-amber-500/30"
           : "border-slate-200 shadow-sm"
@@ -1053,7 +1033,7 @@ function TaskCard({
           </div>
 
           <div
-            className="flex items-center gap-1.5 text-black flex-shrink-0"
+            className="flex items-center gap-1.5 text-black shrink-0"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -1150,6 +1130,29 @@ export function DownloadPage({
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
   const scrollRef = useRef<HTMLDivElement>(null);
+  // 队列调度器引用（供进度回调在 useEffect 内调用最新版本）
+  const startNextRef = useRef<() => void>(() => {});
+
+  // 队列下载开关：开启后完成一个会自动下一个；关闭则需手动点单个任务
+  const [queueEnabled, setQueueEnabled] = useState(false);
+  const queueEnabledRef = useRef(queueEnabled);
+  queueEnabledRef.current = queueEnabled;
+
+  // 应用启动时，上次会话遗留的“下载中/解析中”进程其实已不存在，重置为暂停，避免假象
+  useEffect(() => {
+    setTasks((prev) =>
+      prev.some(
+        (t) => t.status === "DOWNLOADING" || t.status === "PARSING",
+      )
+        ? prev.map((t) =>
+            t.status === "DOWNLOADING" || t.status === "PARSING"
+              ? { ...t, status: "PAUSED", speed: 0 }
+              : t,
+          )
+        : prev,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ---- persist ---- */
   useEffect(() => {
@@ -1355,6 +1358,9 @@ export function DownloadPage({
           success ? "SUCCESS" : "WARNING",
         );
 
+        // 当前任务结束 → 自动启动队列中的下一个（串行下载）
+        setTimeout(() => startNextRef.current(), 400);
+
         // 下载完成后自动下载封面和预览
         if (success && finished) {
           const task = tasksRef.current.find((t) => t.id === finished);
@@ -1427,96 +1433,131 @@ export function DownloadPage({
         "SUCCESS",
       );
 
-      // auto-start
-      setTimeout(() => {
-        setTasks((prev) => {
-          const task = prev.find((t) => t.id === newTask.id);
-          if (task && task.status === "PENDING") {
-            handleTriggerPauseResume(newTask.id);
-          }
-          return prev;
-        });
-      }, 800);
+      // 添加任务只是加入列表，绝不自动开始下载。
+      // 由用户手动点击单个任务的开始按钮，或开启“队列下载”后再触发。
     },
     [addLog],
   );
 
-  /* ---- pause / resume ---- */
+  /* ---- 实际启动某个任务（串行，单进程） ---- */
+  const startTask = useCallback(
+    (id: string) => {
+      const t = tasksRef.current.find((x) => x.id === id);
+      if (!t) return;
+      // 已在下载中则忽略
+      if (t.status === "DOWNLOADING" && activeDownloadId.current === t.id)
+        return;
+
+      activeDownloadId.current = t.id;
+
+      // 每个任务创建独立文件夹: {savePath}/{任务名}/
+      const taskDir =
+        t.savePath.replace(/[\/\\]$/, "") +
+        "\\" +
+        t.name.replace(/[\\/:*?"<>|]/g, "_");
+
+      setTasks((prev) =>
+        prev.map((x) =>
+          x.id === id
+            ? {
+                ...x,
+                status: "DOWNLOADING",
+                speed: 0,
+                logs: [...x.logs, "[操作] 任务已开始/恢复。"],
+              }
+            : x,
+        ),
+      );
+
+      trpc.download.start
+        .mutate({
+          url: t.url,
+          saveDir: taskDir,
+          saveName: "video",
+          format: t.format,
+          threads: t.threads,
+          headers: t.headers,
+          tmpDir: settings.temp_path,
+        })
+        .catch((err: any) => {
+          addLog(`下载启动失败: ${err?.message || err}`, "ERROR");
+          if (activeDownloadId.current === t.id) activeDownloadId.current = null;
+          setTasks((cur) =>
+            cur.map((x) => (x.id === id ? { ...x, status: "FAILED" } : x)),
+          );
+          // 失败也继续推进队列
+          setTimeout(() => startNextRef.current(), 400);
+        });
+    },
+    [addLog, settings.temp_path],
+  );
+
+  /* ---- 队列调度：仅在“队列下载”开启时，空闲则启动最早加入的等待任务 ---- */
+  const startNextInQueue = useCallback(() => {
+    if (!queueEnabledRef.current) return; // 队列下载未开启，不自动推进
+    if (activeDownloadId.current) return; // 有任务正在下载，保持串行
+    const next = tasksRef.current
+      .filter((t) => t.status === "PENDING")
+      .sort((a, b) => a.creationTime.localeCompare(b.creationTime))[0];
+    if (next) {
+      addLog(`队列：开始下载 ${next.name}`, "INFO");
+      startTask(next.id);
+    }
+  }, [addLog, startTask]);
+
+  // 同步最新调度器到 ref，供进度回调使用
+  useEffect(() => {
+    startNextRef.current = startNextInQueue;
+  }, [startNextInQueue]);
+
+  /* ---- pause / resume（队列感知） ---- */
   const handleTriggerPauseResume = useCallback(
     (id: string) => {
-      // prevent duplicate: if another task is active, reject
-      if (activeDownloadId.current && activeDownloadId.current !== id) {
-        addLog(
-          "⚠️ 已有其他下载任务在运行，请先停止当前任务再启动新任务",
-          "WARNING",
+      const t = tasksRef.current.find((x) => x.id === id);
+      if (!t) return;
+
+      // 暂停正在下载的任务
+      if (t.status === "DOWNLOADING") {
+        trpc.download.stop.mutate();
+        activeDownloadId.current = null;
+        setTasks((prev) =>
+          prev.map((x) =>
+            x.id === id
+              ? {
+                  ...x,
+                  status: "PAUSED",
+                  speed: 0,
+                  logs: [...x.logs, "[操作] 任务已手动暂停。"],
+                }
+              : x,
+          ),
         );
         return;
       }
 
-      setTasks((prev) =>
-        prev.map((t) => {
-          if (t.id !== id) return t;
-          const isResuming = t.status === "PAUSED" || t.status === "PENDING";
-
-          if (isResuming) {
-            // 只有当任务正在下载且 activeDownloadId 匹配时才跳过
-            // 暂停的任务可以重新启动
-            if (
-              t.status === "DOWNLOADING" &&
-              activeDownloadId.current === t.id
-            ) {
-              console.log("任务正在下载中，跳过重复启动");
-              return t;
-            }
-
-            activeDownloadId.current = t.id;
-            console.log(`[DownloadPage] 启动下载任务: ${t.id}`);
-
-            // 每个任务创建独立文件夹: {savePath}/{任务名}/
-            const taskDir =
-              t.savePath.replace(/[\/\\]$/, "") +
-              "\\" +
-              t.name.replace(/[\\/:*?"<>|]/g, "_");
-
-            trpc.download.start
-              .mutate({
-                url: t.url,
-                saveDir: taskDir,
-                saveName: "video", // 固定文件名为 video.mp4
-                format: t.format,
-                threads: t.threads,
-                headers: t.headers,
-                tmpDir: settings.temp_path,
-              })
-              .catch((err: any) => {
-                addLog(`下载启动失败: ${err?.message || err}`, "ERROR");
-                if (activeDownloadId.current === t.id) {
-                  activeDownloadId.current = null;
-                }
-                setTasks((cur) =>
-                  cur.map((x) =>
-                    x.id === id ? { ...x, status: "FAILED" } : x,
-                  ),
-                );
-              });
-          } else if (t.status === "DOWNLOADING") {
-            console.log(`[DownloadPage] 停止下载任务: ${t.id}`);
-            trpc.download.stop.mutate();
-            activeDownloadId.current = null;
-          }
-
-          return {
-            ...t,
-            status: isResuming ? "DOWNLOADING" : "PAUSED",
-            logs: [
-              ...t.logs,
-              `[操作] 任务已${isResuming ? "开始/恢复" : "手动暂停"}。`,
-            ],
-          };
-        }),
-      );
+      // 开始 / 恢复
+      if (t.status === "PAUSED" || t.status === "PENDING") {
+        // 已有任务在下载 → 排队等待（串行下载，单进程）
+        if (activeDownloadId.current && activeDownloadId.current !== id) {
+          setTasks((prev) =>
+            prev.map((x) =>
+              x.id === id
+                ? {
+                    ...x,
+                    status: "PENDING",
+                    logs: [...x.logs, "[队列] 已加入下载队列，等待中…"],
+                  }
+                : x,
+            ),
+          );
+          addLog(`已加入下载队列：${t.name}`, "INFO");
+          return;
+        }
+        // 空闲 → 立即开始
+        startTask(id);
+      }
     },
-    [addLog, settings.temp_path],
+    [addLog, startTask],
   );
 
   /* ---- delete task ---- */
@@ -1539,25 +1580,49 @@ export function DownloadPage({
     [selectedTaskId, addLog, tasks, settings.temp_path],
   );
 
+  /* ---- 队列下载开关 ---- */
+  const handleToggleQueue = useCallback(() => {
+    const next = !queueEnabledRef.current;
+    queueEnabledRef.current = next; // 立即生效，供下面 startNext 使用
+    setQueueEnabled(next);
+    if (next) {
+      addLog("⚡ 队列下载已开启：将自动逐个下载排队任务", "SUCCESS");
+      setTimeout(() => startNextRef.current(), 200);
+    } else {
+      addLog("⏹️ 队列下载已关闭：不再自动开始下一个任务", "INFO");
+    }
+  }, [addLog]);
+
   /* ---- bulk actions ---- */
   const handleStartAll = useCallback(() => {
+    // 把所有暂停的任务加入队列，开启队列下载并串行启动（单进程，逐个下载）
     setTasks((prev) =>
       prev.map((t) =>
-        t.status === "PAUSED" || t.status === "PENDING"
-          ? { ...t, status: "DOWNLOADING" }
-          : t,
+        t.status === "PAUSED" ? { ...t, status: "PENDING" } : t,
       ),
     );
-    addLog("▶️ 操作: 已尝试启动全部队列中的待下载任务", "INFO");
+    queueEnabledRef.current = true;
+    setQueueEnabled(true);
+    addLog("▶️ 操作: 已开启队列下载并加入全部待下载任务", "INFO");
+    setTimeout(() => startNextRef.current(), 300);
   }, [addLog]);
 
   const handlePauseAll = useCallback(() => {
+    // 关闭队列下载，停掉后端当前进程，活动任务与排队任务一并暂停
+    queueEnabledRef.current = false;
+    setQueueEnabled(false);
+    if (activeDownloadId.current) {
+      trpc.download.stop.mutate();
+      activeDownloadId.current = null;
+    }
     setTasks((prev) =>
       prev.map((t) =>
-        t.status === "DOWNLOADING" ? { ...t, status: "PAUSED" } : t,
+        t.status === "DOWNLOADING" || t.status === "PENDING"
+          ? { ...t, status: "PAUSED", speed: 0 }
+          : t,
       ),
     );
-    addLog("⏸️ 操作: 已暂停全部活动下载任务", "WARNING");
+    addLog("⏸️ 操作: 已暂停全部下载与排队任务", "WARNING");
   }, [addLog]);
 
   const handleClearCompleted = useCallback(() => {
@@ -1616,18 +1681,35 @@ export function DownloadPage({
     logFilter === "ALL" ? true : log.level === logFilter,
   );
 
+  // 日志正文颜色：整体压暗到 700 档，柔和不刺眼（警告用 orange 避免与 ERROR 撞色）
   const getLogLevelColor = (level: string) => {
     switch (level) {
       case "SUCCESS":
-        return "text-emerald-700";
+        return "text-emerald-900";
       case "WARNING":
-        return "text-amber-700 font-semibold";
+        return "text-orange-900 font-medium";
       case "ERROR":
-        return "text-rose-700 font-semibold";
+        return "text-red-900 font-medium";
       case "DEBUG":
-        return "text-sky-700";
+        return "text-sky-900";
       default:
         return "text-slate-600";
+    }
+  };
+
+  // 级别标签徽章：彩色底+边框，方便快速扫读
+  const getLogLevelBadge = (level: string) => {
+    switch (level) {
+      case "SUCCESS":
+        return "bg-emerald-50/70 text-emerald-900 border-emerald-100";
+      case "WARNING":
+        return "bg-orange-50/70 text-orange-900 border-orange-100";
+      case "ERROR":
+        return "bg-red-50/70 text-red-900 border-red-100";
+      case "DEBUG":
+        return "bg-sky-50/70 text-sky-900 border-sky-100";
+      default:
+        return "bg-slate-100 text-slate-500 border-slate-200";
     }
   };
 
@@ -1650,7 +1732,7 @@ export function DownloadPage({
   return (
     <div className="h-full flex flex-col min-h-0">
       {/* ====== LEFT: Task List ====== */}
-      <div className="flex-1 overflow-y-auto p-6 min-h-[200px] bg-[#f4f6f9]">
+      <div className="flex-1 overflow-y-auto p-6 min-h-50 bg-[#fffaf5]">
         {/* Queue Control Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
@@ -1661,6 +1743,11 @@ export function DownloadPage({
               <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-2.5 py-0.5 font-mono font-bold">
                 {tasks.filter((t) => t.status === "DOWNLOADING").length}{" "}
                 任务下载中
+              </span>
+            )}
+            {tasks.filter((t) => t.status === "PENDING").length > 0 && (
+              <span className="text-[10px] bg-slate-200 text-slate-600 rounded-full px-2.5 py-0.5 font-mono font-bold">
+                {tasks.filter((t) => t.status === "PENDING").length} 个排队中
               </span>
             )}
           </div>
@@ -1680,10 +1767,28 @@ export function DownloadPage({
 
             <button
               onClick={() => setShowNewTaskModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-xs text-slate-950 font-bold rounded-lg transition cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-xs text-white font-bold rounded-lg transition cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               新建任务
+            </button>
+
+            {/* 队列下载开关 */}
+            <button
+              onClick={handleToggleQueue}
+              title={queueEnabled ? "点击关闭队列下载" : "点击开启队列下载（完成自动下一个）"}
+              className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] w-28 font-bold rounded-lg border transition cursor-pointer ${
+                queueEnabled
+                  ? "bg-amber-500 border-amber-500 text-white shadow-sm"
+                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  queueEnabled ? "bg-white animate-pulse" : "bg-slate-300"
+                }`}
+              />
+              队列下载 {queueEnabled ? "ON" : "OFF"}
             </button>
 
             <button
@@ -1722,7 +1827,7 @@ export function DownloadPage({
 
         {/* Task Grid */}
         {filteredTasks.length === 0 ? (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm py-16 text-center text-black text-xs">
+          <div className="bg-white h-[calc(100%-50px)] rounded-xl border border-slate-200 flex items-center justify-center shadow-sm text-center text-black text-xs">
             <div className="flex flex-col items-center justify-center gap-3">
               <FileVideo className="w-8 h-8 text-slate-300" />
               <div>
@@ -1739,10 +1844,11 @@ export function DownloadPage({
           </div>
         ) : (
           <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
-            {filteredTasks.map((task) => (
+            {filteredTasks.map((task, index) => (
               <TaskCard
                 key={task.id}
                 task={task}
+                index={index}
                 isSelected={selectedTaskId === task.id}
                 copiedTaskId={copiedTaskId}
                 onSelectTask={setSelectedTaskId}
@@ -1756,16 +1862,16 @@ export function DownloadPage({
       </div>
 
       {/* ====== RIGHT: Diagnostics / Detail Panel ====== */}
-      <div className="h-58 bg-white flex flex-col shrink-0 select-text border-t border-slate-200 text-slate-600 font-mono">
+      <div className="h-58 bg-[#fffaf5] flex flex-col shrink-0 select-text border-t border-slate-200 text-slate-600 font-mono">
         {/* Sub-tabs header */}
-        <div className="flex items-center justify-between gap-2 px-3 bg-slate-50 border-b border-slate-100 text-xs overflow-x-auto">
+        <div className="flex items-center justify-between gap-2 px-3 bg-[#fffaf5] border-b border-slate-100 text-xs overflow-x-auto">
           <div className="flex items-center gap-4">
             <button
               onClick={() => setActiveSubTab("console")}
-              className={`flex items-center gap-1.5 px-4 py-2 border-b-2 text-xs transition font-semibold cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-4 py-2 border-b-2 text-black transition cursor-pointer whitespace-nowrap ${
                 activeSubTab === "console"
-                  ? "border-amber-500 text-slate-800 bg-white"
-                  : "border-transparent text-black hover:text-slate-600"
+                  ? "border-amber-500 bg-white"
+                  : "border-transparent  hover:text-amber-500"
               }`}
             >
               <Terminal className="w-3.5 h-3.5 text-amber-500" />
@@ -1774,10 +1880,10 @@ export function DownloadPage({
 
             <button
               onClick={() => setActiveSubTab("metadata")}
-              className={`flex items-center gap-1.5 px-4 py-2 border-b-2 transition font-semibold cursor-pointer whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-4 py-2 border-b-2 text-black transition cursor-pointer whitespace-nowrap ${
                 activeSubTab === "metadata"
-                  ? "border-amber-500 text-slate-800 bg-white"
-                  : "border-transparent text-black hover:text-slate-600"
+                  ? "border-sky-500 bg-[#fffaf5]"
+                  : "border-transparent  hover:text-sky-500"
               }`}
             >
               <Code className="w-3.5 h-3.5 text-sky-500" />
@@ -1788,21 +1894,23 @@ export function DownloadPage({
           <div className="flex items-center gap-2.5 text-[10px] shrink-0">
             {activeSubTab === "console" ? (
               <>
-                <div className="flex items-center gap-1 bg-white px-2 py-0.5 rounded-lg border border-slate-200">
+                <div className="flex items-center gap-1.5">
                   <span className="text-black">过滤:</span>
-                  <select
+                  <Dropdown
                     value={logFilter}
-                    onChange={(e) =>
-                      setLogFilter(e.target.value as typeof logFilter)
-                    }
-                    className="bg-transparent text-slate-600 focus:outline-none cursor-pointer font-sans"
-                  >
-                    <option value="ALL">全部</option>
-                    <option value="INFO">消息</option>
-                    <option value="SUCCESS">成功</option>
-                    <option value="WARNING">警告</option>
-                    <option value="ERROR">错误</option>
-                  </select>
+                    onChange={(v) => setLogFilter(v)}
+                    options={[
+                      { value: "ALL", label: "全部", dot: "bg-slate-400" },
+                      { value: "INFO", label: "消息", dot: "bg-slate-400" },
+                      {
+                        value: "SUCCESS",
+                        label: "成功",
+                        dot: "bg-emerald-500",
+                      },
+                      { value: "WARNING", label: "警告", dot: "bg-orange-500" },
+                      { value: "ERROR", label: "错误", dot: "bg-red-500" },
+                    ]}
+                  />
                 </div>
 
                 <label className="flex items-center gap-1.5 text-black cursor-pointer">
@@ -1825,7 +1933,7 @@ export function DownloadPage({
               </>
             ) : (
               selectedTask && (
-                <span className="text-[10px] bg-white text-slate-500 px-2.5 py-0.5 rounded-full select-none border border-slate-200 font-mono">
+                <span className="text-[10px] bg-[#fffaf5] text-slate-500 px-2.5 py-0.5 rounded-full select-none border border-slate-200 font-mono">
                   当前任务 ID: {selectedTask.id}
                 </span>
               )
@@ -1834,12 +1942,12 @@ export function DownloadPage({
         </div>
 
         {/* Panel body */}
-        <div className="flex flex-1 overflow-y-auto bg-white relative">
+        <div className="flex flex-1 overflow-y-auto bg-[#fffaf5] relative">
           {/* Console logs */}
           {activeSubTab === "console" && (
             <div
               ref={scrollRef}
-              className="h-full flex-1 overflow-y-auto space-y-1 text-[10.5px] leading-relaxed select-text bg-[#f6f8fa] p-4"
+              className="h-full flex-1 overflow-y-auto space-y-1 text-[10.5px] leading-relaxed select-text bg-[#fffaf5] p-4"
             >
               {filteredLogs.length === 0 ? (
                 <div className="text-black text-center py-6">
@@ -1851,10 +1959,12 @@ export function DownloadPage({
                     key={log.id + index}
                     className="flex gap-2.5 items-start font-mono"
                   >
-                    <span className="text-black font-extralight shrink-0">
+                    <span className="text-slate-400 font-extralight shrink-0">
                       [{log.timestamp}]
                     </span>
-                    <span className="text-black text-[10px] bg-white border border-slate-200 px-1.5 rounded select-none shrink-0">
+                    <span
+                      className={`text-[10px] border px-1.5 rounded select-none shrink-0 font-semibold ${getLogLevelBadge(log.level)}`}
+                    >
                       {getLogLevelLabel(log.level)}
                     </span>
                     <span

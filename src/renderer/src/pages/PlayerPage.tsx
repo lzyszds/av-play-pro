@@ -90,7 +90,7 @@ const LocalVideoCard: React.FC<{
       className={`rounded-lg border overflow-hidden cursor-pointer transition-all duration-200 group ${
         isActive
           ? "border-amber-400 bg-amber-50/50 shadow-sm ring-1 ring-amber-400/30"
-          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
+          : "border-slate-200 bg-white hover:border-amber-300 hover:shadow-md hover:-translate-y-0.5"
       }`}
     >
       {/* THUMBNAIL / PREVIEW CONTAINER */}
@@ -125,7 +125,7 @@ const LocalVideoCard: React.FC<{
 
         {/* 正在播放标记 */}
         {isActive && (
-          <span className="absolute top-1.5 left-1.5 z-10 inline-flex items-center gap-1 text-[9px] bg-amber-500/90 text-slate-950 px-1.5 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
+          <span className="absolute top-1.5 left-1.5 z-10 inline-flex items-center gap-1 text-[9px] bg-amber-500/90 text-white px-1.5 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-pulse"></span>
             播放中
           </span>
@@ -411,7 +411,8 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
     setIsLoadingVideos(true);
     try {
       const rawVideos = await trpc.videos.list.query({ path: videoPath });
-
+      console.log(rawVideos);
+      
       // 转换所有本地路径为 file:// 协议
       const videos: VideoItem[] = rawVideos.map((v: any) => ({
         ...v,
@@ -494,7 +495,7 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
   };
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-[#f4f6f9] h-full">
+    <div className="flex-1 flex overflow-hidden bg-[#fffaf5] h-full">
       {/* LEFT SECTION: MAIN VIDEO PLAYER (Plyr) */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0 p-6 bg-transparent">
         {/* TITLE HEADER */}
@@ -566,9 +567,9 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
       </div>
 
       {/* RIGHT SIDEBAR: M3U8 LIST & PARSING UTILITIES */}
-      <div className="w-[340px] border-l border-slate-200 bg-[#f8fafc] flex flex-col shrink-0 h-full max-h-full overflow-hidden select-none text-xs font-sans">
+      <div className="w-85 border-l border-slate-200 bg-[#fffaf5] flex flex-col shrink-0 h-full max-h-full overflow-hidden select-none text-xs font-sans">
         {/* PARSING INTERFACE PANEL */}
-        <div className="p-4 border-b border-slate-200 bg-white flex-shrink-0">
+        <div className="p-4 border-b border-slate-200 shrink-0">
           <h4
             className="font-bold text-slate-800 tracking-wider flex items-center justify-between cursor-pointer hover:text-amber-600 transition"
             onClick={() => setIsAnalyzerCollapsed(!isAnalyzerCollapsed)}
@@ -599,7 +600,7 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
                   />
                   <button
                     type="submit"
-                    className="px-3 bg-slate-100 text-slate-600 hover:bg-amber-500 hover:text-slate-950 border border-slate-200 hover:border-amber-500 rounded-lg font-bold transition flex items-center justify-center cursor-pointer"
+                    className="px-3 bg-slate-100 text-slate-600 hover:bg-amber-500 hover:text-white border border-slate-200 hover:border-amber-500 rounded-lg font-bold transition flex items-center justify-center cursor-pointer"
                     disabled={isParsing}
                   >
                     {isParsing ? (
@@ -657,7 +658,7 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
 
                   <button
                     onClick={handleLoadParsedStream}
-                    className="w-full mt-2.5 py-2 bg-amber-500 hover:bg-amber-600 font-bold text-slate-950 rounded-lg transition text-center flex items-center justify-center gap-1 cursor-pointer text-[10px] shadow-sm"
+                    className="w-full mt-2.5 py-2 bg-amber-500 hover:bg-amber-600 font-bold text-white rounded-lg transition text-center flex items-center justify-center gap-1 cursor-pointer text-[10px] shadow-sm"
                   >
                     <Play className="w-3 h-3 fill-current" />
                     推入主播放源
@@ -683,7 +684,7 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
               {videoSearchQuery && (
                 <button
                   onClick={() => setVideoSearchQuery("")}
-                  className="absolute right-2 top-1.8 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  className="absolute right-2 top-[7.5px] text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -691,7 +692,7 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
             </div>
             <button
               onClick={handleFixCovers}
-              className="shrink-0 px-2 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-[10px] font-bold transition cursor-pointer flex items-center gap-1"
+              className="shrink-0 px-2 py-1.5 bg-amber-500 text-white hover:bg-amber-600 border border-amber-200 rounded-lg text-[10px] font-bold transition cursor-pointer flex items-center gap-1"
               title="为没有封面的视频从CDN下载封面和预览"
             >
               <Download className="w-3 h-3" />
@@ -758,8 +759,13 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
 
       {/* 删除确认弹窗 */}
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl p-6 w-80 space-y-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm anim-fade-in"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDeleteTarget(null);
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-80 space-y-4 anim-pop-in">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
                 <Trash2 className="w-5 h-5 text-red-500" />

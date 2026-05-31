@@ -1,6 +1,6 @@
-﻿/**
- * tRPC Router - 涓昏繘绋嬫湇鍔＄
- * 鎵€鏈変笟鍔￠€昏緫閫氳繃 tRPC procedures 鏆撮湶缁欐覆鏌撹繘绋? */
+/**
+ * tRPC Router - 主进程服务端
+ * 所有业务逻辑通过 tRPC procedures 鏆撮湶缁欐覆鏌撹繘绋? */
 
 import { initTRPC } from "@trpc/server";
 import { observable } from "@trpc/server/observable";
@@ -8,12 +8,12 @@ import * as fs from "fs";
 import * as path from "path";
 import * as https from "https";
 import * as http from "http";
-import { spawn, ChildProcess } from "child_process";
+import { spawn, exec, ChildProcess } from "child_process";
 import { app, dialog, BrowserWindow } from "electron";
 
 const t = initTRPC.create();
 
-// ============ 绫诲瀷瀹氫箟 ============
+// ============ 类型定义 ============
 
 export interface DownloadPayload {
   url: string;
@@ -51,6 +51,7 @@ export interface VideoItem {
 
 let downloadProcess: ChildProcess | null = null;
 let downloadPid: number | null = null; // 记录实际 PID，即便 process 对象被清空
+let stopping = false; // 标记“手动停止”，区分自然结束与用户暂停
 let mainWindow: BrowserWindow | null = null;
 let progressCallbacks: Array<(data: ProgressPayload) => void> = [];
 // 封面/预览下载串行队列：保证任意时刻只有一个任务在跑，避免并发产生的僵尸超时日志
@@ -60,7 +61,7 @@ export function setMainWindow(win: BrowserWindow) {
   mainWindow = win;
 }
 
-// ============ 宸ュ叿鍑芥暟 ============
+// ============ 工具函数 ============
 
 function resolveToolPath(customPath?: string): string | null {
   const candidates: string[] = [];
@@ -106,10 +107,18 @@ function stripAnsi(str: string): string {
 function killProcessTree(pid: number): void {
   if (!pid) return;
   try {
-    // /T 鏉€鎺夋暣涓繘绋嬫爲锛堝寘鎷瓙杩涚▼锛?    spawn('taskkill', ['/F', '/T', '/PID', pid.toString()], { windowsHide: true, detached: true })
-    console.log(`[killProcessTree] 宸插彂閫?taskkill /F /T /PID ${pid}`);
+    // /T 杀掉整个进程树（含子进程），/F 强制
+    exec(`taskkill /PID ${pid} /T /F`, (err, stdout, stderr) => {
+      if (err) {
+        console.error(
+          `[killProcessTree] taskkill 失败 PID=${pid}: ${err.message} ${stderr}`,
+        );
+      } else {
+        console.log(`[killProcessTree] 已终止 PID=${pid}: ${stdout.trim()}`);
+      }
+    });
   } catch (err) {
-    console.error("缁堟杩涚▼澶辫触:", err);
+    console.error("终止进程失败:", err);
   }
 }
 
@@ -118,7 +127,7 @@ function sendProgress(payload: ProgressPayload): void {
   mainWindow?.webContents.send("download-progress", payload);
 }
 
-// ============ 灏侀潰/棰勮鏃ュ織锛氬啓鍏ユ枃浠?+ 瀹炴椂鎺ㄩ€?============
+// ============ 封面/棰勮鏃ュ織锛氬啓鍏ユ枃浠?+ 瀹炴椂鎺ㄩ€?============
 export interface CoverLogEntry {
   timestamp: string;
   level: "INFO" | "SUCCESS" | "WARNING" | "ERROR";
@@ -129,19 +138,19 @@ function getCoverLogFilePath(): string {
   return path.join(app.getPath("userData"), "cover-preview-logs.jsonl");
 }
 
-// 缁熶竴鐨勫皝闈?棰勮鏃ュ織锛氳拷鍔犲埌鏂囦欢锛屽悓鏃堕€氳繃 IPC 瀹炴椂鎺ㄩ€佸埌闈㈡澘
+// 缁熶竴鐨勫皝闈?预览日志：追加到文件，同时通过 IPC 实时推送到面板
 function clog(level: CoverLogEntry["level"], text: string): void {
   const timestamp = new Date().toLocaleTimeString("zh-CN", { hour12: false });
   const entry: CoverLogEntry = { timestamp, level, text };
   try {
     fs.appendFileSync(getCoverLogFilePath(), JSON.stringify(entry) + "\n");
   } catch {
-    // 鏂囦欢鍐欏叆澶辫触涓嶅奖鍝嶄富娴佺▼
+    // 文件写入失败不影响主流程
   }
-  // 瀹炴椂鎺ㄩ€侊紙甯?[灏侀潰/棰勮] 鍓嶇紑锛屼緵鏈埛鏂扮殑闈㈡澘鍗虫椂鏄剧ず锛?  sendProgress({ line: `[灏侀潰/棰勮] ${text}`, percent: null, done: false, success: false })
+  // 瀹炴椂鎺ㄩ€侊紙甯?[封面/预览] 前缀，供未刷新的面板即时显示！  sendProgress({ line: `[封面/预览] ${text}`, percent: null, done: false, success: false })
 }
 
-// 鍏煎鏃ц皟鐢細rlog -> clog
+// 兼容旧调用：rlog -> clog
 function rlog(level: "log" | "warn" | "error", ...args: unknown[]): void {
   const message = args
     .map((a) =>
@@ -171,7 +180,7 @@ function formatSize(bytes: number): string {
 // ============ Router Procedures ============
 
 export const appRouter = t.router({
-  // 涓嬭浇绠＄悊
+  // 下载管理
   download: t.router({
     start: t.procedure
       .input((input: unknown) => input as DownloadPayload)
@@ -229,7 +238,7 @@ export const appRouter = t.router({
           const oldPid = downloadProcess?.pid || downloadPid;
           if (oldPid) {
             sendProgress({
-              line: `[绯荤粺] 妫€娴嬪埌宸叉湁涓嬭浇杩涚▼ (PID: ${oldPid})锛屾鍦ㄧ粓姝?..`,
+              line: `[系统] 检测到已有下载进程 (PID: ${oldPid})锛屾鍦ㄧ粓姝?..`,
               percent: null,
               done: false,
               success: false,
@@ -243,7 +252,7 @@ export const appRouter = t.router({
         if (!fs.existsSync(input.saveDir)) {
           fs.mkdirSync(input.saveDir, { recursive: true });
           sendProgress({
-            line: `[绯荤粺] 宸插垱寤轰繚瀛樼洰褰? ${input.saveDir}`,
+            line: `[系统] 宸插垱寤轰繚瀛樼洰褰? ${input.saveDir}`,
             percent: null,
             done: false,
             success: false,
@@ -252,7 +261,7 @@ export const appRouter = t.router({
         if (!fs.existsSync(tmpDir)) {
           fs.mkdirSync(tmpDir, { recursive: true });
           sendProgress({
-            line: `[绯荤粺] 宸插垱寤轰复鏃剁洰褰? ${tmpDir}`,
+            line: `[系统] 宸插垱寤轰复鏃剁洰褰? ${tmpDir}`,
             percent: null,
             done: false,
             success: false,
@@ -329,9 +338,9 @@ export const appRouter = t.router({
           stdio: ["ignore", "pipe", "pipe"],
         });
         const pid = downloadProcess.pid || 0;
-        downloadPid = pid; // 鎸佷箙淇濆瓨 PID
+        downloadPid = pid; // 持久保存 PID
         sendProgress({
-          line: `[绯荤粺] N_m3u8DL-RE 宸插惎鍔?(PID: ${pid})`,
+          line: `[系统] N_m3u8DL-RE 宸插惎鍔?(PID: ${pid})`,
           percent: 0,
           done: false,
           success: false,
@@ -339,7 +348,7 @@ export const appRouter = t.router({
 
         downloadProcess.on("spawn", () => {
           sendProgress({
-            line: "[绯荤粺] 杩涚▼宸叉垚鍔?spawn",
+            line: "[系统] 杩涚▼宸叉垚鍔?spawn",
             percent: 0,
             done: false,
             success: false,
@@ -352,25 +361,14 @@ export const appRouter = t.router({
           for (const line of text.split(/\r?\n/)) {
             const cleaned = stripAnsi(line);
             if (!cleaned) continue;
+            // 注意：完成判定只依赖进程 close 事件，不再根据日志文本提前判定，
+            // 否则会把仍在运行的进程误标记为“已完成”，导致无法暂停/终止。
             sendProgress({
               line: cleaned,
               percent: parsePercent(cleaned),
               done: false,
               success: false,
             });
-            if (
-              (cleaned.includes("All") && cleaned.includes("downloaded")) ||
-              cleaned.includes("Download complete") ||
-              cleaned.includes("finished")
-            ) {
-              sendProgress({
-                line: "[SYSTEM] Download completed",
-                percent: 100,
-                done: true,
-                success: true,
-              });
-              downloadProcess = null;
-            }
           }
         });
 
@@ -392,26 +390,45 @@ export const appRouter = t.router({
         downloadProcess.on(
           "close",
           (code: number | null, signal: string | null) => {
-            console.log(`[涓嬭浇] 杩涚▼鍏抽棴: code=${code}, signal=${signal}`);
+            console.log(`[下载] 进程关闭: code=${code}, signal=${signal}`);
+            const wasStopping = stopping;
+            stopping = false;
+            downloadProcess = null;
+            downloadPid = null;
+
+            if (wasStopping) {
+              // 用户手动暂停/停止：前端已置为“已暂停”，这里只发非完成状态
+              sendProgress({
+                line: `[系统] 下载已停止`,
+                percent: null,
+                done: false,
+                success: false,
+              });
+              return;
+            }
+
             if (code === 0) {
               sendProgress({
-                line: `[绯荤粺] 涓嬭浇宸插畬鎴?(code: 0)`,
+                line: `[系统] 下载已完成 (code: 0)`,
                 percent: 100,
                 done: true,
                 success: true,
               });
-              downloadPid = null;
             } else {
-              // code=1 鏄甯哥殑锛堜富杩涚▼閫€鍑猴紝瀛愯繘绋嬬户缁級锛屼笉娓呯┖ PID锛宻top 浠嶅彲鐢?            sendProgress({ line: `[绯荤粺] N_m3u8DL-RE 涓昏繘绋嬮€€鍑?(code: ${code})锛屽瓙杩涚▼涓嬭浇涓?..`, percent: null, done: false, success: false })
+              sendProgress({
+                line: `[系统] 下载进程异常退出 (code: ${code})`,
+                percent: null,
+                done: true,
+                success: false,
+              });
             }
-            downloadProcess = null;
           },
         );
 
         downloadProcess.on("error", (err: Error) => {
-          console.error(`[涓嬭浇] 鍚姩澶辫触: ${err.message}`);
+          console.error(`[下载] 启动失败: ${err.message}`);
           sendProgress({
-            line: `[閿欒] 鍚姩澶辫触: ${err.message}`,
+            line: `[错误] 启动失败: ${err.message}`,
             percent: null,
             done: true,
             success: false,
@@ -425,31 +442,24 @@ export const appRouter = t.router({
     stop: t.procedure.mutation(() => {
       const pid = downloadProcess?.pid || downloadPid;
       if (pid) {
+        stopping = true; // 标记为手动停止，close 事件不会发“完成”
         sendProgress({
-          line: `[SYSTEM] Stopping download process (PID: ${pid})`,
+          line: `[系统] 正在停止下载进程 (PID: ${pid})`,
           percent: null,
           done: false,
           success: false,
         });
+        // 双保险：既杀进程树，也直接 kill 句柄
         killProcessTree(pid);
+        try {
+          downloadProcess?.kill();
+        } catch {}
         downloadProcess = null;
         downloadPid = null;
-        sendProgress({
-          line: `[SYSTEM] Sent taskkill /F /T /PID ${pid}`,
-          percent: null,
-          done: false,
-          success: false,
-        });
-        sendProgress({
-          line: "[SYSTEM] Download stopped",
-          percent: null,
-          done: true,
-          success: false,
-        });
         return { success: true };
       }
       sendProgress({
-        line: "[SYSTEM] No running download process",
+        line: "[系统] 当前没有正在运行的下载进程",
         percent: null,
         done: false,
         success: false,
@@ -467,7 +477,7 @@ export const appRouter = t.router({
       });
     }),
 
-    // 鍒犻櫎浠诲姟鏃舵竻鐞?temp 涓存椂鏂囦欢
+    // 鍒犻櫎浠诲姟鏃舵竻鐞?temp 临时文件
     cleanupTemp: t.procedure
       .input(
         (input: unknown) =>
@@ -532,7 +542,7 @@ export const appRouter = t.router({
         }
       }),
 
-    // 涓嬭浇瀹屾垚鍚庤嚜鍔ㄤ笅杞藉皝闈㈠拰棰勮瑙嗛
+    // 下载完成后自动下载封面和预览视频
     downloadCoverPreview: t.procedure
       .input(
         (input: unknown) =>
@@ -673,7 +683,7 @@ export const appRouter = t.router({
         }
       }),
 
-    // 璇诲彇灏侀潰/棰勮鏃ュ織鏂囦欢
+    // 读取封面/预览日志文件
     readCoverLogs: t.procedure.query((): CoverLogEntry[] => {
       try {
         const file = getCoverLogFilePath();
@@ -698,7 +708,7 @@ export const appRouter = t.router({
       }
     }),
 
-    // 娓呯┖灏侀潰/棰勮鏃ュ織鏂囦欢
+    // 清空封面/预览日志文件
     clearCoverLogs: t.procedure.mutation((): { success: boolean } => {
       try {
         fs.writeFileSync(getCoverLogFilePath(), "");
@@ -709,7 +719,7 @@ export const appRouter = t.router({
     }),
   }),
 
-  // 瑙嗛鍒楄〃
+  // 视频列表
   videos: t.router({
     list: t.procedure
       .input((input: unknown) => (input as { path?: string }) || {})
@@ -805,14 +815,7 @@ export const appRouter = t.router({
           }
         } catch {}
 
-        // 按下载时间倒序排列（最新的在前）
-        const logRow = (v: VideoItem) =>
-          console.log(
-            `  ${v.name.slice(0, 20)} createdAt=${v.createdAt} (${new Date(v.createdAt ?? 0).toLocaleString()})`,
-          );
-        videos.slice(0, 5).forEach(logRow);
         videos.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-        videos.slice(0, 5).forEach(logRow);
         return videos;
       }),
 
@@ -825,7 +828,7 @@ export const appRouter = t.router({
         const { folderPath, rootPath } = input;
         try {
           if (!fs.existsSync(folderPath)) {
-            return { success: false, error: "鏂囦欢澶逛笉瀛樺湪" };
+            return { success: false, error: "文件夹不存在" };
           }
           const resolvedFolderPath = path.resolve(folderPath);
           const resolvedRoot = path.resolve(rootPath || "M:\\video\\videos\\");
@@ -853,13 +856,13 @@ export const appRouter = t.router({
           console.log(`[videos.delete] deleted ${resolvedFolderPath}`);
           return { success: true, error: undefined as string | undefined };
         } catch (err: any) {
-          console.error(`[鍒犻櫎瑙嗛] 澶辫触: ${err.message}`);
+          console.error(`[删除视频] 失败: ${err.message}`);
           return { success: false, error: err.message };
         }
       }),
   }),
 
-  // 绐楀彛鎺у埗
+  // 窗口控制
   window: t.router({
     minimize: t.procedure.mutation(() => {
       mainWindow?.minimize();
@@ -892,7 +895,7 @@ export const appRouter = t.router({
       }),
   }),
 
-  // 鏂囦欢璺緞杞崲
+  // 文件路径转换
   file: t.router({
     convertSrc: t.procedure
       .input((input: unknown) => input as string)

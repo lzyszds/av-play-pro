@@ -1,6 +1,20 @@
 @import "tailwindcss";
 @import "plyr/dist/plyr.css";
 
+/* 主色调：将 amber 整条色阶重映射为玫瑰金 (rose)，全局生效 */
+@theme {
+  --color-amber-50: #fff1f2;
+  --color-amber-100: #ffe4e6;
+  --color-amber-200: #fecdd3;
+  --color-amber-300: #fda4af;
+  --color-amber-400: #fb7185; /* roseGold-400 */
+  --color-amber-500: #f43f5e; /* roseGold-500 */
+  --color-amber-600: #e11d48;
+  --color-amber-700: #be123c;
+  --color-amber-800: #9f1239;
+  --color-amber-900: #881337;
+}
+
 /* 自定义滚动条 */
 ::-webkit-scrollbar {
   width: 6px;
@@ -19,11 +33,11 @@
 
 /* Plyr 主题覆盖 */
 .plyr {
-  --plyr-color-main: #f59e0b;
+  --plyr-color-main: #f43f5e;
   --plyr-video-background: #000;
   --plyr-menu-background: #1e293b;
   --plyr-menu-color: #e2e8f0;
-  --plyr-badge-background: #f59e0b;
+  --plyr-badge-background: #f43f5e;
   --plyr-badge-text: #0f172a;
   border-radius: 0;
   width: 100%;
@@ -64,10 +78,90 @@
 }
 
 .plyr--full-ui input[type="range"] {
-  color: #f59e0b;
+  color: #f43f5e;
   --plyr-color-main: transparent !important;
 }
 
 button{
   user-select: none;
+}
+
+/* ==================================================================== */
+/*  动画系统：关键帧 + 工具类 + 全局交互反馈                              */
+/* ==================================================================== */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes slideInDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes popIn {
+  0%   { opacity: 0; transform: scale(0.8); }
+  60%  { opacity: 1; transform: scale(1.03); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* 可复用动画工具类 */
+.anim-fade-in      { animation: fadeIn 0.2s ease-out both; }
+.anim-fade-in-up   { animation: fadeInUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-scale-in     { animation: scaleIn 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-slide-right  { animation: slideInRight 0.3s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-slide-down   { animation: slideInDown 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.anim-pop-in       { animation: popIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+/* 列表逐项进入：配合 inline style --i 做 stagger 延迟 */
+.anim-stagger {
+  animation: fadeInUp 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 35ms);
+}
+
+/* 纯透明度 stagger：用于自身带 transform hover 的元素（避免 transform 被动画锁定） */
+.anim-fade-stagger {
+  animation: fadeIn 0.3s ease-out both;
+  animation-delay: calc(var(--i, 0) * 35ms);
+}
+
+/* 全局按钮点击反馈：按下回弹 + 平滑过渡（disabled 不触发） */
+button {
+  transition: transform 0.12s ease, background-color 0.16s ease,
+    color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease,
+    opacity 0.16s ease;
+}
+button:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+/* 通用悬浮微抬升（给卡片/可交互块加 .hover-lift） */
+.hover-lift {
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px -8px rgb(15 23 42 / 0.18);
+}
+
+/* 尊重系统“减少动效”偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

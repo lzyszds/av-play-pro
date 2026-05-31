@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { Header } from "./components/Header";
 import { TitleBar } from "./components/TitleBar";
 import { DownloadPage } from "./pages/DownloadPage";
 import { PlayerPage } from "./pages/PlayerPage";
@@ -45,13 +44,15 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen flex flex-col font-sans bg-[#f4f6f9] text-slate-600 overflow-hidden select-none">
-      <TitleBar />
-      <Header
+      <TitleBar
         currentPage={currentPage}
         onPageChange={setCurrentPage}
         systemLogs={systemLogs}
       />
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div
+        key={currentPage}
+        className="flex-1 min-h-0 overflow-hidden anim-fade-in-up"
+      >
         {currentPage === "download" && (
           <DownloadPage
             settings={settings}

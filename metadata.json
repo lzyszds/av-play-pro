@@ -1,0 +1,6 @@
+{
+  "name": "AV Play Pro",
+  "description": "一款优雅高性能的跨平台 Tauri M3U8 下载与播放客户端，支持本地存储、多任务下载进度监控、实时 N_m3u8DL-RE 控制台查看和自定义命令生成。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

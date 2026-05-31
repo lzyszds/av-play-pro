@@ -1,0 +1,86 @@
+{
+  "name": "avPlay",
+  "version": "1.0.0",
+  "description": "AVPlayPro - 极速 M3U8 下载 & 智能流媒体播控终端",
+  "main": "./out/main/index.js",
+  "author": "AVPlayPro",
+  "scripts": {
+    "dev": "chcp 65001 && electron-vite dev",
+    "start": "chcp 65001 && electron-vite preview",
+    "build": "electron-vite build",
+    "postinstall": "electron-builder install-app-deps",
+    "build:unpack": "npm run build && electron-builder --dir",
+    "build:win": "npm run build && electron-builder --win",
+    "build:mac": "electron-vite build && electron-builder --mac",
+    "build:linux": "electron-vite build && electron-builder --linux"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@tailwindcss/postcss": "^4.2.4",
+    "@tailwindcss/vite": "^4.2.4",
+    "@tanstack/react-virtual": "^3.13.26",
+    "@trpc/client": "^11.17.0",
+    "@trpc/react-query": "^11.17.0",
+    "@trpc/server": "^11.17.0",
+    "axios": "^1.16.1",
+    "electron-store": "^8.2.0",
+    "electron-trpc-experimental": "^1.0.0-alpha.1",
+    "electron-updater": "^6.3.9",
+    "hls.js": "^1.6.16",
+    "lucide-react": "^1.14.0",
+    "plyr": "^3.8.4",
+    "superagent": "^10.3.0",
+    "zod": "^4.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "autoprefixer": "^10.5.0",
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^5.0.0",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "postcss": "^8.5.13",
+    "prettier": "^3.7.4",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "tailwindcss": "^4.2.4",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.6"
+  },
+  "build": {
+    "appId": "com.avplaypro.app",
+    "productName": "AVPlayPro",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*",
+      "bin/**/*",
+      "!node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "resources/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

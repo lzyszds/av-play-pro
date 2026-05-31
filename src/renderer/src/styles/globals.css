@@ -1,0 +1,69 @@
+@import "tailwindcss";
+@import "plyr/dist/plyr.css";
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Plyr 主题覆盖 */
+.plyr {
+  --plyr-color-main: #f59e0b;
+  --plyr-video-background: #000;
+  --plyr-menu-background: #1e293b;
+  --plyr-menu-color: #e2e8f0;
+  --plyr-badge-background: #f59e0b;
+  --plyr-badge-text: #0f172a;
+  border-radius: 0;
+  width: 100%;
+  height: 100%;
+}
+
+* {
+  outline: none;
+}
+
+/* Plyr 去掉 focus 边框 */
+.plyr:focus-visible,
+.plyr *:focus-visible,
+.plyr *:focus,
+.plyr__progress,
+.plyr__progress * {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+/* Plyr progress bar 去掉 focus 时的虚线边框 */
+.plyr__progress__container:focus-visible,
+.plyr__progress input[type="range"]:focus-visible,
+.plyr__progress input[type="range"]:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  --plyr-color-main: transparent !important;
+}
+
+/* Plyr 所有 range input 去掉 focus ring */
+.plyr input[type="range"]::-webkit-slider-thumb:focus,
+.plyr input[type="range"]::-moz-range-thumb:focus {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+  --plyr-color-main: transparent !important;
+}
+
+.plyr--full-ui input[type="range"] {
+  color: #f59e0b;
+  --plyr-color-main: transparent !important;
+}

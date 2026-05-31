@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN" spellcheck="false">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AVPlayPro</title>
+    <style>
+      /* 全局禁用 focus 边框 */
+      *, *::before, *::after {
+        outline: none !important;
+      }
+      /* range input 去掉所有边框/focus 样式 */
+      input[type="range"] {
+        -webkit-appearance: none !important;
+        appearance: none !important;
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+      }
+      input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none !important;
+        appearance: none !important;
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+      }
+      input[type="range"]::-webkit-slider-runnable-track {
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+      }
+      input[type="range"]::-moz-range-thumb {
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+      }
+      input[type="range"]::-moz-range-track {
+        border: none !important;
+        outline: none !important;
+        box-shadow: none !important;
+      }
+    </style>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file: cdn: https:; media-src 'self' file: cdn: https:; connect-src 'self' file: cdn: https: http:;"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -5,12 +5,20 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { trpc } from "../lib/trpc";
-import { Dropdown } from "../components/Dropdown";
 import {
-  Plus, Play, Pause, Trash2, Eye, FileVideo, CheckCircle2, AlertCircle,
-  Copy, Check, Search, Film, Terminal, Code, Settings, Trash2 as TrashIcon,
-  Shield, Download, X, Folder, Save, AlertCircle as AlertWarn, Cpu,
-  ChevronDown, ChevronRight, Globe, Info,
+  generateAndSaveThumbnails,
+  pathToLocalMediaUrl,
+} from "../lib/thumbnails";
+import {
+  Plus,
+  FileVideo,
+  Copy,
+  Check,
+  Search,
+  Code,
+  Settings,
+  Shield,
+  X,
 } from "lucide-react";
 import { NewTaskModal } from "../components/download/NewTaskModal";
 import { SettingsPanel } from "../components/download/SettingsPanel";
@@ -61,24 +69,20 @@ export function DownloadPage({
   onSettingsChange,
   onAddSystemLog,
   onPlayCompletedTask,
+  logs,
+  setLogs,
+  addLog,
 }: DownloadPageProps) {
   /* ---- state ---- */
   const [tasks, setTasks] = useState<DownloadTask[]>([]);
-  const [logs, setLogs] = useState<LogMessage[]>([]);
   const [storageLoaded, setStorageLoaded] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeSubTab, setActiveSubTab] = useState<"console" | "metadata">(
-    "console",
-  );
-  const [logFilter, setLogFilter] = useState<
-    "ALL" | "INFO" | "SUCCESS" | "WARNING" | "ERROR"
-  >("ALL");
-  const [autoScroll, setAutoScroll] = useState(true);
   const [copiedTaskCmd, setCopiedTaskCmd] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const activeDownloadId = useRef<string | null>(null);
   const tasksRef = useRef(tasks);
@@ -95,9 +99,40 @@ export function DownloadPage({
     tipsAudioRef.current.preload = "auto";
   }
   const consumingExtensionPushesRef = useRef(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
   // 队列调度器引用（供进度回调在 useEffect 内调用最新版本）
   const startNextRef = useRef<() => void>(() => {});
+
+  const generateThumbsForCompletedTask = useCallback(
+    async (taskDir: string, taskName: string) => {
+      const cached = await trpc.videos.hasThumbs.query({ folder: taskDir });
+      if (cached.exists) {
+        addLog(`进度条片段图已存在，跳过生成: ${taskName}`, "INFO");
+        return;
+      }
+
+      const found = await trpc.videos.findVideoFile.query({ folder: taskDir });
+      if (!found.success || !found.path) {
+        addLog(`未找到成片文件，无法生成进度条片段图: ${taskName}`, "WARNING");
+        return;
+      }
+
+      addLog(`开始生成进度条片段图: ${taskName}`, "INFO");
+      const result = await generateAndSaveThumbnails({
+        videoUrl: pathToLocalMediaUrl(found.path),
+        folder: taskDir,
+        onProgress: (done, total) => {
+          if (done === total || done % 20 === 0) {
+            addLog(`片段图生成中 [${done}/${total}]: ${taskName}`, "INFO");
+          }
+        },
+      });
+      addLog(
+        `进度条片段图已生成: ${taskName} (${result.count} 帧, ${result.spriteSizeKB} KB)`,
+        "SUCCESS",
+      );
+    },
+    [addLog],
+  );
 
   // 队列下载开关：开启后完成一个会自动下一个；关闭则需手动点单个任务
   const [queueEnabled, setQueueEnabled] = useState(false);
@@ -129,24 +164,13 @@ export function DownloadPage({
       .then((state) => {
         if (disposed) return;
         setTasks(Array.isArray(state.tasks) ? (state.tasks as DownloadTask[]) : []);
-        setLogs(Array.isArray(state.logs) ? (state.logs as LogMessage[]) : []);
+        if (Array.isArray(state.logs)) {
+          setLogs((state.logs as LogMessage[]));
+        }
       })
       .catch((err: any) => {
         if (disposed) return;
-        setLogs((prev) => [
-          ...prev,
-          {
-            id: Date.now().toString(),
-            timestamp: new Date().toLocaleTimeString([], {
-              hour12: false,
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            }),
-            level: "ERROR",
-            text: `Electron 存储读取失败: ${err?.message || err}`,
-          },
-        ]);
+        addLog(`Electron 存储读取失败: ${err?.message || err}`, "ERROR");
       })
       .finally(() => {
         if (!disposed) setStorageLoaded(true);
@@ -155,9 +179,10 @@ export function DownloadPage({
     return () => {
       disposed = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 防抖落盘：避免每次 setTasks 都写 JSON 文件
+  // 防抖落盘
   useEffect(() => {
     if (!storageLoaded) return;
     const timer = window.setTimeout(() => {
@@ -165,35 +190,6 @@ export function DownloadPage({
     }, 500);
     return () => window.clearTimeout(timer);
   }, [logs, storageLoaded, tasks]);
-
-  /* ---- auto-scroll ---- */
-  useEffect(() => {
-    if (autoScroll && scrollRef.current && activeSubTab === "console") {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [logs, activeSubTab, autoScroll]);
-
-  /* ---- helpers ---- */
-  const addLog = useCallback(
-    (
-      text: string,
-      level: "INFO" | "WARNING" | "SUCCESS" | "ERROR" = "INFO",
-    ) => {
-      const newLog: LogMessage = {
-        id: Date.now().toString(),
-        timestamp: new Date().toLocaleTimeString([], {
-          hour12: false,
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        }),
-        level,
-        text,
-      };
-      setLogs((prev) => [...prev, newLog]);
-    },
-    [],
-  );
 
   /* ---- download progress listener (IPC 事件推送) ---- */
   useEffect(() => {
@@ -404,6 +400,12 @@ export function DownloadPage({
         if (success && finished) {
           const task = tasksRef.current.find((t) => t.id === finished);
           if (task) {
+            const completedBytes =
+              task.totalSize || task.fileSize || task.downloadedSize || 0;
+            void trpc.stats.recordDownload
+              .mutate({ bytes: completedBytes })
+              .catch(() => {});
+
             // 从任务名提取番号（如 "TENN-046" 或 "SSIS-001"）
             const codeMatch = task.name.match(/[A-Z]{2,6}-\d{3,5}/i);
             const videoCode = codeMatch
@@ -418,11 +420,37 @@ export function DownloadPage({
               task.savePath.replace(/[\/\\]$/, "") +
               "\\" +
               task.name.replace(/[\\/:*?"<>|]/g, "_");
+            void generateThumbsForCompletedTask(taskDir, task.name).catch((err: any) => {
+              addLog(`进度条片段图生成失败: ${task.name} - ${err?.message || err}`, "ERROR");
+            });
             trpc.download.downloadCoverPreview.mutate({
               id: videoCode, // 使用番号而非 task.id
               name: task.name,
               saveDir: taskDir,
             });
+            // 写 meta.json（离线层：番号 + 文件信息 + 来源 URL）
+            void trpc.meta.writeForTask
+              .mutate({
+                saveDir: taskDir,
+                rawName: task.name,
+                sourceUrl: task.url,
+                referer: task.referer,
+                refererSource: task.refererSource,
+                resolution: task.resolution,
+                encryptionType: task.encryptionType,
+                format: task.format,
+              })
+              .then((r) => {
+                if (r.success && r.meta) {
+                  addLog(
+                    `meta.json 已写入${r.meta.code ? `（番号: ${r.meta.code}）` : "（未识别番号）"}`,
+                    r.meta.code ? "SUCCESS" : "WARNING",
+                  );
+                }
+              })
+              .catch((err: any) => {
+                addLog(`meta.json 写入失败: ${err?.message || err}`, "ERROR");
+              });
           }
         }
       }
@@ -436,7 +464,7 @@ export function DownloadPage({
       disposed = true;
       unlisten();
     };
-  }, [addLog]);
+  }, [addLog, generateThumbsForCompletedTask]);
 
   /* ---- add new task ---- */
   const handleAddNewTask = useCallback(
@@ -670,6 +698,7 @@ export function DownloadPage({
           threads: t.threads,
           headers: t.headers,
           tmpDir: settings.temp_path,
+          maxSpeed: settings.globalSpeedLimit,
         })
         .catch((err: any) => {
           addLog(`下载启动失败: ${err?.message || err}`, "ERROR");
@@ -830,10 +859,10 @@ export function DownloadPage({
     });
   }, [addLog]);
 
-  /* ---- 选中卡片：自动切到「选中详情」 ---- */
+  /* ---- 选中卡片：打开下方详情抽屉 ---- */
   const handleSelectTask = useCallback((id: string) => {
     setSelectedTaskId(id);
-    setActiveSubTab("metadata");
+    setDetailOpen(true);
   }, []);
 
   /* ---- 立即查看（已完成任务跳到播放器） ---- */
@@ -843,35 +872,6 @@ export function DownloadPage({
       onPlayCompletedTask(task);
     },
     [onPlayCompletedTask],
-  );
-
-  /* ---- 重抓封面/预览 ---- */
-  const handleRefetchCover = useCallback(
-    async (task: DownloadTask) => {
-      const codeMatch = task.name.match(/[A-Z]{2,6}-\d{3,5}/i);
-      const videoCode = codeMatch
-        ? codeMatch[0].toUpperCase()
-        : task.name.split(" ")[0];
-      const taskDir =
-        task.savePath.replace(/[\/\\]$/, "") +
-        "\\" +
-        task.name.replace(/[\\/:*?"<>|]/g, "_");
-      addLog(`正在重新抓取封面和预览: ${task.name} (番号: ${videoCode})...`, "INFO");
-      try {
-        const r = await trpc.download.downloadCoverPreview.mutate({
-          id: videoCode,
-          name: task.name,
-          saveDir: taskDir,
-        });
-        addLog(
-          r.success ? `封面已重抓: ${task.name}` : `封面重抓失败: ${r.error || ""}`,
-          r.success ? "SUCCESS" : "ERROR",
-        );
-      } catch (err: any) {
-        addLog(`封面重抓失败: ${err?.message || err}`, "ERROR");
-      }
-    },
-    [addLog],
   );
 
   /* ---- copy command ---- */
@@ -913,57 +913,6 @@ export function DownloadPage({
     },
     [onSettingsChange],
   );
-  const filteredLogs = logs.filter((log) =>
-    logFilter === "ALL" ? true : log.level === logFilter,
-  );
-
-  // 日志正文颜色：整体压暗到 700 档，柔和不刺眼（警告用 orange 避免与 ERROR 撞色）
-  const getLogLevelColor = (level: string) => {
-    switch (level) {
-      case "SUCCESS":
-        return "text-emerald-600";
-      case "WARNING":
-        return "text-orange-600 font-medium";
-      case "ERROR":
-        return "text-red-600 font-medium";
-      case "DEBUG":
-        return "text-sky-600";
-      default:
-        return "text-slate-600";
-    }
-  };
-
-  // 级别标签徽章：彩色底+边框，方便快速扫读
-  const getLogLevelBadge = (level: string) => {
-    switch (level) {
-      case "SUCCESS":
-        return "bg-emerald-50/70 text-emerald-600 border-emerald-100";
-      case "WARNING":
-        return "bg-orange-50/70 text-orange-600 border-orange-100";
-      case "ERROR":
-        return "bg-red-50/70 text-red-600 border-red-100";
-      case "DEBUG":
-        return "bg-sky-50/70 text-sky-600 border-sky-100";
-      default:
-        return "bg-slate-100 text-slate-500 border-slate-200";
-    }
-  };
-
-  const getLogLevelLabel = (level: string) => {
-    switch (level) {
-      case "SUCCESS":
-        return "成功";
-      case "WARNING":
-        return "警告";
-      case "ERROR":
-        return "错误";
-      case "DEBUG":
-        return "调试";
-      default:
-        return "消息";
-    }
-  };
-
   /* ---- render ---- */
   return (
     <div className="h-full flex flex-col min-h-0">
@@ -1092,247 +1041,129 @@ export function DownloadPage({
                 onDeleteTask={handleDeleteTask}
                 onCopyCommand={handleCopyCommand}
                 onPlayCompleted={handlePlayCompleted}
-                onRefetchCover={handleRefetchCover}
               />
             ))}
           </div>
         )}
       </div>
 
-      {/* ====== RIGHT: Diagnostics / Detail Panel ====== */}
-      <div className="h-58 bg-[#fffaf5] dark:bg-slate-950 flex flex-col shrink-0 select-text border-t border-slate-200 text-slate-600 font-mono">
-        {/* Sub-tabs header */}
-        <div className="flex items-center justify-between gap-2 px-3 bg-[#fffaf5] dark:bg-slate-950 border-b border-slate-100 text-xs overflow-x-auto">
-          <div className="flex items-center gap-4">
-            <button
-              onClick={() => setActiveSubTab("console")}
-              className={`flex items-center gap-1.5 px-4 py-2 border-b-2 text-black transition cursor-pointer whitespace-nowrap ${
-                activeSubTab === "console"
-                  ? "border-amber-500 bg-white"
-                  : "border-transparent  hover:text-amber-500"
-              }`}
-            >
-              <Terminal className="w-3.5 h-3.5 text-amber-500" />
-              控制台日志
-            </button>
-
-            <button
-              onClick={() => setActiveSubTab("metadata")}
-              className={`flex items-center gap-1.5 px-4 py-2 border-b-2 text-black transition cursor-pointer whitespace-nowrap ${
-                activeSubTab === "metadata"
-                  ? "border-sky-500 bg-[#fffaf5] dark:bg-slate-950"
-                  : "border-transparent  hover:text-sky-500"
-              }`}
-            >
+      {/* ====== 选中详情抽屉（可关闭） ====== */}
+      {detailOpen && selectedTask && (
+        <div className="h-52 bg-white dark:bg-slate-900 flex flex-col shrink-0 select-text border-t border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 anim-fade-in">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
               <Code className="w-3.5 h-3.5 text-sky-500" />
               选中详情
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono ml-1">
+                {selectedTask.id}
+              </span>
+            </div>
+            <button
+              onClick={() => setDetailOpen(false)}
+              className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              title="关闭"
+            >
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
-
-          <div className="flex items-center gap-2.5 text-[10px] shrink-0">
-            {activeSubTab === "console" ? (
-              <>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-black">过滤:</span>
-                  <Dropdown
-                    value={logFilter}
-                    onChange={(v) => setLogFilter(v)}
-                    options={[
-                      { value: "ALL", label: "全部", dot: "bg-slate-400" },
-                      { value: "INFO", label: "消息", dot: "bg-slate-400" },
-                      {
-                        value: "SUCCESS",
-                        label: "成功",
-                        dot: "bg-emerald-500",
-                      },
-                      { value: "WARNING", label: "警告", dot: "bg-orange-500" },
-                      { value: "ERROR", label: "错误", dot: "bg-red-500" },
-                    ]}
-                  />
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+              <div className="space-y-2">
+                <div>
+                  <span className="text-slate-400">视频名称: </span>
+                  <span className="font-bold">{selectedTask.name}</span>
                 </div>
+                <div className="break-all">
+                  <span className="text-slate-400">HLS 地址: </span>
+                  <span className="text-amber-700 dark:text-amber-400 text-[11px] font-mono select-all">
+                    {selectedTask.url}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <span className="text-slate-400">格式: </span>
+                    <span className="text-emerald-700 dark:text-emerald-400 font-bold">
+                      {selectedTask.format}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">速度: </span>
+                    <span className="text-amber-700 dark:text-amber-400 font-bold">
+                      {formatSpeed(selectedTask.speed)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">大小: </span>
+                    <span className="text-amber-700 dark:text-amber-400 font-bold">
+                      {selectedTask.totalSize > 0
+                        ? `${formatBytes(selectedTask.downloadedSize)} / ${formatBytes(selectedTask.totalSize)}`
+                        : selectedTask.fileSize > 0
+                          ? formatBytes(selectedTask.fileSize)
+                          : "计算中..."}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">片段: </span>
+                    <span className="text-emerald-700 dark:text-emerald-400 font-bold">
+                      {selectedTask.downloadedSegments > 0 &&
+                      selectedTask.totalSegments > 0
+                        ? `${selectedTask.downloadedSegments} / ${selectedTask.totalSegments}`
+                        : `${selectedTask.progress.toFixed(1)}%`}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">加密: </span>
+                    <span className="text-purple-700 dark:text-purple-400 font-bold">
+                      {selectedTask.encryptionType === "NONE"
+                        ? "未加密"
+                        : selectedTask.encryptionType || "AES-128"}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">质量: </span>
+                    <span className="text-sky-700 dark:text-sky-400 font-bold">
+                      {selectedTask.resolution || "1080p 自适应"}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-slate-400">保存目录: </span>
+                  <span className="text-[11px] font-mono select-all bg-slate-50 dark:bg-slate-800 p-1 px-2 rounded inline-block border border-slate-200 dark:border-slate-700">
+                    {selectedTask.savePath}
+                  </span>
+                </div>
+              </div>
 
-                <label className="flex items-center gap-1.5 text-black cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={autoScroll}
-                    onChange={(e) => setAutoScroll(e.target.checked)}
-                    className="rounded border-slate-300 text-amber-500"
-                  />
-                  自动滚动
-                </label>
-
-                <button
-                  onClick={() => setLogs([])}
-                  className="p-1.5 rounded-lg text-black hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                  title="清空当前日志显示"
-                >
-                  <TrashIcon className="w-3.5 h-3.5" />
-                </button>
-              </>
-            ) : (
-              selectedTask && (
-                <span className="text-[10px] bg-[#fffaf5] dark:bg-slate-950 text-slate-500 px-2.5 py-0.5 rounded-full select-none border border-slate-200 font-mono">
-                  当前任务 ID: {selectedTask.id}
-                </span>
-              )
-            )}
+              <div className="space-y-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-4 rounded-xl flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-sans font-bold text-[10px] flex items-center gap-1.5">
+                    <Shield className="w-3.5 h-3.5 text-amber-600" />
+                    N_m3u8DL-RE 运行命令封装
+                  </span>
+                  <button
+                    onClick={handleCopySelectedCommand}
+                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-400 hover:text-amber-800 rounded-md border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition font-sans text-[10px] cursor-pointer"
+                    title="复制终端命令"
+                  >
+                    {copiedTaskCmd ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-400" /> 已复制!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" /> 复制
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] font-mono text-amber-700 dark:text-amber-400 select-all break-all overflow-y-auto max-h-[70px]">
+                  {generateN3u8DLCommand(selectedTask)}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-
-        {/* Panel body */}
-        <div className="flex flex-1 overflow-y-auto bg-[#fffaf5] dark:bg-slate-950 relative">
-          {/* Console logs */}
-          {activeSubTab === "console" && (
-            <div
-              ref={scrollRef}
-              className="h-full flex-1 overflow-y-auto space-y-1 text-[10.5px] leading-relaxed select-text bg-[#fffaf5] dark:bg-slate-950 p-4"
-            >
-              {filteredLogs.length === 0 ? (
-                <div className="text-black text-center py-6">
-                  暂无诊断消息。执行下载操作时，日志数据将在此实时刷新。
-                </div>
-              ) : (
-                filteredLogs.map((log, index) => (
-                  <div
-                    key={log.id + index}
-                    className="flex gap-2.5 items-start font-mono"
-                  >
-                    <span className="text-slate-400 font-extralight shrink-0">
-                      [{log.timestamp}]
-                    </span>
-                    <span
-                      className={`text-[10px] border px-1.5 rounded select-none shrink-0 font-semibold ${getLogLevelBadge(log.level)}`}
-                    >
-                      {getLogLevelLabel(log.level)}
-                    </span>
-                    <span
-                      className={`${getLogLevelColor(log.level)} break-all`}
-                    >
-                      {log.text}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
-
-          {/* Metadata detail */}
-          {activeSubTab === "metadata" && (
-            <div className="h-full overflow-y-auto space-y-3 text-xs p-4">
-              {selectedTask ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2 text-slate-600">
-                    <div>
-                      <span className="text-black">视频名称:</span>{" "}
-                      <span className="text-slate-600 font-bold">
-                        {selectedTask.name}
-                      </span>
-                    </div>
-                    <div className="break-all">
-                      <span className="text-black">HLS 请求地址:</span>{" "}
-                      <span className="text-amber-700 text-[11px] focus:select-all font-mono">
-                        {selectedTask.url}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-[11px]">
-                      <div>
-                        <span className="text-black">合并文件格式:</span>{" "}
-                        <span className="text-emerald-700 font-bold ml-1">
-                          {selectedTask.format}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-black">下载速度:</span>{" "}
-                        <span className="text-amber-700 font-bold ml-1">
-                          {formatSpeed(selectedTask.speed)}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-black">文件大小:</span>{" "}
-                        <span className="text-amber-700 font-bold ml-1">
-                          {selectedTask.totalSize > 0
-                            ? `${formatBytes(selectedTask.downloadedSize)} / ${formatBytes(selectedTask.totalSize)}`
-                            : selectedTask.fileSize > 0
-                              ? formatBytes(selectedTask.fileSize)
-                              : "计算中..."}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-black">片段进度:</span>{" "}
-                        <span className="text-emerald-700 font-bold ml-1">
-                          {selectedTask.downloadedSegments > 0 &&
-                          selectedTask.totalSegments > 0
-                            ? `${selectedTask.downloadedSegments} / ${selectedTask.totalSegments}`
-                            : `${selectedTask.progress.toFixed(1)}%`}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-black">流加密类型:</span>{" "}
-                        <span className="text-purple-700 font-bold ml-1">
-                          {selectedTask.encryptionType === "NONE"
-                            ? "未加密"
-                            : selectedTask.encryptionType || "AES-128"}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-black">视频流质量:</span>{" "}
-                        <span className="text-sky-700 font-bold ml-1">
-                          {selectedTask.resolution || "1080p 自适应"}
-                        </span>
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-black">持久保存目录:</span>{" "}
-                      <span className="text-slate-600 text-[11px] font-mono select-all bg-slate-50 p-1 px-2 rounded-lg inline-block mt-1 border border-slate-200">
-                        {selectedTask.savePath}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2 bg-slate-50 border border-slate-200 p-4 rounded-xl flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-slate-600 font-sans font-bold text-[10px] flex items-center gap-1.5">
-                          <Shield className="w-3.5 h-3.5 text-amber-600" />
-                          N_m3u8DL-RE 运行命令封装
-                        </span>
-                        <button
-                          onClick={handleCopySelectedCommand}
-                          className="flex items-center gap-1 px-2.5 py-1 bg-white text-amber-700 hover:text-amber-800 rounded-md border border-slate-200 hover:bg-amber-50 transition font-sans text-[10px] cursor-pointer"
-                          title="复制终端命令"
-                        >
-                          {copiedTaskCmd ? (
-                            <>
-                              <Check className="w-3 h-3 text-emerald-400" />
-                              已复制!
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3 h-3" />
-                              复制
-                            </>
-                          )}
-                        </button>
-                      </div>
-                      <p className="text-[10px] leading-relaxed text-black font-sans">
-                        可以拷贝此参数字符串在本地桌面安装了 N_m3u8DL-RE &
-                        FFmpeg 的终端中执行，效果等同：
-                      </p>
-                    </div>
-                    <div className="bg-white px-2.5 py-1.5 rounded-lg border border-slate-200 text-[10px] font-mono text-amber-700 select-all break-all overflow-y-auto max-h-[70px]">
-                      {generateN3u8DLCommand(selectedTask)}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-black text-center p-4">
-                  未选中任何下载任务，请在列表轻点一个任务项目以查看其全栈流元数据信息。
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* ====== Modals ====== */}
       {showNewTaskModal && (

@@ -162,6 +162,9 @@ const downloadRouter = t.router({
     if (input.proxyUrl?.trim()) {
       args.push("--custom-proxy", input.proxyUrl.trim());
     }
+    if (input.maxSpeed?.trim()) {
+      args.push("--max-speed", input.maxSpeed.trim());
+    }
     if (input.headers) {
       try {
         const headersMap = JSON.parse(input.headers);
@@ -688,6 +691,69 @@ const videosRouter = t.router({
     videos.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
     return videos;
   }),
+  // 检查视频文件夹是否已有 thumbs 雪碧图 + VTT
+  hasThumbs: t.procedure.input((input) => input).query(({ input }) => {
+    const sprite = path__namespace.join(input.folder, "thumbs.jpg");
+    const vtt = path__namespace.join(input.folder, "thumbs.vtt");
+    return {
+      exists: fs__namespace.existsSync(sprite) && fs__namespace.existsSync(vtt),
+      spritePath: sprite,
+      vttPath: vtt
+    };
+  }),
+  // 写入由渲染端生成的雪碧图 + VTT
+  findVideoFile: t.procedure.input((input) => input).query(({ input }) => {
+    try {
+      if (!fs__namespace.existsSync(input.folder)) {
+        return { success: false, error: "folder not found" };
+      }
+      const preferred = ["video.mp4", "video.mkv", "video.ts", "video.m4v"];
+      for (const name of preferred) {
+        const full = path__namespace.join(input.folder, name);
+        if (fs__namespace.existsSync(full)) return { success: true, path: full };
+      }
+      const exts = /* @__PURE__ */ new Set([
+        ".mp4",
+        ".mkv",
+        ".ts",
+        ".mov",
+        ".avi",
+        ".webm",
+        ".flv",
+        ".m4v"
+      ]);
+      const files = fs__namespace.readdirSync(input.folder, { withFileTypes: true });
+      for (const file of files) {
+        if (!file.isFile()) continue;
+        if (file.name.toLowerCase().startsWith("preview.")) continue;
+        if (exts.has(path__namespace.extname(file.name).toLowerCase())) {
+          return { success: true, path: path__namespace.join(input.folder, file.name) };
+        }
+      }
+      return { success: false, error: "video file not found" };
+    } catch (err) {
+      return { success: false, error: err?.message || String(err) };
+    }
+  }),
+  writeThumbs: t.procedure.input(
+    (input) => input
+  ).mutation(({ input }) => {
+    try {
+      if (!fs__namespace.existsSync(input.folder)) {
+        return { success: false, error: "folder not found" };
+      }
+      const buf = Buffer.from(input.jpegBase64, "base64");
+      fs__namespace.writeFileSync(path__namespace.join(input.folder, "thumbs.jpg"), buf);
+      fs__namespace.writeFileSync(
+        path__namespace.join(input.folder, "thumbs.vtt"),
+        input.vttText,
+        "utf8"
+      );
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err?.message || String(err) };
+    }
+  }),
   // Delete local video folder
   delete: t.procedure.input(
     (input) => input
@@ -1191,6 +1257,456 @@ const systemRouter = t.router({
     return { success: true };
   })
 });
+const STRIP_SUFFIXES = [
+  /-uncensored-leak$/i,
+  /-uncensored$/i,
+  /-leak$/i,
+  /-hd$/i,
+  /-c$/i,
+  /-ch$/i
+];
+function stripCommonSuffix(name) {
+  let s = name;
+  for (const r of STRIP_SUFFIXES) s = s.replace(r, "");
+  return s;
+}
+const RULES = [
+  // FC2-PPV-1234567 / FC2PPV-1234567 / FC2PPV1234567
+  {
+    kind: "fc2",
+    re: /\bFC2[\s\-_]?PPV[\s\-_]?(\d{6,8})\b/i,
+    normalize: (m) => ({
+      code: `FC2-PPV-${m[1]}`,
+      series: "FC2-PPV",
+      number: m[1],
+      kind: "fc2"
+    })
+  },
+  // HEYZO-1234 / HEYZO 1234
+  {
+    kind: "heyzo",
+    re: /\bHEYZO[\s\-_]?(\d{3,5})\b/i,
+    normalize: (m) => ({
+      code: `HEYZO-${m[1]}`,
+      series: "HEYZO",
+      number: m[1],
+      kind: "heyzo"
+    })
+  },
+  // 1pondo-010122_001 / 1pondo_010122_001
+  {
+    kind: "1pondo",
+    re: /\b1pondo[\s\-_]?(\d{6}[_-]\d{3})\b/i,
+    normalize: (m) => ({
+      code: `1pondo-${m[1].replace("-", "_")}`,
+      series: "1pondo",
+      number: m[1],
+      kind: "1pondo"
+    })
+  },
+  // caribbean-012422-001 / caribbeancom 同款
+  {
+    kind: "caribbean",
+    re: /\bcaribbean(?:com)?[\s\-_]?(\d{6}[\-_]\d{3})\b/i,
+    normalize: (m) => ({
+      code: `caribbean-${m[1].replace("_", "-")}`,
+      series: "caribbean",
+      number: m[1],
+      kind: "caribbean"
+    })
+  },
+  // 标准 XXX-NNN(NN)
+  {
+    kind: "standard",
+    re: /\b([A-Z]{2,6})-(\d{3,5})\b/i,
+    normalize: (m) => ({
+      code: `${m[1].toUpperCase()}-${m[2]}`,
+      series: m[1].toUpperCase(),
+      number: m[2],
+      kind: "standard"
+    })
+  },
+  // 紧凑 XXXNNN(NN)（无横线），如 ABP123 → ABP-123
+  {
+    kind: "compact",
+    re: /\b([A-Z]{2,6})(\d{3,5})\b/i,
+    normalize: (m) => ({
+      code: `${m[1].toUpperCase()}-${m[2]}`,
+      series: m[1].toUpperCase(),
+      number: m[2],
+      kind: "compact"
+    })
+  }
+];
+function parseCode(rawName) {
+  const cleaned = stripCommonSuffix(rawName.trim());
+  for (const rule of RULES) {
+    const m = cleaned.match(rule.re);
+    if (m) return rule.normalize(m);
+  }
+  return null;
+}
+function metaPath(folder) {
+  return path__namespace.join(folder, "meta.json");
+}
+function statVideoFile(folder) {
+  try {
+    const files = fs__namespace.readdirSync(folder);
+    const videoExt = [".mp4", ".mkv", ".ts", ".m4v"];
+    const video = files.find((f) => videoExt.includes(path__namespace.extname(f).toLowerCase()));
+    if (!video) return { fileName: null, size: null, mtime: null, format: null };
+    const full = path__namespace.join(folder, video);
+    const s = fs__namespace.statSync(full);
+    return {
+      fileName: video,
+      size: s.size,
+      mtime: s.mtime.toISOString(),
+      format: path__namespace.extname(video).slice(1).toUpperCase()
+    };
+  } catch {
+    return { fileName: null, size: null, mtime: null, format: null };
+  }
+}
+function buildMeta(input) {
+  const parsed = parseCode(input.rawName) || parseCode(path__namespace.basename(input.saveDir)) || null;
+  const stat = statVideoFile(input.saveDir);
+  return {
+    code: parsed?.code ?? null,
+    series: parsed?.series ?? null,
+    number: parsed?.number ?? null,
+    kind: parsed?.kind ?? "unknown",
+    rawName: input.rawName,
+    format: input.format || stat.format,
+    fileSize: stat.size,
+    fileMtime: stat.mtime,
+    downloadedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    savePath: input.saveDir,
+    sourceUrl: input.sourceUrl,
+    referer: input.referer,
+    refererSource: input.refererSource,
+    resolution: input.resolution,
+    encryptionType: input.encryptionType,
+    schemaVersion: 1
+  };
+}
+function writeMetaFile(folder, meta) {
+  fs__namespace.mkdirSync(folder, { recursive: true });
+  fs__namespace.writeFileSync(metaPath(folder), JSON.stringify(meta, null, 2), "utf8");
+}
+const metaRouter = t.router({
+  parseCode: t.procedure.input((input) => input).query(({ input }) => parseCode(input.name)),
+  // 单个写入（下载完成时由前端调用）
+  writeForTask: t.procedure.input(
+    (input) => input
+  ).mutation(({ input }) => {
+    try {
+      const meta = buildMeta(input);
+      writeMetaFile(input.saveDir, meta);
+      log.info(`[meta] write ${input.saveDir} code=${meta.code}`);
+      return { success: true, meta };
+    } catch (err) {
+      log.error(`[meta] write failed: ${err?.message}`);
+      return { success: false, error: err?.message || String(err) };
+    }
+  }),
+  // 批量回填：扫描 rootPath 下所有子文件夹，缺 meta.json 的写入
+  backfill: t.procedure.input(
+    (input) => input
+  ).mutation(({ input }) => {
+    const result = {
+      scanned: 0,
+      skipped: 0,
+      // 已存在 meta.json 且 overwrite=false
+      written: 0,
+      failed: 0,
+      unmatched: 0,
+      // 没识别到番号
+      details: []
+    };
+    try {
+      if (!fs__namespace.existsSync(input.rootPath)) {
+        return { ...result, error: "rootPath not found" };
+      }
+      const entries = fs__namespace.readdirSync(input.rootPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const folder = path__namespace.join(input.rootPath, entry.name);
+        result.scanned++;
+        const meta = metaPath(folder);
+        if (fs__namespace.existsSync(meta) && !input.overwrite) {
+          result.skipped++;
+          result.details.push({ folder: entry.name, status: "skipped" });
+          continue;
+        }
+        try {
+          const built = buildMeta({ saveDir: folder, rawName: entry.name });
+          writeMetaFile(folder, built);
+          if (built.code) {
+            result.written++;
+            result.details.push({
+              folder: entry.name,
+              status: "written",
+              code: built.code
+            });
+          } else {
+            result.unmatched++;
+            result.details.push({
+              folder: entry.name,
+              status: "unmatched",
+              code: null
+            });
+          }
+        } catch (err) {
+          result.failed++;
+          result.details.push({
+            folder: entry.name,
+            status: "failed",
+            error: err?.message
+          });
+        }
+      }
+      log.info(
+        `[meta] backfill done: scanned=${result.scanned} written=${result.written} skipped=${result.skipped} unmatched=${result.unmatched} failed=${result.failed}`
+      );
+      return result;
+    } catch (err) {
+      log.error(`[meta] backfill failed: ${err?.message}`);
+      return { ...result, error: err?.message };
+    }
+  })
+});
+function emptyBucket() {
+  return { plays: 0, watchSec: 0, downloads: 0, downloadBytes: 0 };
+}
+function emptyStats() {
+  return {
+    version: 2,
+    daily: {},
+    hourly: {},
+    weekdays: {},
+    monthly: {},
+    videos: {},
+    diskSnapshots: [],
+    totals: emptyBucket()
+  };
+}
+function statsPath() {
+  return path__namespace.join(electron.app.getPath("userData"), "stats.json");
+}
+function dateKey(d = /* @__PURE__ */ new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function hourKey(d = /* @__PURE__ */ new Date()) {
+  return String(d.getHours()).padStart(2, "0");
+}
+function weekdayKey(d = /* @__PURE__ */ new Date()) {
+  return String(d.getDay());
+}
+function monthKey(d = /* @__PURE__ */ new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+function normalizeBucket(bucket) {
+  return {
+    plays: Number(bucket?.plays || 0),
+    watchSec: Number(bucket?.watchSec || 0),
+    downloads: Number(bucket?.downloads || 0),
+    downloadBytes: Number(bucket?.downloadBytes || 0)
+  };
+}
+function normalizeBuckets(buckets) {
+  const out = {};
+  for (const [key, value] of Object.entries(buckets || {})) {
+    out[key] = normalizeBucket(value);
+  }
+  return out;
+}
+function loadStats() {
+  try {
+    const file = statsPath();
+    if (!fs__namespace.existsSync(file)) return emptyStats();
+    const data = JSON.parse(fs__namespace.readFileSync(file, "utf8"));
+    return {
+      version: 2,
+      daily: normalizeBuckets(data.daily),
+      hourly: normalizeBuckets(data.hourly),
+      weekdays: normalizeBuckets(data.weekdays),
+      monthly: normalizeBuckets(data.monthly),
+      videos: data.videos || {},
+      diskSnapshots: (data.diskSnapshots || []).map((snap) => ({
+        at: snap.at,
+        totalBytes: Number(snap.totalBytes || 0),
+        videoCount: Number(snap.videoCount || 0),
+        freeBytes: snap.freeBytes == null ? void 0 : Number(snap.freeBytes || 0),
+        totalDiskBytes: snap.totalDiskBytes == null ? void 0 : Number(snap.totalDiskBytes || 0)
+      })),
+      totals: normalizeBucket(data.totals)
+    };
+  } catch (err) {
+    log.error(`[stats] load failed: ${err?.message}`);
+    return emptyStats();
+  }
+}
+function saveStats(s) {
+  try {
+    const file = statsPath();
+    fs__namespace.mkdirSync(path__namespace.dirname(file), { recursive: true });
+    fs__namespace.writeFileSync(file, JSON.stringify(s, null, 2), "utf8");
+  } catch (err) {
+    log.error(`[stats] save failed: ${err?.message}`);
+  }
+}
+function ensureBucket(buckets, key) {
+  if (!buckets[key]) buckets[key] = emptyBucket();
+  return buckets[key];
+}
+function ensureVideo(s, folder, series) {
+  if (!s.videos[folder]) {
+    s.videos[folder] = {
+      folder,
+      playCount: 0,
+      watchSec: 0,
+      lastPlayedAt: null,
+      firstPlayedAt: null,
+      series: series ?? null
+    };
+  } else if (series && !s.videos[folder].series) {
+    s.videos[folder].series = series;
+  }
+  return s.videos[folder];
+}
+function addToAllBuckets(s, patch, at = /* @__PURE__ */ new Date()) {
+  const targets = [
+    ensureBucket(s.daily, dateKey(at)),
+    ensureBucket(s.hourly, hourKey(at)),
+    ensureBucket(s.weekdays, weekdayKey(at)),
+    ensureBucket(s.monthly, monthKey(at)),
+    s.totals
+  ];
+  for (const bucket of targets) {
+    bucket.plays += patch.plays || 0;
+    bucket.watchSec += patch.watchSec || 0;
+    bucket.downloads += patch.downloads || 0;
+    bucket.downloadBytes += patch.downloadBytes || 0;
+  }
+}
+function walkVideoDir(root) {
+  let totalBytes = 0;
+  let videoCount = 0;
+  const videoExts = /* @__PURE__ */ new Set([
+    ".mp4",
+    ".mkv",
+    ".ts",
+    ".m4v",
+    ".mov",
+    ".webm",
+    ".avi",
+    ".flv"
+  ]);
+  const stack = [root];
+  while (stack.length) {
+    const cur = stack.pop();
+    let entries;
+    try {
+      entries = fs__namespace.readdirSync(cur, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = path__namespace.join(cur, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+      } else if (entry.isFile()) {
+        try {
+          const st = fs__namespace.statSync(full);
+          totalBytes += st.size;
+          if (videoExts.has(path__namespace.extname(entry.name).toLowerCase())) {
+            videoCount++;
+          }
+        } catch {
+        }
+      }
+    }
+  }
+  return { totalBytes, videoCount };
+}
+function readDiskSpace(root) {
+  try {
+    const stat = fs__namespace.statfsSync(root);
+    return {
+      freeBytes: stat.bavail * stat.bsize,
+      totalDiskBytes: stat.blocks * stat.bsize
+    };
+  } catch {
+    return {};
+  }
+}
+const statsRouter = t.router({
+  get: t.procedure.query(() => loadStats()),
+  recordPlay: t.procedure.input((input) => input).mutation(({ input }) => {
+    const folder = input.folder?.trim();
+    if (!folder) return { success: false, error: "folder is required" };
+    const s = loadStats();
+    const now = /* @__PURE__ */ new Date();
+    const iso = now.toISOString();
+    const v = ensureVideo(s, folder, input.series ?? null);
+    v.playCount += 1;
+    v.lastPlayedAt = iso;
+    if (!v.firstPlayedAt) v.firstPlayedAt = iso;
+    addToAllBuckets(s, { plays: 1 }, now);
+    saveStats(s);
+    return { success: true, playCount: v.playCount };
+  }),
+  recordWatch: t.procedure.input((input) => input).mutation(({ input }) => {
+    const folder = input.folder?.trim();
+    const sec = Math.max(0, Math.floor(input.sec));
+    if (!folder || sec === 0) return { success: true };
+    const s = loadStats();
+    const now = /* @__PURE__ */ new Date();
+    const v = ensureVideo(s, folder, input.series ?? null);
+    v.watchSec += sec;
+    v.lastPlayedAt = now.toISOString();
+    addToAllBuckets(s, { watchSec: sec }, now);
+    saveStats(s);
+    return { success: true, totalSec: v.watchSec };
+  }),
+  recordDownload: t.procedure.input((input) => input).mutation(({ input }) => {
+    const s = loadStats();
+    const bytes = Math.max(0, Math.floor(input.bytes || 0));
+    addToAllBuckets(s, { downloads: 1, downloadBytes: bytes });
+    saveStats(s);
+    return { success: true };
+  }),
+  snapshotDisk: t.procedure.input((input) => input).mutation(({ input }) => {
+    const rootPath = input.rootPath?.trim();
+    if (!rootPath || !fs__namespace.existsSync(rootPath)) {
+      return { success: false, error: "rootPath not found" };
+    }
+    const s = loadStats();
+    const last = s.diskSnapshots[s.diskSnapshots.length - 1];
+    if (!input.force && last?.at.slice(0, 10) === dateKey()) {
+      return { success: true, skipped: true };
+    }
+    const usage = walkVideoDir(rootPath);
+    const diskSpace = readDiskSpace(rootPath);
+    s.diskSnapshots.push({
+      at: (/* @__PURE__ */ new Date()).toISOString(),
+      ...usage,
+      ...diskSpace
+    });
+    if (s.diskSnapshots.length > 365) {
+      s.diskSnapshots = s.diskSnapshots.slice(-365);
+    }
+    saveStats(s);
+    return { success: true, ...usage, ...diskSpace };
+  }),
+  reset: t.procedure.mutation(() => {
+    saveStats(emptyStats());
+    return { success: true };
+  })
+});
 const appRouter = t.router({
   download: downloadRouter,
   videos: videosRouter,
@@ -1200,7 +1716,9 @@ const appRouter = t.router({
   extension: extensionRouter,
   storage: storageRouter,
   logger: loggerRouter,
-  system: systemRouter
+  system: systemRouter,
+  meta: metaRouter,
+  stats: statsRouter
 });
 let tray = null;
 let isQuitting = false;
@@ -1428,7 +1946,8 @@ const MEDIA_MIME = {
   ".webp": "image/webp",
   ".gif": "image/gif",
   ".bmp": "image/bmp",
-  ".avif": "image/avif"
+  ".avif": "image/avif",
+  ".vtt": "text/vtt; charset=utf-8"
 };
 const guessMime = (p) => MEDIA_MIME[path.extname(p).toLowerCase()] || "application/octet-stream";
 function setupLocalMediaProtocol() {

@@ -1,13 +1,5 @@
 import React, { useRef, useState } from "react";
-import {
-  Play,
-  Pause,
-  Trash2,
-  Copy,
-  Check,
-  Film,
-  ImageDown,
-} from "lucide-react";
+import { Play, Pause, Trash2, Copy, Check, Film } from "lucide-react";
 import type { DownloadTask } from "../../pages/download/types";
 import {
   formatBytes,
@@ -27,7 +19,6 @@ export interface TaskCardProps {
   onDeleteTask: (id: string) => void;
   onCopyCommand: (e: React.MouseEvent, task: DownloadTask) => void;
   onPlayCompleted?: (task: DownloadTask) => void;
-  onRefetchCover?: (task: DownloadTask) => void;
 }
 
 export function TaskCard({
@@ -40,7 +31,6 @@ export function TaskCard({
   onDeleteTask,
   onCopyCommand,
   onPlayCompleted,
-  onRefetchCover,
 }: TaskCardProps) {
   const coverUrl =
     toProxiedAssetUrl(task.coverUrl) || getCoverUrlFromName(task.name);
@@ -153,22 +143,13 @@ export function TaskCard({
             </button>
 
             {task.status === "COMPLETED" ? (
-              <>
-                <button
-                  onClick={() => onRefetchCover?.(task)}
-                  className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:bg-amber-50 hover:text-amber-700 transition cursor-pointer"
-                  title="重新抓取封面和预览"
-                >
-                  <ImageDown className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => onPlayCompleted?.(task)}
-                  className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-600 hover:bg-emerald-100 transition cursor-pointer"
-                  title="立即查看"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                </button>
-              </>
+              <button
+                onClick={() => onPlayCompleted?.(task)}
+                className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-600 hover:bg-emerald-100 transition cursor-pointer"
+                title="立即查看"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+              </button>
             ) : (
               <button
                 onClick={() => onTriggerPauseResume(task.id)}

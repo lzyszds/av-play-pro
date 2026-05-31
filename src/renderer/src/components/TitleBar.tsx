@@ -1,11 +1,13 @@
 import React from "react";
 import {
+  BarChart3,
   Download,
   Globe,
   Minus,
   Play,
   Square,
   Terminal,
+  TerminalSquare,
   X,
   Volume2,
   VolumeX,
@@ -16,7 +18,7 @@ import {
 import { trpc } from "../lib/trpc";
 import type { ThemeMode } from "../pages/download/types";
 
-type Page = "download" | "player" | "web";
+type Page = "download" | "player" | "web" | "stats";
 
 interface TitleBarProps {
   currentPage: Page;
@@ -26,6 +28,8 @@ interface TitleBarProps {
   onToggleSound: () => void;
   theme: ThemeMode;
   onCycleTheme: () => void;
+  consoleOpen: boolean;
+  onToggleConsole: () => void;
 }
 
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
@@ -35,6 +39,7 @@ const pages: Array<{ key: Page; label: string; icon: typeof Download }> = [
   { key: "download", label: "下载管理", icon: Download },
   { key: "player", label: "播放器", icon: Play },
   { key: "web", label: "网页", icon: Globe },
+  { key: "stats", label: "统计", icon: BarChart3 },
 ];
 
 const themeMeta: Record<ThemeMode, { icon: typeof Sun; label: string }> = {
@@ -51,6 +56,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   onToggleSound,
   theme,
   onCycleTheme,
+  consoleOpen,
+  onToggleConsole,
 }) => {
   const ThemeIcon = themeMeta[theme].icon;
   return (
@@ -103,6 +110,18 @@ export const TitleBar: React.FC<TitleBarProps> = ({
       </div>
 
       <div className="flex items-center h-full" style={noDrag}>
+        <button
+          type="button"
+          onClick={onToggleConsole}
+          title={consoleOpen ? "隐藏底部控制台" : "显示底部控制台"}
+          className={`w-9 h-full flex items-center justify-center transition cursor-pointer ${
+            consoleOpen
+              ? "text-amber-400 bg-slate-800"
+              : "text-slate-400 hover:text-amber-400 hover:bg-slate-800"
+          }`}
+        >
+          <TerminalSquare className="w-3.5 h-3.5" />
+        </button>
         <button
           type="button"
           onClick={onToggleSound}

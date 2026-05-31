@@ -16,6 +16,7 @@ const MEDIA_MIME: Record<string, string> = {
   ".gif": "image/gif",
   ".bmp": "image/bmp",
   ".avif": "image/avif",
+  ".vtt": "text/vtt; charset=utf-8",
 };
 export const guessMime = (p: string): string =>
   MEDIA_MIME[extname(p).toLowerCase()] || "application/octet-stream";

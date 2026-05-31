@@ -8,6 +8,8 @@ import { extensionRouter } from "./routers/extensionRouter";
 import { storageRouter } from "./routers/storageRouter";
 import { loggerRouter } from "./routers/loggerRouter";
 import { systemRouter } from "./routers/systemRouter";
+import { metaRouter } from "./routers/metaRouter";
+import { statsRouter } from "./routers/statsRouter";
 
 export const appRouter = t.router({
   download: downloadRouter,
@@ -19,6 +21,8 @@ export const appRouter = t.router({
   storage: storageRouter,
   logger: loggerRouter,
   system: systemRouter,
+  meta: metaRouter,
+  stats: statsRouter,
 });
 
 export type AppRouter = typeof appRouter;

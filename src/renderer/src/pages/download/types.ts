@@ -1,3 +1,5 @@
+import type * as React from "react";
+
 export type TaskStatus =
   | "PENDING"
   | "PARSING"
@@ -56,6 +58,10 @@ export interface AppSettings {
   closeAction: CloseAction;
   notifyOnComplete: boolean;
   notifySound: boolean;
+  consoleOpen: boolean;
+  consoleHeight: number;
+  /** N_m3u8DL-RE --max-speed 值，例 "5M" / "512K" / "" 为不限速 */
+  globalSpeedLimit: string;
 }
 
 export interface DownloadPageProps {
@@ -66,4 +72,11 @@ export interface DownloadPageProps {
     level: "INFO" | "WARNING" | "SUCCESS" | "ERROR",
   ) => void;
   onPlayCompletedTask: (task: DownloadTask) => void;
+  /** 全局日志（由 App 持有），DownloadPage 读取/写入 */
+  logs: LogMessage[];
+  setLogs: React.Dispatch<React.SetStateAction<LogMessage[]>>;
+  addLog: (
+    text: string,
+    level?: "INFO" | "WARNING" | "SUCCESS" | "ERROR",
+  ) => void;
 }

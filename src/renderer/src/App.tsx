@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { TitleBar } from "./components/TitleBar";
+import { GlobalConsole } from "./components/GlobalConsole";
 import { DownloadPage } from "./pages/DownloadPage";
 import { PlayerPage } from "./pages/PlayerPage";
 import { WebPage } from "./pages/WebPage";
+import { StatsPage } from "./pages/StatsPage";
 import { trpc } from "./lib/trpc";
-import type { AppSettings } from "./pages/download/types";
+import type { AppSettings, LogMessage } from "./pages/download/types";
 
-type Page = "download" | "player" | "web";
+type Page = "download" | "player" | "web" | "stats";
 
 const DEFAULT_SETTINGS: AppSettings = {
-  video_path: "", // 启动时由 system.getDefaultPaths 填充
+  video_path: "",
   temp_path: "",
   defaultFormat: "MP4",
   defaultThreads: 16,
@@ -21,6 +23,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   closeAction: "ask",
   notifyOnComplete: true,
   notifySound: true,
+  consoleOpen: true,
+  consoleHeight: 220,
+  globalSpeedLimit: "",
 };
 
 function applyTheme(mode: AppSettings["theme"]): void {
@@ -39,8 +44,32 @@ export default function App() {
   const [systemLogs, setSystemLogs] = useState<
     Array<{ text: string; level: string; time: string }>
   >([]);
-  // 「立即查看」目标：完成任务名 -> PlayerPage 找到对应本地视频并播放
+  // 全局控制台日志
+  const [logs, setLogs] = useState<LogMessage[]>([]);
+  // 「立即查看」目标
   const [pendingPlayName, setPendingPlayName] = useState<string | null>(null);
+
+  // 统一的 addLog：同时写入标题栏 ticker 和底部控制台
+  const addLog = useCallback(
+    (
+      text: string,
+      level: "INFO" | "WARNING" | "SUCCESS" | "ERROR" = "INFO",
+    ) => {
+      const now = new Date();
+      const time = now.toLocaleTimeString("zh-CN", { hour12: false });
+      setSystemLogs((prev) => [...prev.slice(-200), { text, level, time }]);
+      setLogs((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: time,
+          level,
+          text,
+        },
+      ]);
+    },
+    [],
+  );
 
   // 全局错误捕获 → 转发到主进程 electron-log
   useEffect(() => {
@@ -56,11 +85,7 @@ export default function App() {
     };
     const onRejection = (e: PromiseRejectionEvent) => {
       const reason: any = e.reason;
-      forward(
-        "error",
-        "unhandledrejection",
-        reason?.stack || String(reason),
-      );
+      forward("error", "unhandledrejection", reason?.stack || String(reason));
     };
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onRejection);
@@ -70,7 +95,7 @@ export default function App() {
     };
   }, []);
 
-  // 加载持久化设置 + 默认路径兜底
+  // 加载设置 + 默认路径兜底
   useEffect(() => {
     let disposed = false;
     Promise.all([
@@ -87,7 +112,6 @@ export default function App() {
           ...DEFAULT_SETTINGS,
           ...savedPartial,
         };
-        // 兜底：保存值为空字符串时回退到系统默认
         if (!merged.video_path?.trim()) merged.video_path = defaults.video_path;
         if (!merged.temp_path?.trim()) merged.temp_path = defaults.temp_path;
         setSettings(merged);
@@ -101,7 +125,7 @@ export default function App() {
     };
   }, []);
 
-  // 主题切换：跟随设置 + 监听系统色彩偏好
+  // 主题
   useEffect(() => {
     applyTheme(settings.theme);
     if (settings.theme !== "system") return;
@@ -111,7 +135,7 @@ export default function App() {
     return () => mq.removeEventListener("change", handler);
   }, [settings.theme]);
 
-  // 设置变更落盘（防抖 500ms，避免连续修改时频繁写文件）
+  // 设置变更落盘（防抖 500ms）
   useEffect(() => {
     if (!settingsLoaded) return;
     const timer = window.setTimeout(() => {
@@ -121,15 +145,6 @@ export default function App() {
     }, 500);
     return () => window.clearTimeout(timer);
   }, [settings, settingsLoaded]);
-
-  const addSystemLog = (
-    text: string,
-    level: "INFO" | "WARNING" | "SUCCESS" | "ERROR",
-  ) => {
-    const now = new Date();
-    const time = now.toLocaleTimeString("zh-CN", { hour12: false });
-    setSystemLogs((prev) => [...prev.slice(-200), { text, level, time }]);
-  };
 
   return (
     <div className="h-screen w-screen flex flex-col font-sans bg-[#f4f6f9] text-slate-600 dark:bg-slate-950 dark:text-slate-300 overflow-hidden select-none">
@@ -146,16 +161,29 @@ export default function App() {
           setSettings((s) => ({
             ...s,
             theme:
-              s.theme === "system" ? "light" : s.theme === "light" ? "dark" : "system",
+              s.theme === "system"
+                ? "light"
+                : s.theme === "light"
+                  ? "dark"
+                  : "system",
           }))
         }
+        consoleOpen={settings.consoleOpen}
+        onToggleConsole={() =>
+          setSettings((s) => ({ ...s, consoleOpen: !s.consoleOpen }))
+        }
       />
+
+      {/* 页面内容区 */}
       <div className="flex-1 min-h-0 overflow-hidden anim-fade-in-up">
         <div className={currentPage === "download" ? "h-full" : "hidden"}>
           <DownloadPage
             settings={settings}
             onSettingsChange={setSettings}
-            onAddSystemLog={addSystemLog}
+            onAddSystemLog={addLog}
+            logs={logs}
+            setLogs={setLogs}
+            addLog={addLog}
             onPlayCompletedTask={(task) => {
               setPendingPlayName(task.name);
               setCurrentPage("player");
@@ -165,13 +193,31 @@ export default function App() {
         {currentPage === "player" && (
           <PlayerPage
             videoPath={settings.video_path}
-            onAddSystemLog={addSystemLog}
+            onAddSystemLog={addLog}
             pendingPlayName={pendingPlayName}
             onConsumePendingPlay={() => setPendingPlayName(null)}
           />
         )}
-        {currentPage === "web" && <WebPage onAddSystemLog={addSystemLog} />}
+        {currentPage === "web" && <WebPage onAddSystemLog={addLog} />}
+        {currentPage === "stats" && (
+          <StatsPage
+            videoPath={settings.video_path}
+            onAddSystemLog={addLog}
+          />
+        )}
       </div>
+
+      {/* 全局控制台 */}
+      {settings.consoleOpen && (
+        <GlobalConsole
+          logs={logs}
+          setLogs={setLogs}
+          height={settings.consoleHeight}
+          onHeightChange={(h) =>
+            setSettings((s) => ({ ...s, consoleHeight: h }))
+          }
+        />
+      )}
     </div>
   );
 }

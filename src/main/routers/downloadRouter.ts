@@ -19,6 +19,8 @@ export interface DownloadPayload {
   proxyUrl?: string;
   toolPath?: string;
   autoMerge?: boolean;
+  /** N_m3u8DL-RE --max-speed, 如 "5M" / "512K"。空则不限速 */
+  maxSpeed?: string;
 }
 
 export interface ProgressPayload {
@@ -207,6 +209,10 @@ export const downloadRouter = t.router({
 
         if (input.proxyUrl?.trim()) {
           args.push("--custom-proxy", input.proxyUrl.trim());
+        }
+
+        if (input.maxSpeed?.trim()) {
+          args.push("--max-speed", input.maxSpeed.trim());
         }
 
         if (input.headers) {

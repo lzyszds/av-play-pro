@@ -91,6 +91,20 @@
   --plyr-color-main: transparent !important;
 }
 
+/* 进度条 hover 预览图：缩小显示尺寸，避免预览浮层遮挡画面且显得发糊 */
+.plyr__preview-thumb {
+  transform: translate(0, 10px) scale(0.68) !important;
+  transform-origin: 50% 100% !important;
+}
+.plyr__preview-thumb--is-shown {
+  transform: translate(0, 0) scale(0.68) !important;
+}
+
+/* 只保留进度条上方 hover 预览，不在拖拽进度条时把片段图覆盖到视频画面上 */
+.plyr__preview-scrubbing {
+  display: none !important;
+}
+
 button{
   user-select: none;
 }

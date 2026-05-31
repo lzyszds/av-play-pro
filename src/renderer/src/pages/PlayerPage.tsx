@@ -11,7 +11,18 @@ import Plyr from "plyr";
 import { trpc } from "../lib/trpc";
 import { LocalVideoCard } from "../components/player/LocalVideoCard";
 import type { PlayerPageProps, VideoItem } from "./player/types";
-import { Play, FileVideo, Radio, RefreshCw, ChevronDown, Search, X, Trash2, Download } from "lucide-react";
+import { Play, FileVideo, Radio, RefreshCw, ChevronDown, Search, X, Trash2, Download, Database } from "lucide-react";
+import {
+  deriveFolderFromUrl,
+  pathToLocalMediaUrl,
+  generateAndSaveThumbnails,
+} from "../lib/thumbnails";
+
+function inferSeriesName(name: string): string {
+  const code = name.match(/[A-Z]{2,8}-?\d{2,6}/i)?.[0];
+  if (!code) return "未分类";
+  return code.replace("-", "").replace(/\d+$/, "").toUpperCase() || "未分类";
+}
 
 export function PlayerPage({
   videoPath,
@@ -70,9 +81,44 @@ export function PlayerPage({
 
   // 追踪是否为首次加载（首次选中不自动播放）
   const isFirstLoad = useRef(true);
+  const statsPlayedUrlRef = useRef("");
+  const pendingWatchSecRef = useRef(0);
+  const lastWatchTickRef = useRef<number | null>(null);
+
+  const recordPlayStats = useCallback(
+    (folder: string, url: string) => {
+      if (!folder || !url || statsPlayedUrlRef.current === url) return;
+      statsPlayedUrlRef.current = url;
+      void trpc.stats.recordPlay
+        .mutate({ folder, series: inferSeriesName(folder) })
+        .catch((err: any) => {
+          onAddSystemLog(`播放统计写入失败: ${err?.message || err}`, "WARNING");
+        });
+    },
+    [onAddSystemLog],
+  );
+
+  const applyPreviewThumbnails = useCallback(
+    (src: string | null) => {
+      const player = plyrRef.current as any;
+      if (!player?.setPreviewThumbnails) return;
+      try {
+        player.setPreviewThumbnails(
+          src ? { enabled: true, src } : { enabled: false },
+        );
+      } catch (err: any) {
+        onAddSystemLog(`进度条缩略图启用失败: ${err?.message || err}`, "WARNING");
+      }
+    },
+    [onAddSystemLog],
+  );
 
   // 加载视频源（HLS 或本地文件）
-  const loadSource = useCallback((url: string, autoPlay: boolean) => {
+  const loadSource = useCallback((
+    url: string,
+    autoPlay: boolean,
+    previewVttUrl?: string | null,
+  ) => {
     const videoEl = videoRef.current;
     if (!videoEl || !url) return;
 
@@ -151,18 +197,148 @@ export function PlayerPage({
             type: isHls ? "application/x-mpegURL" : "video/mp4",
           },
         ],
+        ...(previewVttUrl
+          ? {
+              previewThumbnails: { enabled: true, src: previewVttUrl },
+            }
+          : { previewThumbnails: { enabled: false } }),
       };
+      applyPreviewThumbnails(previewVttUrl || null);
     }
-  }, []);
+  }, [applyPreviewThumbnails]);
 
-  // 当 activeStream.url 变化时加载源
+  // 当 activeStream.url 变化时:先检查缩略图是否已存在,再加载源
   useEffect(() => {
-    if (activeStream.url) {
+    if (!activeStream.url) return;
+    let cancelled = false;
+
+    (async () => {
+      const folder = deriveFolderFromUrl(activeStream.url);
+      let previewVttUrl: string | null = null;
+
+      if (folder) {
+        try {
+          const r = await trpc.videos.hasThumbs.query({ folder });
+          if (cancelled) return;
+          if (r.exists) previewVttUrl = pathToLocalMediaUrl(r.vttPath);
+        } catch {
+          /* ignore */
+        }
+      }
+
       const autoPlay = !isFirstLoad.current;
       isFirstLoad.current = false;
-      loadSource(activeStream.url, autoPlay);
-    }
-  }, [activeStream.url, loadSource]);
+      loadSource(activeStream.url, autoPlay, previewVttUrl);
+
+      // 没有缓存:后台异步生成,完成下次播放生效
+      if (!previewVttUrl && folder && !activeStream.url.includes(".m3u8")) {
+        const name = activeStream.name;
+        onAddSystemLog(`开始生成缩略图: ${name}`, "INFO");
+        generateAndSaveThumbnails({
+          videoUrl: activeStream.url,
+          folder,
+          onProgress: (done, total) => {
+            if (done === total || done % 20 === 0) {
+              onAddSystemLog(
+                `缩略图生成中 [${done}/${total}]: ${name}`,
+                "INFO",
+              );
+            }
+          },
+        })
+          .then((r) => {
+            onAddSystemLog(
+              `缩略图已生成: ${name} (${r.count} 帧, ${r.spriteSizeKB} KB)`,
+              "SUCCESS",
+            );
+            applyPreviewThumbnails(pathToLocalMediaUrl(`${folder}\\thumbs.vtt`));
+          })
+          .catch((err) =>
+            onAddSystemLog(
+              `缩略图生成失败: ${name} - ${err?.message || err}`,
+              "ERROR",
+            ),
+          );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStream.url]);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !activeStream.url) return;
+
+    const folder = activeStream.name || "未知视频";
+    const series = inferSeriesName(folder);
+    pendingWatchSecRef.current = 0;
+    lastWatchTickRef.current = null;
+
+    const flushWatch = () => {
+      const sec = pendingWatchSecRef.current;
+      if (sec <= 0) return;
+      pendingWatchSecRef.current = 0;
+      void trpc.stats.recordWatch
+        .mutate({ folder, series, sec })
+        .catch((err: any) => {
+          onAddSystemLog(`观看时长统计写入失败: ${err?.message || err}`, "WARNING");
+        });
+    };
+
+    const addElapsedWatch = () => {
+      if (el.paused || el.ended) {
+        lastWatchTickRef.current = null;
+        return;
+      }
+
+      const now = Date.now();
+      if (lastWatchTickRef.current != null) {
+        const delta = Math.floor((now - lastWatchTickRef.current) / 1000);
+        if (delta > 0 && delta < 60) {
+          pendingWatchSecRef.current += delta;
+        }
+      }
+      lastWatchTickRef.current = now;
+
+      if (pendingWatchSecRef.current >= 15) {
+        flushWatch();
+      }
+    };
+
+    const recordPlayOnce = () => {
+      recordPlayStats(folder, activeStream.url);
+    };
+
+    const onPlay = () => {
+      recordPlayOnce();
+      lastWatchTickRef.current = Date.now();
+    };
+
+    const onStop = () => {
+      addElapsedWatch();
+      flushWatch();
+      lastWatchTickRef.current = null;
+    };
+
+    el.addEventListener("play", onPlay);
+    el.addEventListener("playing", onPlay);
+    el.addEventListener("pause", onStop);
+    el.addEventListener("ended", onStop);
+    const timer = window.setInterval(addElapsedWatch, 1000);
+
+    return () => {
+      addElapsedWatch();
+      flushWatch();
+      window.clearInterval(timer);
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("playing", onPlay);
+      el.removeEventListener("pause", onStop);
+      el.removeEventListener("ended", onStop);
+    };
+  }, [activeStream.name, activeStream.url, onAddSystemLog, recordPlayStats]);
 
   // 监听 <video> loadedmetadata，用真实像素覆盖 "local" 等占位文本
   useEffect(() => {
@@ -261,6 +437,54 @@ export function PlayerPage({
     await refreshVideoList()
   }
 
+  // 回填 meta.json（旧视频）。按住 Shift 点击 = 强制覆盖重写
+  const [isBackfilling, setIsBackfilling] = useState(false);
+  const handleBackfillMeta = async (e: React.MouseEvent) => {
+    if (isBackfilling) return;
+    if (!videoPath) {
+      onAddSystemLog("未配置视频路径", "ERROR");
+      return;
+    }
+    const overwrite = e.shiftKey;
+    setIsBackfilling(true);
+    onAddSystemLog(
+      `开始扫描${overwrite ? "并强制覆盖" : ""}元数据: ${videoPath}`,
+      "INFO",
+    );
+    try {
+      const r = await trpc.meta.backfill.mutate({
+        rootPath: videoPath,
+        overwrite,
+      });
+      if ((r as any).error) {
+        onAddSystemLog(`回填失败: ${(r as any).error}`, "ERROR");
+      } else {
+        onAddSystemLog(
+          `回填完成: 扫描 ${r.scanned} | 新增 ${r.written} | 跳过 ${r.skipped} | 未识别番号 ${r.unmatched} | 失败 ${r.failed}`,
+          r.failed > 0 ? "WARNING" : "SUCCESS",
+        );
+        if (!overwrite && r.skipped === r.scanned && r.scanned > 0) {
+          onAddSystemLog(
+            "所有文件夹都已存在 meta.json,未做改动。如需重新生成请按住 Shift 再点击「回填元数据」。",
+            "WARNING",
+          );
+        }
+        if (r.unmatched > 0) {
+          const samples = r.details
+            .filter((d) => d.status === "unmatched")
+            .slice(0, 5)
+            .map((d) => d.folder)
+            .join(", ");
+          onAddSystemLog(`未识别番号样例: ${samples}`, "WARNING");
+        }
+      }
+    } catch (err: any) {
+      onAddSystemLog(`回填异常: ${err?.message || err}`, "ERROR");
+    } finally {
+      setIsBackfilling(false);
+    }
+  };
+
   // 删除视频
   const handleDeleteVideo = async () => {
     if (!deleteTarget) return
@@ -338,6 +562,7 @@ export function PlayerPage({
 
   const handleLoadLocalVideo = (video: VideoItem, index: number) => {
     setSelectedVideoIndex(index);
+    recordPlayStats(video.name, video.url);
     setActiveStream({
       name: video.name,
       url: video.url,
@@ -444,6 +669,8 @@ export function PlayerPage({
                   speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
                   tooltips: { controls: true, seek: true },
                   keyboard: { focused: true, global: true },
+                  // 缩略图在加载具体视频源时按需注入，避免空 src 触发 Plyr 异常。
+                  previewThumbnails: { enabled: false },
                 });
                 plyrRef.current = plyr;
                 console.log("[Video Ref] Plyr 初始化成功");
@@ -586,6 +813,19 @@ export function PlayerPage({
             >
               <Download className="w-3 h-3" />
               修复封面
+            </button>
+            <button
+              onClick={handleBackfillMeta}
+              disabled={isBackfilling}
+              className="shrink-0 px-2 py-1.5 bg-white text-amber-700 hover:bg-amber-50 border border-amber-200 rounded-lg text-[10px] font-bold transition cursor-pointer flex items-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed"
+              title="扫描视频目录，为缺少 meta.json 的文件夹生成元数据&#10;按住 Shift 点击 = 强制覆盖所有已存在的 meta.json"
+            >
+              {isBackfilling ? (
+                <RefreshCw className="w-3 h-3 animate-spin" />
+              ) : (
+                <Database className="w-3 h-3" />
+              )}
+              {isBackfilling ? "扫描中" : "回填元数据"}
             </button>
           </div>
 

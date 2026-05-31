@@ -124,6 +124,80 @@ export const videosRouter = t.router({
         return videos;
       }),
 
+    // 检查视频文件夹是否已有 thumbs 雪碧图 + VTT
+    hasThumbs: t.procedure
+      .input((input: unknown) => input as { folder: string })
+      .query(({ input }) => {
+        const sprite = path.join(input.folder, "thumbs.jpg");
+        const vtt = path.join(input.folder, "thumbs.vtt");
+        return {
+          exists: fs.existsSync(sprite) && fs.existsSync(vtt),
+          spritePath: sprite,
+          vttPath: vtt,
+        };
+      }),
+
+    // 写入由渲染端生成的雪碧图 + VTT
+    findVideoFile: t.procedure
+      .input((input: unknown) => input as { folder: string })
+      .query(({ input }) => {
+        try {
+          if (!fs.existsSync(input.folder)) {
+            return { success: false, error: "folder not found" };
+          }
+          const preferred = ["video.mp4", "video.mkv", "video.ts", "video.m4v"];
+          for (const name of preferred) {
+            const full = path.join(input.folder, name);
+            if (fs.existsSync(full)) return { success: true, path: full };
+          }
+
+          const exts = new Set([
+            ".mp4",
+            ".mkv",
+            ".ts",
+            ".mov",
+            ".avi",
+            ".webm",
+            ".flv",
+            ".m4v",
+          ]);
+          const files = fs.readdirSync(input.folder, { withFileTypes: true });
+          for (const file of files) {
+            if (!file.isFile()) continue;
+            if (file.name.toLowerCase().startsWith("preview.")) continue;
+            if (exts.has(path.extname(file.name).toLowerCase())) {
+              return { success: true, path: path.join(input.folder, file.name) };
+            }
+          }
+          return { success: false, error: "video file not found" };
+        } catch (err: any) {
+          return { success: false, error: err?.message || String(err) };
+        }
+      }),
+
+    writeThumbs: t.procedure
+      .input(
+        (input: unknown) =>
+          input as { folder: string; jpegBase64: string; vttText: string },
+      )
+      .mutation(({ input }) => {
+        try {
+          if (!fs.existsSync(input.folder)) {
+            return { success: false, error: "folder not found" };
+          }
+          const buf = Buffer.from(input.jpegBase64, "base64");
+          fs.writeFileSync(path.join(input.folder, "thumbs.jpg"), buf);
+          fs.writeFileSync(
+            path.join(input.folder, "thumbs.vtt"),
+            input.vttText,
+            "utf8",
+          );
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err?.message || String(err) };
+        }
+      }),
+
     // Delete local video folder
     delete: t.procedure
       .input(

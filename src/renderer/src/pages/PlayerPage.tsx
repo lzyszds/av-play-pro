@@ -287,7 +287,7 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
     // 更新 Plyr 源
     if (plyrRef.current) {
       plyrRef.current.source = {
-        type: isHls ? "hls" : "video",
+        type: "video",
         sources: [
           {
             src: url,
@@ -317,11 +317,15 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
     )
       return filePath;
     const normalized = filePath.replace(/\\/g, "/");
-    const encoded = normalized
-      .split("/")
-      .map((p) => encodeURIComponent(p))
-      .join("/");
-    return `local-media:///${encoded}`;
+    const segments = normalized.split("/");
+    const encodedSegments = segments.map((seg, index) => {
+      // 如果是 Windows 盘符 (如 "M:")，不进行编码，避免变成 M%3A
+      if (index === 0 && /^[a-zA-Z]:$/.test(seg)) {
+        return seg;
+      }
+      return encodeURIComponent(seg);
+    });
+    return `local-media:///${encodedSegments.join("/")}`;
   };
 
   // Fetch local videos on mount
@@ -349,7 +353,7 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
       if (!codeMatch) continue
       const code = codeMatch[0].toLowerCase()
       // 从视频 url 提取其所在文件夹路径（url 段经过 encodeURIComponent，需先解码）
-      const normalized = decodeURIComponent(video.url.replace(/file:\/\/\//, '')).replace(/\//g, '\\')
+      const normalized = decodeURIComponent(video.url.replace(/^(file|local-media):\/\/\//, '')).replace(/\//g, '\\')
       const lastSlash = normalized.lastIndexOf('\\')
       const folderPath = lastSlash > 0 ? normalized.substring(0, lastSlash) : normalized
       try {
@@ -375,7 +379,7 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
     try {
       // 从 url 提取文件夹路径: file:///M:/video/videos/xxx/video.mp4 -> M:\video\videos\xxx
       const urlPath = deleteTarget.url
-      const normalized = decodeURIComponent(urlPath.replace(/file:\/\/\//, '')).replace(/\//g, '\\')
+      const normalized = decodeURIComponent(urlPath.replace(/^(file|local-media):\/\/\//, '')).replace(/\//g, '\\')
       // 取最后一个 \ 之前的部分作为文件夹路径
       const lastSlash = normalized.lastIndexOf('\\')
       const folderPath = lastSlash > 0 ? normalized.substring(0, lastSlash) : normalized
@@ -517,6 +521,8 @@ export function PlayerPage({ videoPath, onAddSystemLog }: PlayerPageProps) {
                 // ref callback 中初始化 Plyr，确保 DOM 已存在
                 console.log("[Video Ref] 初始化 Plyr");
                 const plyr = new Plyr(el, {
+                  // 指向 public/plyr.svg（同源），避免 Plyr 默认从 cdn.plyr.io 在线拉取被 CORS 拦截
+                  iconUrl: "./plyr.svg",
                   controls: [
                     "play-large",
                     "play",

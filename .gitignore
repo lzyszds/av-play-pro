@@ -1,8 +1,41 @@
+# Dependency directories
 node_modules/
-build/
+
+# Build artifacts
+out/
 dist/
-coverage/
+release/
+build/
+*.upx
+electron.vite.config.*.mjs
+vite.config.*.mjs
+
+# IDE and System files
+.vscode/
+.idea/
 .DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Logs
 *.log
+logs/
+bin/Logs/
+
+# Environment and secrets
 .env*
 !.env.example
+
+# App specific ignored folders
+.uploads/
+bin/test/
+bin/*.exe
+bin/*.zip
+
+# Misc
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.eslintcache

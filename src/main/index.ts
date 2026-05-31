@@ -4,7 +4,29 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import * as https from 'https'
 import * as http from 'http'
 import * as fs from 'fs'
+import { Readable } from 'stream'
 import { createIPCHandler } from 'electron-trpc-experimental/main'
+
+// 根据扩展名推断 Content-Type，供本地媒体流使用
+const MEDIA_MIME: Record<string, string> = {
+  '.mp4': 'video/mp4',
+  '.m4v': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mkv': 'video/x-matroska',
+  '.mov': 'video/quicktime',
+  '.avi': 'video/x-msvideo',
+  '.ts': 'video/mp2t',
+  '.flv': 'video/x-flv',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
+  '.bmp': 'image/bmp',
+  '.avif': 'image/avif'
+}
+const guessMime = (p: string): string =>
+  MEDIA_MIME[extname(p).toLowerCase()] || 'application/octet-stream'
 import { appRouter, setMainWindow } from './router'
 
 let mainWindow: BrowserWindow | null = null
@@ -99,55 +121,81 @@ function setupCdnProxyProtocol(): void {
   console.log('[CDN代理] 已启用 cdn:// 协议')
 }
 
-const MIME_BY_EXT: Record<string, string> = {
-  '.mp4': 'video/mp4',
-  '.m4v': 'video/mp4',
-  '.webm': 'video/webm',
-  '.mov': 'video/quicktime',
-  '.avi': 'video/x-msvideo',
-  '.mkv': 'video/x-matroska',
-  '.flv': 'video/x-flv',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.bmp': 'image/bmp',
-  '.avif': 'image/avif',
-}
-
 function setupLocalMediaProtocol(): void {
   protocol.handle('local-media', async (request) => {
+    const url = request.url
     try {
-      const requestUrl = new URL(request.url)
-      let filePath = decodeURIComponent(requestUrl.pathname || '')
-
-      if (process.platform === 'win32' && /^\/[a-zA-Z]:\//.test(filePath)) {
-        filePath = filePath.slice(1)
+      // 由于 local-media 注册为 standard 协议，Chromium 会用「带 authority」的
+      // 语义解析 URL。Windows 盘符 "M:" 会被当成 host:port，结果 host 变成 "m"、
+      // 冒号和盘符丢失。因此需要把 host 还原成盘符：
+      //   local-media://m/video/...     (host=m)        -> M:\video\...
+      //   local-media:///M:/video/...   (host 为空)     -> M:\video\...
+      const parsed = new URL(url)
+      const host = parsed.hostname
+      let filePath: string
+      if (host && /^[a-z]$/i.test(host)) {
+        // 盘符被解析成了 host
+        filePath = `${host.toUpperCase()}:${decodeURIComponent(parsed.pathname)}`
+      } else {
+        // 盘符保留在 path 中（如 /M:/video/...），去掉开头的斜杠
+        filePath = decodeURIComponent(parsed.pathname).replace(/^\//, '')
       }
+
+      if (process.platform === 'win32') {
+        filePath = filePath.replace(/\//g, '\\')
+      }
+
 
       if (!filePath || !fs.existsSync(filePath)) {
         return new Response('File not found', { status: 404 })
       }
 
-      const ext = extname(filePath).toLowerCase()
-      if (!MIME_BY_EXT[ext]) {
-        return new Response('Unsupported media type', { status: 415 })
+      const stat = fs.statSync(filePath)
+      const total = stat.size
+      const contentType = guessMime(filePath)
+      const rangeHeader = request.headers.get('range')
+
+      // 处理 Range 请求（拖动进度条 / seek 需要 206 Partial Content）
+      if (rangeHeader) {
+        const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader)
+        if (match) {
+          const start = match[1] ? parseInt(match[1], 10) : 0
+          const end = match[2] ? parseInt(match[2], 10) : total - 1
+          if (start >= total || end >= total || start > end) {
+            return new Response('Range Not Satisfiable', {
+              status: 416,
+              headers: { 'Content-Range': `bytes */${total}` }
+            })
+          }
+          const stream = fs.createReadStream(filePath, { start, end })
+          return new Response(Readable.toWeb(stream) as ReadableStream, {
+            status: 206,
+            headers: {
+              'Content-Type': contentType,
+              'Content-Length': String(end - start + 1),
+              'Content-Range': `bytes ${start}-${end}/${total}`,
+              'Accept-Ranges': 'bytes'
+            }
+          })
+        }
       }
 
-      const content = await fs.promises.readFile(filePath)
-      return new Response(content, {
+      // 无 Range：整文件返回，但仍声明支持 Range，让媒体元素可 seek
+      const stream = fs.createReadStream(filePath)
+      return new Response(Readable.toWeb(stream) as ReadableStream, {
         status: 200,
         headers: {
-          'Content-Type': MIME_BY_EXT[ext],
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-cache',
-        },
+          'Content-Type': contentType,
+          'Content-Length': String(total),
+          'Accept-Ranges': 'bytes'
+        }
       })
     } catch (err: any) {
-      return new Response(`Local media error: ${err?.message || 'unknown error'}`, { status: 500 })
+      console.error(`[local-media] Error: ${err?.message}`)
+      return new Response(`Error: ${err?.message}`, { status: 500 })
     }
   })
+  console.log('[本地媒体] 已启用 local-media:// 协议')
 }
 
 function createWindow(): void {

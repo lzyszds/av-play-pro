@@ -67,3 +67,7 @@
   color: #f59e0b;
   --plyr-color-main: transparent !important;
 }
+
+button{
+  user-select: none;
+}

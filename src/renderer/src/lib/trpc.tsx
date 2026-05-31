@@ -5,7 +5,7 @@
 
 import { createTRPCProxyClient } from '@trpc/client'
 import { ipcLink } from 'electron-trpc-experimental/renderer'
-import type { AppRouter } from '../../main/router'
+import type { AppRouter } from '../../../main/router'
 
 // 创建 tRPC Proxy Client（直接调用，不需要 React hooks）
 export const trpc = createTRPCProxyClient<AppRouter>({

@@ -5,8 +5,10 @@ const utils = require("@electron-toolkit/utils");
 const https = require("https");
 const http = require("http");
 const fs = require("fs");
+const stream = require("stream");
 const main = require("electron-trpc-experimental/main");
 const server = require("@trpc/server");
+const observable = require("@trpc/server/observable");
 const child_process = require("child_process");
 function _interopNamespaceDefault(e) {
   const n = Object.create(null, { [Symbol.toStringTag]: { value: "Module" } });
@@ -31,9 +33,11 @@ const fs__namespace = /* @__PURE__ */ _interopNamespaceDefault(fs);
 const t = server.initTRPC.create();
 let downloadProcess = null;
 let downloadPid = null;
+let mainWindow$1 = null;
 let progressCallbacks = [];
+let coverChain = Promise.resolve();
 function setMainWindow(win) {
-  mainWindow = win;
+  mainWindow$1 = win;
 }
 function resolveToolPath(customPath) {
   const candidates = [];
@@ -82,7 +86,7 @@ function killProcessTree(pid) {
 }
 function sendProgress(payload) {
   progressCallbacks.forEach((cb) => cb(payload));
-  mainWindow?.webContents.send("download-progress", payload);
+  mainWindow$1?.webContents.send("download-progress", payload);
 }
 function getCoverLogFilePath() {
   return path__namespace.join(electron.app.getPath("userData"), "cover-preview-logs.jsonl");
@@ -111,7 +115,12 @@ const appRouter = t.router({
     start: t.procedure.input((input) => input).mutation(async ({ input }) => {
       const toolPath = resolveToolPath(input.toolPath);
       if (!toolPath) {
-        sendProgress({ line: "[ERROR] N_m3u8DL-RE.exe not found. Please check your bin directory and tool path.", percent: null, done: true, success: false });
+        sendProgress({
+          line: "[ERROR] N_m3u8DL-RE.exe not found. Please check your bin directory and tool path.",
+          percent: null,
+          done: true,
+          success: false
+        });
         throw new Error("N_m3u8DL-RE.exe not found");
       }
       const tmpDir = input.tmpDir || path__namespace.join(input.saveDir, "temp");
@@ -148,7 +157,12 @@ const appRouter = t.router({
       if (downloadProcess?.pid || downloadPid) {
         const oldPid = downloadProcess?.pid || downloadPid;
         if (oldPid) {
-          sendProgress({ line: `[绯荤粺] 妫€娴嬪埌宸叉湁涓嬭浇杩涚▼ (PID: ${oldPid})锛屾鍦ㄧ粓姝?..`, percent: null, done: false, success: false });
+          sendProgress({
+            line: `[绯荤粺] 妫€娴嬪埌宸叉湁涓嬭浇杩涚▼ (PID: ${oldPid})锛屾鍦ㄧ粓姝?..`,
+            percent: null,
+            done: false,
+            success: false
+          });
           killProcessTree(oldPid);
           downloadProcess = null;
           downloadPid = null;
@@ -156,24 +170,84 @@ const appRouter = t.router({
       }
       if (!fs__namespace.existsSync(input.saveDir)) {
         fs__namespace.mkdirSync(input.saveDir, { recursive: true });
-        sendProgress({ line: `[绯荤粺] 宸插垱寤轰繚瀛樼洰褰? ${input.saveDir}`, percent: null, done: false, success: false });
+        sendProgress({
+          line: `[绯荤粺] 宸插垱寤轰繚瀛樼洰褰? ${input.saveDir}`,
+          percent: null,
+          done: false,
+          success: false
+        });
       }
       if (!fs__namespace.existsSync(tmpDir)) {
         fs__namespace.mkdirSync(tmpDir, { recursive: true });
-        sendProgress({ line: `[绯荤粺] 宸插垱寤轰复鏃剁洰褰? ${tmpDir}`, percent: null, done: false, success: false });
+        sendProgress({
+          line: `[绯荤粺] 宸插垱寤轰复鏃剁洰褰? ${tmpDir}`,
+          percent: null,
+          done: false,
+          success: false
+        });
       }
-      sendProgress({ line: `[SYSTEM] --------------------`, percent: 0, done: false, success: false });
-      sendProgress({ line: `[SYSTEM] Start download task: ${input.saveName}`, percent: 0, done: false, success: false });
-      sendProgress({ line: `[SYSTEM] Source URL: ${input.url}`, percent: 0, done: false, success: false });
-      sendProgress({ line: `[SYSTEM] Save directory: ${input.saveDir}`, percent: 0, done: false, success: false });
-      sendProgress({ line: `[SYSTEM] Temp directory: ${tmpDir}`, percent: 0, done: false, success: false });
-      sendProgress({ line: `[SYSTEM] Tool path: ${toolPath}`, percent: 0, done: false, success: false });
-      sendProgress({ line: `[SYSTEM] Threads: ${input.threads} | Format: ${input.format}`, percent: 0, done: false, success: false });
+      sendProgress({
+        line: `[SYSTEM] --------------------`,
+        percent: 0,
+        done: false,
+        success: false
+      });
+      sendProgress({
+        line: `[SYSTEM] Start download task: ${input.saveName}`,
+        percent: 0,
+        done: false,
+        success: false
+      });
+      sendProgress({
+        line: `[SYSTEM] Source URL: ${input.url}`,
+        percent: 0,
+        done: false,
+        success: false
+      });
+      sendProgress({
+        line: `[SYSTEM] Save directory: ${input.saveDir}`,
+        percent: 0,
+        done: false,
+        success: false
+      });
+      sendProgress({
+        line: `[SYSTEM] Temp directory: ${tmpDir}`,
+        percent: 0,
+        done: false,
+        success: false
+      });
+      sendProgress({
+        line: `[SYSTEM] Tool path: ${toolPath}`,
+        percent: 0,
+        done: false,
+        success: false
+      });
+      sendProgress({
+        line: `[SYSTEM] Threads: ${input.threads} | Format: ${input.format}`,
+        percent: 0,
+        done: false,
+        success: false
+      });
       if (input.headers) {
-        sendProgress({ line: `[SYSTEM] Custom headers: ${input.headers}`, percent: 0, done: false, success: false });
+        sendProgress({
+          line: `[SYSTEM] Custom headers: ${input.headers}`,
+          percent: 0,
+          done: false,
+          success: false
+        });
       }
-      sendProgress({ line: `[SYSTEM] Full command: ${toolPath} ${args.join(" ")}`, percent: 0, done: false, success: false });
-      sendProgress({ line: `[SYSTEM] Launching N_m3u8DL-RE...`, percent: 0, done: false, success: false });
+      sendProgress({
+        line: `[SYSTEM] Full command: ${toolPath} ${args.join(" ")}`,
+        percent: 0,
+        done: false,
+        success: false
+      });
+      sendProgress({
+        line: `[SYSTEM] Launching N_m3u8DL-RE...`,
+        percent: 0,
+        done: false,
+        success: false
+      });
       downloadProcess = child_process.spawn(toolPath, args, {
         windowsHide: true,
         detached: false,
@@ -181,9 +255,19 @@ const appRouter = t.router({
       });
       const pid = downloadProcess.pid || 0;
       downloadPid = pid;
-      sendProgress({ line: `[绯荤粺] N_m3u8DL-RE 宸插惎鍔?(PID: ${pid})`, percent: 0, done: false, success: false });
+      sendProgress({
+        line: `[绯荤粺] N_m3u8DL-RE 宸插惎鍔?(PID: ${pid})`,
+        percent: 0,
+        done: false,
+        success: false
+      });
       downloadProcess.on("spawn", () => {
-        sendProgress({ line: "[绯荤粺] 杩涚▼宸叉垚鍔?spawn", percent: 0, done: false, success: false });
+        sendProgress({
+          line: "[绯荤粺] 杩涚▼宸叉垚鍔?spawn",
+          percent: 0,
+          done: false,
+          success: false
+        });
       });
       downloadProcess.stdout?.on("data", (data) => {
         const text = data.toString();
@@ -191,9 +275,19 @@ const appRouter = t.router({
         for (const line of text.split(/\r?\n/)) {
           const cleaned = stripAnsi(line);
           if (!cleaned) continue;
-          sendProgress({ line: cleaned, percent: parsePercent(cleaned), done: false, success: false });
+          sendProgress({
+            line: cleaned,
+            percent: parsePercent(cleaned),
+            done: false,
+            success: false
+          });
           if (cleaned.includes("All") && cleaned.includes("downloaded") || cleaned.includes("Download complete") || cleaned.includes("finished")) {
-            sendProgress({ line: "[SYSTEM] Download completed", percent: 100, done: true, success: true });
+            sendProgress({
+              line: "[SYSTEM] Download completed",
+              percent: 100,
+              done: true,
+              success: true
+            });
             downloadProcess = null;
           }
         }
@@ -204,20 +298,38 @@ const appRouter = t.router({
         for (const line of text.split(/\r?\n/)) {
           const cleaned = stripAnsi(line);
           if (!cleaned) continue;
-          sendProgress({ line: cleaned, percent: parsePercent(cleaned), done: false, success: false });
+          sendProgress({
+            line: cleaned,
+            percent: parsePercent(cleaned),
+            done: false,
+            success: false
+          });
         }
       });
-      downloadProcess.on("close", (code, signal) => {
-        console.log(`[涓嬭浇] 杩涚▼鍏抽棴: code=${code}, signal=${signal}`);
-        if (code === 0) {
-          sendProgress({ line: `[绯荤粺] 涓嬭浇宸插畬鎴?(code: 0)`, percent: 100, done: true, success: true });
-          downloadPid = null;
+      downloadProcess.on(
+        "close",
+        (code, signal) => {
+          console.log(`[涓嬭浇] 杩涚▼鍏抽棴: code=${code}, signal=${signal}`);
+          if (code === 0) {
+            sendProgress({
+              line: `[绯荤粺] 涓嬭浇宸插畬鎴?(code: 0)`,
+              percent: 100,
+              done: true,
+              success: true
+            });
+            downloadPid = null;
+          }
+          downloadProcess = null;
         }
-        downloadProcess = null;
-      });
+      );
       downloadProcess.on("error", (err) => {
         console.error(`[涓嬭浇] 鍚姩澶辫触: ${err.message}`);
-        sendProgress({ line: `[閿欒] 鍚姩澶辫触: ${err.message}`, percent: null, done: true, success: false });
+        sendProgress({
+          line: `[閿欒] 鍚姩澶辫触: ${err.message}`,
+          percent: null,
+          done: true,
+          success: false
+        });
         downloadProcess = null;
       });
       return { success: true, pid };
@@ -225,33 +337,64 @@ const appRouter = t.router({
     stop: t.procedure.mutation(() => {
       const pid = downloadProcess?.pid || downloadPid;
       if (pid) {
-        sendProgress({ line: `[SYSTEM] Stopping download process (PID: ${pid})`, percent: null, done: false, success: false });
+        sendProgress({
+          line: `[SYSTEM] Stopping download process (PID: ${pid})`,
+          percent: null,
+          done: false,
+          success: false
+        });
         killProcessTree(pid);
         downloadProcess = null;
         downloadPid = null;
-        sendProgress({ line: `[SYSTEM] Sent taskkill /F /T /PID ${pid}`, percent: null, done: false, success: false });
-        sendProgress({ line: "[SYSTEM] Download stopped", percent: null, done: true, success: false });
+        sendProgress({
+          line: `[SYSTEM] Sent taskkill /F /T /PID ${pid}`,
+          percent: null,
+          done: false,
+          success: false
+        });
+        sendProgress({
+          line: "[SYSTEM] Download stopped",
+          percent: null,
+          done: true,
+          success: false
+        });
         return { success: true };
       }
-      sendProgress({ line: "[SYSTEM] No running download process", percent: null, done: false, success: false });
+      sendProgress({
+        line: "[SYSTEM] No running download process",
+        percent: null,
+        done: false,
+        success: false
+      });
       return { success: false, message: "No running download process" };
     }),
     onProgress: t.procedure.subscription(() => {
-      return {
-        subscribe: (callback) => {
-          progressCallbacks.push(callback);
-          return () => {
-            progressCallbacks = progressCallbacks.filter((cb) => cb !== callback);
-          };
-        }
-      };
+      return observable.observable((emit) => {
+        const callback = (data) => emit.next(data);
+        progressCallbacks.push(callback);
+        return () => {
+          progressCallbacks = progressCallbacks.filter((cb) => cb !== callback);
+        };
+      });
     }),
     // 鍒犻櫎浠诲姟鏃舵竻鐞?temp 涓存椂鏂囦欢
-    cleanupTemp: t.procedure.input((input) => input).mutation(({ input }) => {
+    cleanupTemp: t.procedure.input(
+      (input) => input
+    ).mutation(({ input }) => {
       const tmpDir = input.tmpDir || path__namespace.join(input.saveDir, "temp");
       const sanitized = sanitizeName(input.saveName);
-      sendProgress({ line: `[SYSTEM] Cleaning temp files: ${sanitized}*`, percent: null, done: false, success: false });
-      sendProgress({ line: `[SYSTEM] Temp directory: ${tmpDir}`, percent: null, done: false, success: false });
+      sendProgress({
+        line: `[SYSTEM] Cleaning temp files: ${sanitized}*`,
+        percent: null,
+        done: false,
+        success: false
+      });
+      sendProgress({
+        line: `[SYSTEM] Temp directory: ${tmpDir}`,
+        percent: null,
+        done: false,
+        success: false
+      });
       try {
         if (fs__namespace.existsSync(tmpDir)) {
           const files = fs__namespace.readdirSync(tmpDir);
@@ -261,22 +404,44 @@ const appRouter = t.router({
               const filePath = path__namespace.join(tmpDir, file);
               const stat = fs__namespace.statSync(filePath);
               fs__namespace.unlinkSync(filePath);
-              sendProgress({ line: `[SYSTEM] Deleted temp file: ${file} (${formatSize(stat.size)})`, percent: null, done: false, success: false });
+              sendProgress({
+                line: `[SYSTEM] Deleted temp file: ${file} (${formatSize(stat.size)})`,
+                percent: null,
+                done: false,
+                success: false
+              });
               deleted++;
             }
           }
-          sendProgress({ line: `[SYSTEM] Temp cleanup completed: ${deleted} file(s) deleted`, percent: null, done: false, success: false });
+          sendProgress({
+            line: `[SYSTEM] Temp cleanup completed: ${deleted} file(s) deleted`,
+            percent: null,
+            done: false,
+            success: false
+          });
           return { success: true, deleted };
         }
-        sendProgress({ line: `[SYSTEM] Temp directory not found: ${tmpDir}`, percent: null, done: false, success: false });
+        sendProgress({
+          line: `[SYSTEM] Temp directory not found: ${tmpDir}`,
+          percent: null,
+          done: false,
+          success: false
+        });
         return { success: true, deleted: 0 };
       } catch (err) {
-        sendProgress({ line: `[SYSTEM] Temp cleanup failed: ${err.message}`, percent: null, done: false, success: false });
+        sendProgress({
+          line: `[SYSTEM] Temp cleanup failed: ${err.message}`,
+          percent: null,
+          done: false,
+          success: false
+        });
         return { success: false, error: err.message };
       }
     }),
     // 涓嬭浇瀹屾垚鍚庤嚜鍔ㄤ笅杞藉皝闈㈠拰棰勮瑙嗛
-    downloadCoverPreview: t.procedure.input((input) => input).mutation(async ({ input }) => {
+    downloadCoverPreview: t.procedure.input(
+      (input) => input
+    ).mutation(async ({ input }) => {
       const previous = coverChain;
       let release = () => {
       };
@@ -389,7 +554,8 @@ const appRouter = t.router({
       try {
         const file = getCoverLogFilePath();
         if (!fs__namespace.existsSync(file)) return [];
-        const lines = fs__namespace.readFileSync(file, "utf-8").split("\n").filter(Boolean).slice(-1e3).map((l) => {
+        const lines = fs__namespace.readFileSync(file, "utf-8").split("\n").filter(Boolean);
+        return lines.slice(-1e3).map((l) => {
           try {
             return JSON.parse(l);
           } catch {
@@ -424,7 +590,16 @@ const appRouter = t.router({
           let videoFile = path__namespace.join(folderPath, "video.mp4");
           if (!fs__namespace.existsSync(videoFile)) {
             const files = fs__namespace.readdirSync(folderPath, { withFileTypes: true });
-            const exts = ["mp4", "mkv", "ts", "mov", "avi", "webm", "flv", "m4v"];
+            const exts = [
+              "mp4",
+              "mkv",
+              "ts",
+              "mov",
+              "avi",
+              "webm",
+              "flv",
+              "m4v"
+            ];
             for (const f of files) {
               if (f.isFile()) {
                 const ext = path__namespace.extname(f.name).toLowerCase().slice(1);
@@ -437,12 +612,23 @@ const appRouter = t.router({
           }
           if (!fs__namespace.existsSync(videoFile)) continue;
           let videoSize = 0;
+          let videoMtime = 0;
           try {
-            videoSize = fs__namespace.statSync(videoFile).size;
+            const st = fs__namespace.statSync(videoFile);
+            videoSize = st.size;
+            videoMtime = st.mtimeMs;
           } catch {
           }
           let coverFile = void 0;
-          for (const ext of ["jpg", "jpeg", "png", "webp", "gif", "bmp", "avif"]) {
+          for (const ext of [
+            "jpg",
+            "jpeg",
+            "png",
+            "webp",
+            "gif",
+            "bmp",
+            "avif"
+          ]) {
             const c = path__namespace.join(folderPath, `cover.${ext}`);
             if (fs__namespace.existsSync(c)) {
               coverFile = c;
@@ -466,15 +652,23 @@ const appRouter = t.router({
             coverUrl: coverFile,
             previewUrl: previewFile,
             size: formatSize(videoSize),
-            createdAt: fs__namespace.statSync(folderPath).birthtime.getTime()
+            createdAt: videoMtime || fs__namespace.statSync(folderPath).birthtime.getTime()
           });
         }
       } catch {
       }
+      const logRow = (v) => console.log(
+        `  ${v.name.slice(0, 20)} createdAt=${v.createdAt} (${new Date(v.createdAt ?? 0).toLocaleString()})`
+      );
+      videos.slice(0, 5).forEach(logRow);
+      videos.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+      videos.slice(0, 5).forEach(logRow);
       return videos;
     }),
     // Delete local video folder
-    delete: t.procedure.input((input) => input).mutation(({ input }) => {
+    delete: t.procedure.input(
+      (input) => input
+    ).mutation(({ input }) => {
       const { folderPath, rootPath } = input;
       try {
         if (!fs__namespace.existsSync(folderPath)) {
@@ -485,14 +679,20 @@ const appRouter = t.router({
         const relative = path__namespace.relative(resolvedRoot, resolvedFolderPath);
         const isUnderRoot = relative !== "" && !relative.startsWith("..") && !path__namespace.isAbsolute(relative);
         if (!isUnderRoot) {
-          return { success: false, error: "Delete path is outside video root directory" };
+          return {
+            success: false,
+            error: "Delete path is outside video root directory"
+          };
         }
         if (path__namespace.dirname(resolvedFolderPath) !== resolvedRoot) {
-          return { success: false, error: "Only first-level child folders can be deleted" };
+          return {
+            success: false,
+            error: "Only first-level child folders can be deleted"
+          };
         }
         fs__namespace.rmSync(resolvedFolderPath, { recursive: true, force: true });
         console.log(`[videos.delete] deleted ${resolvedFolderPath}`);
-        return { success: true };
+        return { success: true, error: void 0 };
       } catch (err) {
         console.error(`[鍒犻櫎瑙嗛] 澶辫触: ${err.message}`);
         return { success: false, error: err.message };
@@ -502,26 +702,26 @@ const appRouter = t.router({
   // 绐楀彛鎺у埗
   window: t.router({
     minimize: t.procedure.mutation(() => {
-      mainWindow?.minimize();
+      mainWindow$1?.minimize();
       return { success: true };
     }),
     maximize: t.procedure.mutation(() => {
-      if (mainWindow?.isMaximized()) {
-        mainWindow.unmaximize();
+      if (mainWindow$1?.isMaximized()) {
+        mainWindow$1.unmaximize();
       } else {
-        mainWindow?.maximize();
+        mainWindow$1?.maximize();
       }
       return { success: true };
     }),
     close: t.procedure.mutation(() => {
-      mainWindow?.close();
+      mainWindow$1?.close();
       return { success: true };
     })
   }),
   // Folder dialog
   dialog: t.router({
     selectFolder: t.procedure.input((input) => input || {}).query(async ({ input }) => {
-      const result = await electron.dialog.showOpenDialog(mainWindow, {
+      const result = await electron.dialog.showOpenDialog(mainWindow$1, {
         properties: ["openDirectory"],
         defaultPath: input.currentPath || void 0
       });
@@ -531,14 +731,39 @@ const appRouter = t.router({
   // 鏂囦欢璺緞杞崲
   file: t.router({
     convertSrc: t.procedure.input((input) => input).query(({ input }) => {
-      if (!input || input.startsWith("http") || input.startsWith("local-media://")) return input;
+      if (!input || input.startsWith("http") || input.startsWith("local-media://"))
+        return input;
       const normalized = input.replace(/\\/g, "/");
-      const encoded = normalized.split("/").map((p) => encodeURIComponent(p)).join("/");
-      return `local-media:///${encoded}`;
+      const segments = normalized.split("/");
+      const encodedSegments = segments.map((seg, index) => {
+        if (index === 0 && /^[a-zA-Z]:$/.test(seg)) {
+          return seg;
+        }
+        return encodeURIComponent(seg);
+      });
+      return `local-media:///${encodedSegments.join("/")}`;
     })
   })
 });
-let mainWindow$1 = null;
+const MEDIA_MIME = {
+  ".mp4": "video/mp4",
+  ".m4v": "video/mp4",
+  ".webm": "video/webm",
+  ".mkv": "video/x-matroska",
+  ".mov": "video/quicktime",
+  ".avi": "video/x-msvideo",
+  ".ts": "video/mp2t",
+  ".flv": "video/x-flv",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".bmp": "image/bmp",
+  ".avif": "image/avif"
+};
+const guessMime = (p) => MEDIA_MIME[path.extname(p).toLowerCase()] || "application/octet-stream";
+let mainWindow = null;
 electron.protocol.registerSchemesAsPrivileged([
   {
     scheme: "cdn",
@@ -620,53 +845,69 @@ function setupCdnProxyProtocol() {
   });
   console.log("[CDN代理] 已启用 cdn:// 协议");
 }
-const MIME_BY_EXT = {
-  ".mp4": "video/mp4",
-  ".m4v": "video/mp4",
-  ".webm": "video/webm",
-  ".mov": "video/quicktime",
-  ".avi": "video/x-msvideo",
-  ".mkv": "video/x-matroska",
-  ".flv": "video/x-flv",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".png": "image/png",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".bmp": "image/bmp",
-  ".avif": "image/avif"
-};
 function setupLocalMediaProtocol() {
   electron.protocol.handle("local-media", async (request) => {
+    const url = request.url;
     try {
-      const requestUrl = new URL(request.url);
-      let filePath = decodeURIComponent(requestUrl.pathname || "");
-      if (process.platform === "win32" && /^\/[a-zA-Z]:\//.test(filePath)) {
-        filePath = filePath.slice(1);
+      const parsed = new URL(url);
+      const host = parsed.hostname;
+      let filePath;
+      if (host && /^[a-z]$/i.test(host)) {
+        filePath = `${host.toUpperCase()}:${decodeURIComponent(parsed.pathname)}`;
+      } else {
+        filePath = decodeURIComponent(parsed.pathname).replace(/^\//, "");
+      }
+      if (process.platform === "win32") {
+        filePath = filePath.replace(/\//g, "\\");
       }
       if (!filePath || !fs__namespace.existsSync(filePath)) {
         return new Response("File not found", { status: 404 });
       }
-      const ext = path.extname(filePath).toLowerCase();
-      if (!MIME_BY_EXT[ext]) {
-        return new Response("Unsupported media type", { status: 415 });
+      const stat = fs__namespace.statSync(filePath);
+      const total = stat.size;
+      const contentType = guessMime(filePath);
+      const rangeHeader = request.headers.get("range");
+      if (rangeHeader) {
+        const match = /bytes=(\d*)-(\d*)/.exec(rangeHeader);
+        if (match) {
+          const start = match[1] ? parseInt(match[1], 10) : 0;
+          const end = match[2] ? parseInt(match[2], 10) : total - 1;
+          if (start >= total || end >= total || start > end) {
+            return new Response("Range Not Satisfiable", {
+              status: 416,
+              headers: { "Content-Range": `bytes */${total}` }
+            });
+          }
+          const stream2 = fs__namespace.createReadStream(filePath, { start, end });
+          return new Response(stream.Readable.toWeb(stream2), {
+            status: 206,
+            headers: {
+              "Content-Type": contentType,
+              "Content-Length": String(end - start + 1),
+              "Content-Range": `bytes ${start}-${end}/${total}`,
+              "Accept-Ranges": "bytes"
+            }
+          });
+        }
       }
-      const content = await fs__namespace.promises.readFile(filePath);
-      return new Response(content, {
+      const stream$1 = fs__namespace.createReadStream(filePath);
+      return new Response(stream.Readable.toWeb(stream$1), {
         status: 200,
         headers: {
-          "Content-Type": MIME_BY_EXT[ext],
-          "Access-Control-Allow-Origin": "*",
-          "Cache-Control": "no-cache"
+          "Content-Type": contentType,
+          "Content-Length": String(total),
+          "Accept-Ranges": "bytes"
         }
       });
     } catch (err) {
-      return new Response(`Local media error: ${err?.message || "unknown error"}`, { status: 500 });
+      console.error(`[local-media] Error: ${err?.message}`);
+      return new Response(`Error: ${err?.message}`, { status: 500 });
     }
   });
+  console.log("[本地媒体] 已启用 local-media:// 协议");
 }
 function createWindow() {
-  mainWindow$1 = new electron.BrowserWindow({
+  mainWindow = new electron.BrowserWindow({
     width: 1280,
     height: 760,
     show: false,
@@ -680,26 +921,26 @@ function createWindow() {
       webSecurity: true
     }
   });
-  setMainWindow(mainWindow$1);
-  main.createIPCHandler({ router: appRouter, windows: [mainWindow$1] });
-  mainWindow$1.on("ready-to-show", () => {
-    mainWindow$1?.show();
-    mainWindow$1?.webContents.insertCSS(`
+  setMainWindow(mainWindow);
+  main.createIPCHandler({ router: appRouter, windows: [mainWindow] });
+  mainWindow.on("ready-to-show", () => {
+    mainWindow?.show();
+    mainWindow?.webContents.insertCSS(`
       * { outline: none !important; }
       *:focus { outline: none !important; box-shadow: none !important; border-color: transparent !important; }
       *:focus-visible { outline: none !important; box-shadow: none !important; border-color: transparent !important; }
     `);
   });
-  mainWindow$1.webContents.setWindowOpenHandler((details) => {
+  mainWindow.webContents.setWindowOpenHandler((details) => {
     electron.shell.openExternal(details.url);
     return { action: "deny" };
   });
   console.log("[主进程] ELECTRON_RENDERER_URL:", process.env["ELECTRON_RENDERER_URL"]);
   if (process.env["ELECTRON_RENDERER_URL"]) {
-    mainWindow$1.loadURL(process.env["ELECTRON_RENDERER_URL"]);
-    mainWindow$1.webContents.openDevTools();
+    mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+    mainWindow.webContents.openDevTools();
   } else {
-    mainWindow$1.loadFile(path.join(__dirname, "../renderer/index.html"));
+    mainWindow.loadFile(path.join(__dirname, "../renderer/index.html"));
   }
 }
 electron.app.whenReady().then(() => {

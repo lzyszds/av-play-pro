@@ -65,10 +65,12 @@ export function PlayerPage({
     url: "",
     resolution: "--",
     encryptionType: "--",
+    referer: "",
   });
 
   // HLS analyzer inputs
   const [analyzerUrl, setAnalyzerUrl] = useState("");
+  const [analyzerReferer, setAnalyzerReferer] = useState("");
   const [isParsing, setIsParsing] = useState(false);
   const [parsedData, setParsedData] = useState<any>(null);
   const [isAnalyzerCollapsed, setIsAnalyzerCollapsed] = useState(true);
@@ -520,6 +522,7 @@ export function PlayerPage({
             url: "",
             resolution: "",
             encryptionType: "",
+            referer: "",
           });
         }
         setDeleteTarget(null);
@@ -557,6 +560,7 @@ export function PlayerPage({
           url: videos[0].url,
           resolution: videos[0].resolution,
           encryptionType: videos[0].encryptionType || "未检测",
+          referer: "",
         });
 
         onAddSystemLog(
@@ -581,6 +585,7 @@ export function PlayerPage({
       url: video.url,
       resolution: video.resolution,
       encryptionType: video.encryptionType || "未检测",
+      referer: "",
     });
     onAddSystemLog(`正在播放本地视频: ${video.name}`, "SUCCESS");
   };
@@ -595,11 +600,21 @@ export function PlayerPage({
     onAddSystemLog(`正在解析 HLS 列表: ${raw}`, "INFO");
 
     // 走 cdn:// 代理（surrit/fourhoi 等域名需要 Referer，否则直接 fetch 会 403）
-    const toProxied = (u: string) =>
-      u
+    const toProxied = (u: string) => {
+      const proxied = u
         .replace(/^https?:\/\/(([\w-]+\.)*surrit\.com)/i, "cdn://$1")
         .replace(/^https?:\/\/(([\w-]+\.)*surrit\.org)/i, "cdn://$1")
         .replace(/^https?:\/\/(([\w-]+\.)*fourhoi\.com)/i, "cdn://$1");
+      const referer = analyzerReferer.trim();
+      if (!referer || !proxied.startsWith("cdn://")) return proxied;
+      try {
+        const parsed = new URL(proxied.replace(/^cdn:\/\//i, "https://"));
+        parsed.searchParams.set("__avp_referer", referer);
+        return `cdn://${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
+      } catch {
+        return proxied;
+      }
+    };
 
     const formatBps = (bps: number) => {
       if (!bps || !isFinite(bps)) return "—";
@@ -610,7 +625,10 @@ export function PlayerPage({
 
     try {
       const fetchUrl = toProxied(raw);
-      const resp = await fetch(fetchUrl);
+      const headers = analyzerReferer.trim()
+        ? { "x-avp-referer": analyzerReferer.trim() }
+        : undefined;
+      const resp = await fetch(fetchUrl, { headers });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const text = await resp.text();
       if (!text.includes("#EXTM3U")) throw new Error("响应不是有效的 m3u8");
@@ -682,6 +700,7 @@ export function PlayerPage({
       url: analyzerUrl,
       resolution: parsedData.tracks[0].resolution,
       encryptionType: parsedData.encryption,
+      referer: analyzerReferer.trim(),
     });
     onAddSystemLog(`已载入主播放器: ${parsedData.title}`, "SUCCESS");
   };
@@ -709,9 +728,10 @@ export function PlayerPage({
         <div className="relative flex flex-1 w-full bg-black rounded-xl overflow-hidden border border-slate-200/80 shadow-lg">
           {activeStream.url ? (
             <HlsVideoPlayer
-              key={activeStream.url}
+              key={`${activeStream.url}|${activeStream.referer}`}
               url={activeStream.url}
               autoPlay={!isFirstLoad.current}
+              referer={activeStream.referer}
               previewVttUrl={previewVttUrl}
               subtitleUrl={subtitleUrl}
               onMeta={handleMeta}
@@ -829,39 +849,48 @@ export function PlayerPage({
                 {/* —— 解析模式 —— */}
                 <form
                   onSubmit={handleParseM3u8List}
-                  className="flex gap-1.5 mb-2"
+                  className="space-y-1.5 mb-2"
                 >
-                  <div className="relative flex-1 min-w-0">
-                    <Radio className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-amber-500" />
-                    <input
-                      type="text"
-                      placeholder="粘贴 m3u8 地址..."
-                      value={analyzerUrl}
-                      onChange={(e) => setAnalyzerUrl(e.target.value)}
-                      autoFocus
-                      className="w-full bg-white border border-amber-200 text-slate-700 text-[11px] font-mono rounded-lg pl-7 pr-7 py-1.5 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
-                    />
-                    {analyzerUrl && (
-                      <button
-                        type="button"
-                        onClick={() => setAnalyzerUrl("")}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
+                  <div className="flex gap-1.5">
+                    <div className="relative flex-1 min-w-0">
+                      <Radio className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-amber-500" />
+                      <input
+                        type="text"
+                        placeholder="粘贴 m3u8 地址..."
+                        value={analyzerUrl}
+                        onChange={(e) => setAnalyzerUrl(e.target.value)}
+                        autoFocus
+                        className="w-full bg-white border border-amber-200 text-slate-700 text-[11px] font-mono rounded-lg pl-7 pr-7 py-1.5 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
+                      />
+                      {analyzerUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setAnalyzerUrl("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={isParsing}
+                      className="px-3 bg-slate-800 hover:bg-amber-500 text-white rounded-lg text-[10px] font-bold transition flex items-center justify-center cursor-pointer disabled:opacity-60"
+                    >
+                      {isParsing ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        "解析"
+                      )}
+                    </button>
                   </div>
-                  <button
-                    type="submit"
-                    disabled={isParsing}
-                    className="px-3 bg-slate-800 hover:bg-amber-500 text-white rounded-lg text-[10px] font-bold transition flex items-center justify-center cursor-pointer disabled:opacity-60"
-                  >
-                    {isParsing ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    ) : (
-                      "解析"
-                    )}
-                  </button>
+                  <input
+                    type="text"
+                    placeholder="Referer 页面 URL（403 时填影片页）"
+                    value={analyzerReferer}
+                    onChange={(e) => setAnalyzerReferer(e.target.value)}
+                    className="w-full bg-white border border-slate-200 text-slate-600 text-[10px] font-mono rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-100 transition"
+                  />
                 </form>
 
                 {/* 副行：未解析时显示提示；已解析时显示精简结果摘要 */}

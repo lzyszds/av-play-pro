@@ -6,6 +6,7 @@ import Plyr from "plyr";
 interface Props {
   url: string;
   autoPlay?: boolean;
+  referer?: string;
   previewVttUrl?: string | null;
   /** 字幕文件的 local-media://... URL（srt 或 vtt） */
   subtitleUrl?: string | null;
@@ -26,16 +27,25 @@ function srtToVtt(srt: string): string {
   return "WEBVTT\n\n" + body;
 }
 
-function toProxied(url: string) {
-  return url
+function toProxied(url: string, referer?: string) {
+  const proxied = url
     .replace(/^https?:\/\/(([\w-]+\.)*surrit\.com)/i, "cdn://$1")
     .replace(/^https?:\/\/(([\w-]+\.)*surrit\.org)/i, "cdn://$1")
     .replace(/^https?:\/\/(([\w-]+\.)*fourhoi\.com)/i, "cdn://$1");
+  if (!referer?.trim() || !proxied.startsWith("cdn://")) return proxied;
+  try {
+    const parsed = new URL(proxied.replace(/^cdn:\/\//i, "https://"));
+    parsed.searchParams.set("__avp_referer", referer.trim());
+    return `cdn://${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return proxied;
+  }
 }
 
 export const HlsVideoPlayer: React.FC<Props> = ({
   url,
   autoPlay = true,
+  referer,
   previewVttUrl,
   subtitleUrl,
   onMeta,
@@ -153,11 +163,11 @@ export const HlsVideoPlayer: React.FC<Props> = ({
         }
       });
 
-      hls.loadSource(toProxied(url));
+      hls.loadSource(toProxied(url, referer));
       hls.attachMedia(video);
     } else if (isHls && video.canPlayType("application/vnd.apple.mpegurl")) {
       // Safari 原生 HLS
-      video.src = toProxied(url);
+      video.src = toProxied(url, referer);
       video.addEventListener("loadedmetadata", tryPlay, { once: true });
     } else {
       // 本地 mp4

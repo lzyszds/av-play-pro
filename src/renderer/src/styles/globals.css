@@ -178,6 +178,83 @@ button:active:not(:disabled) {
   box-shadow: 0 8px 24px -8px rgb(15 23 42 / 0.18);
 }
 
+/* ==================================================================== */
+/*  抽奖弹窗动画                                                          */
+/* ==================================================================== */
+
+@keyframes lucky-shake {
+  0%, 100% { transform: translate(0,0) rotate(0deg); }
+  15%      { transform: translate(-6px, -2px) rotate(-4deg); }
+  30%      { transform: translate(6px, -2px) rotate(4deg); }
+  45%      { transform: translate(-5px, 2px) rotate(-3deg); }
+  60%      { transform: translate(5px, 2px) rotate(3deg); }
+  75%      { transform: translate(-3px, 0) rotate(-2deg); }
+}
+.lucky-shake { animation: lucky-shake 0.45s ease-in-out infinite; }
+
+@keyframes lucky-lid-fly {
+  0%   { transform: translate(0,0) rotate(0); opacity: 1; }
+  50%  { transform: translate(-30px,-180px) rotate(-35deg); opacity: 1; }
+  100% { transform: translate(-60px,-380px) rotate(-70deg); opacity: 0; }
+}
+.lucky-lid-fly { animation: lucky-lid-fly 0.9s cubic-bezier(0.22,1,0.36,1) forwards; }
+
+@keyframes lucky-box-fall {
+  0%   { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(60px); opacity: 0; }
+}
+.lucky-box-fall { animation: lucky-box-fall 0.6s ease-in 0.2s forwards; }
+
+@keyframes lucky-reveal {
+  0%   { opacity: 0; transform: scale(0.4) translateY(40px); filter: blur(8px); }
+  60%  { opacity: 1; transform: scale(1.05) translateY(-4px); filter: blur(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.lucky-reveal { animation: lucky-reveal 0.7s cubic-bezier(0.22,1,0.36,1) both; }
+
+@keyframes lucky-glow {
+  0%, 100% { box-shadow: 0 0 40px 10px rgba(251,191,36,0.55), 0 0 80px 20px rgba(244,114,182,0.35); }
+  50%      { box-shadow: 0 0 60px 18px rgba(251,191,36,0.75), 0 0 120px 30px rgba(244,114,182,0.5); }
+}
+.lucky-glow { animation: lucky-glow 1.6s ease-in-out infinite; }
+
+/* 礼花粒子：上升 + 飘落 + 旋转 */
+@keyframes confetti-burst-left {
+  0%   { transform: translate(0,0) rotate(0); opacity: 1; }
+  100% { transform: translate(var(--cx), var(--cy)) rotate(var(--cr)); opacity: 0; }
+}
+@keyframes confetti-burst-right {
+  0%   { transform: translate(0,0) rotate(0); opacity: 1; }
+  100% { transform: translate(var(--cx), var(--cy)) rotate(var(--cr)); opacity: 0; }
+}
+.confetti-piece {
+  position: absolute;
+  width: 10px;
+  height: 14px;
+  border-radius: 2px;
+  will-change: transform, opacity;
+}
+.confetti-piece.left  { animation: confetti-burst-left  var(--cd) cubic-bezier(0.15,0.7,0.3,1) var(--ck) infinite; }
+.confetti-piece.right { animation: confetti-burst-right var(--cd) cubic-bezier(0.15,0.7,0.3,1) var(--ck) infinite; }
+
+/* Logo 加载动画：竖条上下伸缩 */
+@keyframes logo-bar-pulse {
+  0%, 100% { transform: scaleY(0.35); }
+  50%      { transform: scaleY(1.15); }
+}
+
+/* 封面占位淡出 */
+@keyframes cover-placeholder-fade {
+  to { opacity: 0; }
+}
+
+/* 模式切换：左右滑入淡入 */
+@keyframes mode-swap-in {
+  from { opacity: 0; transform: translateX(8px); filter: blur(2px); }
+  to   { opacity: 1; transform: translateX(0); filter: blur(0); }
+}
+.anim-mode-swap { animation: mode-swap-in 0.28s cubic-bezier(0.22,1,0.36,1) both; }
+
 /* 尊重系统“减少动效”偏好 */
 @media (prefers-reduced-motion: reduce) {
   *,

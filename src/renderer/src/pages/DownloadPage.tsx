@@ -15,9 +15,7 @@ import {
   Copy,
   Check,
   Search,
-  Code,
   Settings,
-  Shield,
   X,
 } from "lucide-react";
 import { NewTaskModal } from "../components/download/NewTaskModal";
@@ -917,7 +915,7 @@ export function DownloadPage({
   return (
     <div className="h-full flex flex-col min-h-0">
       {/* ====== LEFT: Task List ====== */}
-      <div className="flex-1 overflow-y-auto p-6 min-h-50 bg-[#fffaf5] dark:bg-slate-950">
+      <div className="flex-1 overflow-y-scroll p-6 min-h-50 bg-[#fffaf5] dark:bg-slate-950">
         {/* Queue Control Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
@@ -1048,122 +1046,124 @@ export function DownloadPage({
       </div>
 
       {/* ====== 选中详情抽屉（可关闭） ====== */}
-      {detailOpen && selectedTask && (
-        <div className="h-52 bg-white dark:bg-slate-900 flex flex-col shrink-0 select-text border-t border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 anim-fade-in">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-              <Code className="w-3.5 h-3.5 text-sky-500" />
-              选中详情
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono ml-1">
-                {selectedTask.id}
-              </span>
-            </div>
-            <button
-              onClick={() => setDetailOpen(false)}
-              className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-              title="关闭"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
+      {detailOpen && selectedTask && (() => {
+        const sizeText =
+          selectedTask.totalSize > 0
+            ? `${formatBytes(selectedTask.downloadedSize)} / ${formatBytes(selectedTask.totalSize)}`
+            : selectedTask.fileSize > 0
+              ? formatBytes(selectedTask.fileSize)
+              : "—";
+        const segText =
+          selectedTask.downloadedSegments > 0 && selectedTask.totalSegments > 0
+            ? `${selectedTask.downloadedSegments} / ${selectedTask.totalSegments}`
+            : `${selectedTask.progress.toFixed(1)}%`;
+        const encText =
+          selectedTask.encryptionType === "NONE"
+            ? "未加密"
+            : selectedTask.encryptionType || "AES-128";
+
+        const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
+          <div className="flex flex-col gap-0.5 min-w-0">
+            <span className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-sans">
+              {label}
+            </span>
+            <span className="text-[12px] font-semibold text-slate-800 dark:text-slate-100 font-mono truncate">
+              {value}
+            </span>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
-              <div className="space-y-2">
-                <div>
-                  <span className="text-slate-400">视频名称: </span>
-                  <span className="font-bold">{selectedTask.name}</span>
+        );
+
+        return (
+          <div className="h-58 bg-white dark:bg-slate-900 flex flex-col shrink-0 select-text border-t border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 anim-fade-in">
+            {/* 头部 */}
+            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                  {selectedTask.name}
+                </span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono shrink-0">
+                  #{selectedTask.id.slice(0, 8)}
+                </span>
+              </div>
+              <button
+                onClick={() => setDetailOpen(false)}
+                className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                title="关闭"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* 内容 */}
+            <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-[1fr_1fr] gap-4">
+              {/* 左：元信息 */}
+              <div className="flex flex-col gap-3 min-w-0">
+                {/* 统计行 */}
+                <div className="grid grid-cols-3 gap-3 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                  <Stat label="格式" value={selectedTask.format} />
+                  <Stat label="质量" value={selectedTask.resolution || "1080p"} />
+                  <Stat label="加密" value={encText} />
+                  <Stat label="大小" value={sizeText} />
+                  <Stat label="片段" value={segText} />
+                  <Stat label="速度" value={formatSpeed(selectedTask.speed)} />
                 </div>
-                <div className="break-all">
-                  <span className="text-slate-400">HLS 地址: </span>
-                  <span className="text-amber-700 dark:text-amber-400 text-[11px] font-mono select-all">
-                    {selectedTask.url}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-[11px]">
-                  <div>
-                    <span className="text-slate-400">格式: </span>
-                    <span className="text-emerald-700 dark:text-emerald-400 font-bold">
-                      {selectedTask.format}
+
+                {/* 链接 / 路径 */}
+                <div className="space-y-1.5">
+                  <div className="flex items-start gap-2 text-[11px]">
+                    <span className="shrink-0 text-[9px] uppercase tracking-wider text-slate-400 mt-0.5 w-10">HLS</span>
+                    <span className="font-mono text-slate-700 dark:text-slate-300 break-all select-all leading-snug">
+                      {selectedTask.url}
                     </span>
                   </div>
-                  <div>
-                    <span className="text-slate-400">速度: </span>
-                    <span className="text-amber-700 dark:text-amber-400 font-bold">
-                      {formatSpeed(selectedTask.speed)}
+                  <div className="flex items-start gap-2 text-[11px]">
+                    <span className="shrink-0 text-[9px] uppercase tracking-wider text-slate-400 mt-0.5 w-10">DIR</span>
+                    <span className="font-mono text-slate-700 dark:text-slate-300 break-all select-all leading-snug">
+                      {selectedTask.savePath}
                     </span>
                   </div>
-                  <div>
-                    <span className="text-slate-400">大小: </span>
-                    <span className="text-amber-700 dark:text-amber-400 font-bold">
-                      {selectedTask.totalSize > 0
-                        ? `${formatBytes(selectedTask.downloadedSize)} / ${formatBytes(selectedTask.totalSize)}`
-                        : selectedTask.fileSize > 0
-                          ? formatBytes(selectedTask.fileSize)
-                          : "计算中..."}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">片段: </span>
-                    <span className="text-emerald-700 dark:text-emerald-400 font-bold">
-                      {selectedTask.downloadedSegments > 0 &&
-                      selectedTask.totalSegments > 0
-                        ? `${selectedTask.downloadedSegments} / ${selectedTask.totalSegments}`
-                        : `${selectedTask.progress.toFixed(1)}%`}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">加密: </span>
-                    <span className="text-purple-700 dark:text-purple-400 font-bold">
-                      {selectedTask.encryptionType === "NONE"
-                        ? "未加密"
-                        : selectedTask.encryptionType || "AES-128"}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400">质量: </span>
-                    <span className="text-sky-700 dark:text-sky-400 font-bold">
-                      {selectedTask.resolution || "1080p 自适应"}
-                    </span>
-                  </div>
-                </div>
-                <div>
-                  <span className="text-slate-400">保存目录: </span>
-                  <span className="text-[11px] font-mono select-all bg-slate-50 dark:bg-slate-800 p-1 px-2 rounded inline-block border border-slate-200 dark:border-slate-700">
-                    {selectedTask.savePath}
-                  </span>
                 </div>
               </div>
 
-              <div className="space-y-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-4 rounded-xl flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-sans font-bold text-[10px] flex items-center gap-1.5">
-                    <Shield className="w-3.5 h-3.5 text-amber-600" />
-                    N_m3u8DL-RE 运行命令封装
-                  </span>
+              {/* 右：终端命令 */}
+              <div className="flex flex-col min-w-0 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-[#0d1117]">
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-800/70 bg-[#161b22]">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-[#ff5f56]" />
+                    <span className="w-2 h-2 rounded-full bg-[#ffbd2e]" />
+                    <span className="w-2 h-2 rounded-full bg-[#27c93f]" />
+                    <span className="ml-2 text-[10px] font-mono text-slate-400">
+                      N_m3u8DL-RE
+                    </span>
+                  </div>
                   <button
                     onClick={handleCopySelectedCommand}
-                    className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-400 hover:text-amber-800 rounded-md border border-slate-200 dark:border-slate-700 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition font-sans text-[10px] cursor-pointer"
+                    className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-slate-300 hover:text-white hover:bg-white/10 rounded transition cursor-pointer"
                     title="复制终端命令"
                   >
                     {copiedTaskCmd ? (
                       <>
-                        <Check className="w-3 h-3 text-emerald-400" /> 已复制!
+                        <Check className="w-3 h-3 text-emerald-400" />
+                        已复制
                       </>
                     ) : (
                       <>
-                        <Copy className="w-3 h-3" /> 复制
+                        <Copy className="w-3 h-3" />
+                        复制
                       </>
                     )}
                   </button>
                 </div>
-                <div className="bg-white dark:bg-slate-900 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] font-mono text-amber-700 dark:text-amber-400 select-all break-all overflow-y-auto max-h-[70px]">
+                <div className="flex-1 overflow-y-auto px-3 py-2 text-[11px] font-mono text-slate-200 leading-relaxed select-all break-all">
+                  <span className="text-emerald-400">$</span>{" "}
                   {generateN3u8DLCommand(selectedTask)}
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ====== Modals ====== */}
       {showNewTaskModal && (

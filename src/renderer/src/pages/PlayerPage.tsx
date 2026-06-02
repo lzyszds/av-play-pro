@@ -4,14 +4,31 @@
  */
 
 import { useVirtualizer } from "@tanstack/react-virtual";
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import Hls from "hls.js";
-//@ts-ignore
-import Plyr from "plyr";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { trpc } from "../lib/trpc";
 import { LocalVideoCard } from "../components/player/LocalVideoCard";
+import { LuckyDraw } from "../components/player/LuckyDraw";
+import { HlsVideoPlayer } from "../components/player/HlsVideoPlayer";
 import type { PlayerPageProps, VideoItem } from "./player/types";
-import { Play, FileVideo, Radio, RefreshCw, ChevronDown, Search, X, Trash2, Download, Database } from "lucide-react";
+import {
+  Play,
+  FileVideo,
+  Radio,
+  RefreshCw,
+  ChevronDown,
+  Search,
+  X,
+  Trash2,
+  Download,
+  Database,
+  Gift,
+} from "lucide-react";
 import {
   deriveFolderFromUrl,
   pathToLocalMediaUrl,
@@ -30,12 +47,10 @@ export function PlayerPage({
   pendingPlayName,
   onConsumePendingPlay,
 }: PlayerPageProps) {
-  // Plyr 播放器实例
-  const plyrRef = useRef<Plyr | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  // HLS 实例
-  const hlsRef = useRef<Hls | null>(null);
+  // 当前激活的 <video> 元素（由 HlsVideoPlayer 通过 onVideoEl 回调暴露给统计逻辑）
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+  // 当前缩略图 VTT 路径（异步解析后再传给播放器）
+  const [previewVttUrl, setPreviewVttUrl] = useState<string | null>(null);
 
   // 当前播放流信息
   const [activeStream, setActiveStream] = useState({
@@ -54,6 +69,9 @@ export function PlayerPage({
   // 删除确认弹窗
   const [deleteTarget, setDeleteTarget] = useState<VideoItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // 抽奖弹窗
+  const [luckyOpen, setLuckyOpen] = useState(false);
 
   // 本地视频列表
   const [localVideos, setLocalVideos] = useState<VideoItem[]>([]);
@@ -98,140 +116,34 @@ export function PlayerPage({
     [onAddSystemLog],
   );
 
-  const applyPreviewThumbnails = useCallback(
-    (src: string | null) => {
-      const player = plyrRef.current as any;
-      if (!player?.setPreviewThumbnails) return;
-      try {
-        player.setPreviewThumbnails(
-          src ? { enabled: true, src } : { enabled: false },
-        );
-      } catch (err: any) {
-        onAddSystemLog(`进度条缩略图启用失败: ${err?.message || err}`, "WARNING");
-      }
-    },
-    [onAddSystemLog],
-  );
-
-  // 加载视频源（HLS 或本地文件）
-  const loadSource = useCallback((
-    url: string,
-    autoPlay: boolean,
-    previewVttUrl?: string | null,
-  ) => {
-    const videoEl = videoRef.current;
-    if (!videoEl || !url) return;
-
-    // 清理之前的 HLS 实例
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-
-    const isHls = url.includes(".m3u8");
-
-    if (isHls && Hls.isSupported()) {
-      // 将 CDN URL 转换为自定义协议
-      const proxyUrl = url
-        .replace("https://surrit.com", "cdn://surrit.com")
-        .replace("https://surrit.org", "cdn://surrit.org");
-
-      const hls = new Hls({
-        //@ts-ignore
-        urlRewrite: (segUrl: string) => {
-          if (segUrl.includes("surrit.com") || segUrl.includes("surrit.org")) {
-            return segUrl
-              .replace("https://surrit.com", "cdn://surrit.com")
-              .replace("https://surrit.org", "cdn://surrit.org");
-          }
-          return segUrl;
-        },
-      });
-
-      hls.loadSource(proxyUrl);
-      hls.attachMedia(videoEl);
-
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        console.log("[HLS] m3u8 清单解析完成");
-        if (autoPlay) {
-          plyrRef.current?.play();
-        }
-      });
-
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        console.error("[HLS] 错误:", data);
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              console.error("[HLS] 网络错误，尝试恢复...");
-              hls.startLoad();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              console.error("[HLS] 媒体错误，尝试恢复...");
-              hls.recoverMediaError();
-              break;
-            default:
-              console.error("[HLS] 致命错误，无法恢复");
-              hls.destroy();
-              break;
-          }
-        }
-      });
-
-      hlsRef.current = hls;
-    } else if (isHls && videoEl.canPlayType("application/vnd.apple.mpegurl")) {
-      // Safari 原生 HLS
-      videoEl.src = url;
-    } else {
-      // 本地 mp4 文件
-      videoEl.src = url;
-    }
-
-    // 更新 Plyr 源
-    if (plyrRef.current) {
-      plyrRef.current.source = {
-        type: "video",
-        sources: [
-          {
-            src: url,
-            type: isHls ? "application/x-mpegURL" : "video/mp4",
-          },
-        ],
-        ...(previewVttUrl
-          ? {
-              previewThumbnails: { enabled: true, src: previewVttUrl },
-            }
-          : { previewThumbnails: { enabled: false } }),
-      };
-      applyPreviewThumbnails(previewVttUrl || null);
-    }
-  }, [applyPreviewThumbnails]);
-
-  // 当 activeStream.url 变化时:先检查缩略图是否已存在,再加载源
+  // 当 activeStream.url 变化时:解析缩略图（VTT 路径），HlsVideoPlayer 会基于 key 重挂载并自行加载源
   useEffect(() => {
-    if (!activeStream.url) return;
+    if (!activeStream.url) {
+      setPreviewVttUrl(null);
+      return;
+    }
     let cancelled = false;
+    setPreviewVttUrl(null);
 
     (async () => {
       const folder = deriveFolderFromUrl(activeStream.url);
-      let previewVttUrl: string | null = null;
+      let vtt: string | null = null;
 
       if (folder) {
         try {
           const r = await trpc.videos.hasThumbs.query({ folder });
           if (cancelled) return;
-          if (r.exists) previewVttUrl = pathToLocalMediaUrl(r.vttPath);
+          if (r.exists) vtt = pathToLocalMediaUrl(r.vttPath);
         } catch {
           /* ignore */
         }
       }
 
-      const autoPlay = !isFirstLoad.current;
+      if (!cancelled) setPreviewVttUrl(vtt);
       isFirstLoad.current = false;
-      loadSource(activeStream.url, autoPlay, previewVttUrl);
 
       // 没有缓存:后台异步生成,完成下次播放生效
-      if (!previewVttUrl && folder && !activeStream.url.includes(".m3u8")) {
+      if (!vtt && folder && !activeStream.url.includes(".m3u8")) {
         const name = activeStream.name;
         onAddSystemLog(`开始生成缩略图: ${name}`, "INFO");
         generateAndSaveThumbnails({
@@ -251,7 +163,9 @@ export function PlayerPage({
               `缩略图已生成: ${name} (${r.count} 帧, ${r.spriteSizeKB} KB)`,
               "SUCCESS",
             );
-            applyPreviewThumbnails(pathToLocalMediaUrl(`${folder}\\thumbs.vtt`));
+            if (!cancelled) {
+              setPreviewVttUrl(pathToLocalMediaUrl(`${folder}\\thumbs.vtt`));
+            }
           })
           .catch((err) =>
             onAddSystemLog(
@@ -269,7 +183,7 @@ export function PlayerPage({
   }, [activeStream.url]);
 
   useEffect(() => {
-    const el = videoRef.current;
+    const el = videoEl;
     if (!el || !activeStream.url) return;
 
     const folder = activeStream.name || "未知视频";
@@ -284,7 +198,10 @@ export function PlayerPage({
       void trpc.stats.recordWatch
         .mutate({ folder, series, sec })
         .catch((err: any) => {
-          onAddSystemLog(`观看时长统计写入失败: ${err?.message || err}`, "WARNING");
+          onAddSystemLog(
+            `观看时长统计写入失败: ${err?.message || err}`,
+            "WARNING",
+          );
         });
     };
 
@@ -340,23 +257,14 @@ export function PlayerPage({
     };
   }, [activeStream.name, activeStream.url, onAddSystemLog, recordPlayStats]);
 
-  // 监听 <video> loadedmetadata，用真实像素覆盖 "local" 等占位文本
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    const update = () => {
-      const w = el.videoWidth;
-      const h = el.videoHeight;
-      if (w > 0 && h > 0) {
-        setActiveStream((s) => ({ ...s, resolution: `${w}×${h}` }));
-      }
-    };
-    el.addEventListener("loadedmetadata", update);
-    el.addEventListener("resize", update);
-    return () => {
-      el.removeEventListener("loadedmetadata", update);
-      el.removeEventListener("resize", update);
-    };
+  // HlsVideoPlayer 通过 onMeta 上报真实像素
+  const handleMeta = useCallback((info: { width: number; height: number }) => {
+    if (info.width > 0 && info.height > 0) {
+      setActiveStream((s) => ({
+        ...s,
+        resolution: `${info.width}×${info.height}`,
+      }));
+    }
   }, []);
 
   // 「立即查看」：等本地视频列表加载完毕后,按 name 匹配并自动播放
@@ -406,36 +314,45 @@ export function PlayerPage({
 
   // 修复封面：为没有封面的视频从 CDN 下载封面和预览
   const handleFixCovers = async () => {
-    const videosWithoutCover = localVideos.filter((v) => !v.coverUrl)
+    const videosWithoutCover = localVideos.filter((v) => !v.coverUrl);
     if (videosWithoutCover.length === 0) {
-      onAddSystemLog('所有视频都已有封面，无需修复。', 'INFO')
-      return
+      onAddSystemLog("所有视频都已有封面，无需修复。", "INFO");
+      return;
     }
-    onAddSystemLog(`开始修复封面，共 ${videosWithoutCover.length} 个视频需要处理...`, 'INFO')
-    let fixed = 0
+    onAddSystemLog(
+      `开始修复封面，共 ${videosWithoutCover.length} 个视频需要处理...`,
+      "INFO",
+    );
+    let fixed = 0;
     for (const video of videosWithoutCover) {
-      const codeMatch = video.name.match(/[A-Z]{2,6}-\d{3,5}/i)
-      if (!codeMatch) continue
-      const code = codeMatch[0].toLowerCase()
+      const codeMatch = video.name.match(/[A-Z]{2,6}-\d{3,5}/i);
+      if (!codeMatch) continue;
+      const code = codeMatch[0].toLowerCase();
       // 从视频 url 提取其所在文件夹路径（url 段经过 encodeURIComponent，需先解码）
-      const normalized = decodeURIComponent(video.url.replace(/^(file|local-media):\/\/\//, '')).replace(/\//g, '\\')
-      const lastSlash = normalized.lastIndexOf('\\')
-      const folderPath = lastSlash > 0 ? normalized.substring(0, lastSlash) : normalized
+      const normalized = decodeURIComponent(
+        video.url.replace(/^(file|local-media):\/\/\//, ""),
+      ).replace(/\//g, "\\");
+      const lastSlash = normalized.lastIndexOf("\\");
+      const folderPath =
+        lastSlash > 0 ? normalized.substring(0, lastSlash) : normalized;
       try {
         await trpc.download.downloadCoverPreview.mutate({
           id: code.toUpperCase(),
           name: video.name,
           saveDir: folderPath,
-        })
-        fixed++
-        onAddSystemLog(`封面已修复: ${video.name}`, 'SUCCESS')
+        });
+        fixed++;
+        onAddSystemLog(`封面已修复: ${video.name}`, "SUCCESS");
       } catch (err) {
-        onAddSystemLog(`修复封面失败: ${video.name}`, 'ERROR')
+        onAddSystemLog(`修复封面失败: ${video.name}`, "ERROR");
       }
     }
-    onAddSystemLog(`封面修复完成，成功处理 ${fixed}/${videosWithoutCover.length} 个视频。`, 'SUCCESS')
-    await refreshVideoList()
-  }
+    onAddSystemLog(
+      `封面修复完成，成功处理 ${fixed}/${videosWithoutCover.length} 个视频。`,
+      "SUCCESS",
+    );
+    await refreshVideoList();
+  };
 
   // 回填 meta.json（旧视频）。按住 Shift 点击 = 强制覆盖重写
   const [isBackfilling, setIsBackfilling] = useState(false);
@@ -487,45 +404,55 @@ export function PlayerPage({
 
   // 删除视频
   const handleDeleteVideo = async () => {
-    if (!deleteTarget) return
-    setIsDeleting(true)
+    if (!deleteTarget) return;
+    setIsDeleting(true);
     try {
       // 从 url 提取文件夹路径: file:///M:/video/videos/xxx/video.mp4 -> M:\video\videos\xxx
-      const urlPath = deleteTarget.url
-      const normalized = decodeURIComponent(urlPath.replace(/^(file|local-media):\/\/\//, '')).replace(/\//g, '\\')
+      const urlPath = deleteTarget.url;
+      const normalized = decodeURIComponent(
+        urlPath.replace(/^(file|local-media):\/\/\//, ""),
+      ).replace(/\//g, "\\");
       // 取最后一个 \ 之前的部分作为文件夹路径
-      const lastSlash = normalized.lastIndexOf('\\')
-      const folderPath = lastSlash > 0 ? normalized.substring(0, lastSlash) : normalized
+      const lastSlash = normalized.lastIndexOf("\\");
+      const folderPath =
+        lastSlash > 0 ? normalized.substring(0, lastSlash) : normalized;
 
       const result = await trpc.videos.delete.mutate({
         folderPath,
         rootPath: videoPath,
-      })
+      });
       if (result.success) {
-        onAddSystemLog(`已删除视频: ${deleteTarget.name}`, 'SUCCESS')
+        onAddSystemLog(`已删除视频: ${deleteTarget.name}`, "SUCCESS");
         // 如果删除的是当前播放的视频，清空播放器
-        if (selectedVideoIndex !== null && localVideos[selectedVideoIndex]?.id === deleteTarget.id) {
-          setSelectedVideoIndex(null)
-          setActiveStream({ name: '未选择视频', url: '', resolution: '', encryptionType: '' })
+        if (
+          selectedVideoIndex !== null &&
+          localVideos[selectedVideoIndex]?.id === deleteTarget.id
+        ) {
+          setSelectedVideoIndex(null);
+          setActiveStream({
+            name: "未选择视频",
+            url: "",
+            resolution: "",
+            encryptionType: "",
+          });
         }
-        setDeleteTarget(null)
-        await refreshVideoList()
+        setDeleteTarget(null);
+        await refreshVideoList();
       } else {
-        onAddSystemLog(`删除失败: ${result.error}`, 'ERROR')
+        onAddSystemLog(`删除失败: ${result.error}`, "ERROR");
       }
     } catch (err: any) {
-      onAddSystemLog(`删除失败: ${err?.message || err}`, 'ERROR')
+      onAddSystemLog(`删除失败: ${err?.message || err}`, "ERROR");
     } finally {
-      setIsDeleting(false)
+      setIsDeleting(false);
     }
-  }
+  };
 
   const refreshVideoList = async () => {
     setIsLoadingVideos(true);
     try {
       const rawVideos = await trpc.videos.list.query({ path: videoPath });
-      console.log(rawVideos);
-      
+
       // 转换所有本地路径为 file:// 协议
       const videos: VideoItem[] = rawVideos.map((v: any) => ({
         ...v,
@@ -572,29 +499,94 @@ export function PlayerPage({
     onAddSystemLog(`正在播放本地视频: ${video.name}`, "SUCCESS");
   };
 
-  const handleParseM3u8List = (e: React.FormEvent) => {
+  const handleParseM3u8List = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!analyzerUrl.trim()) return;
+    const raw = analyzerUrl.trim();
+    if (!raw) return;
 
     setIsParsing(true);
-    onAddSystemLog(`正在解析 HLS 列表: ${analyzerUrl}`, "INFO");
+    setParsedData(null);
+    onAddSystemLog(`正在解析 HLS 列表: ${raw}`, "INFO");
 
-    setTimeout(() => {
-      const mockResult = {
+    // 走 cdn:// 代理（surrit/fourhoi 等域名需要 Referer，否则直接 fetch 会 403）
+    const toProxied = (u: string) =>
+      u
+        .replace(/^https?:\/\/(([\w-]+\.)*surrit\.com)/i, "cdn://$1")
+        .replace(/^https?:\/\/(([\w-]+\.)*surrit\.org)/i, "cdn://$1")
+        .replace(/^https?:\/\/(([\w-]+\.)*fourhoi\.com)/i, "cdn://$1");
+
+    const formatBps = (bps: number) => {
+      if (!bps || !isFinite(bps)) return "—";
+      if (bps >= 1_000_000) return `${(bps / 1_000_000).toFixed(2)} Mbps`;
+      if (bps >= 1_000) return `${(bps / 1_000).toFixed(1)} Kbps`;
+      return `${bps} bps`;
+    };
+
+    try {
+      const fetchUrl = toProxied(raw);
+      const resp = await fetch(fetchUrl);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const text = await resp.text();
+      if (!text.includes("#EXTM3U")) throw new Error("响应不是有效的 m3u8");
+
+      const lines = text.split(/\r?\n/);
+      const isMaster = lines.some((l) => l.startsWith("#EXT-X-STREAM-INF"));
+
+      const title = raw.split("/").slice(-2).join("/");
+      let encryption = "未加密";
+      const keyLine = lines.find((l) => l.startsWith("#EXT-X-KEY"));
+      if (keyLine) {
+        const method = keyLine.match(/METHOD=([A-Z0-9-]+)/i)?.[1];
+        if (method && method !== "NONE") encryption = method;
+      }
+
+      let tracks: { resolution: string; bandwidth: string }[] = [];
+      let segmentsCount = 0;
+
+      if (isMaster) {
+        for (let i = 0; i < lines.length; i++) {
+          const l = lines[i];
+          if (l.startsWith("#EXT-X-STREAM-INF")) {
+            const bw = parseInt(l.match(/BANDWIDTH=(\d+)/)?.[1] || "0", 10);
+            const res = l.match(/RESOLUTION=([\dx]+)/)?.[1] || "—";
+            tracks.push({ resolution: res, bandwidth: formatBps(bw) });
+          }
+        }
+        tracks.sort((a, b) => {
+          const ay = parseInt(a.resolution.split("x")[1] || "0", 10);
+          const by = parseInt(b.resolution.split("x")[1] || "0", 10);
+          return by - ay;
+        });
+      } else {
+        segmentsCount = lines.filter((l) => l.startsWith("#EXTINF")).length;
+        // 媒体清单本身只代表一条轨道，尝试从路径推分辨率
+        const resHint = raw.match(/(\d{3,4})p/i)?.[1];
+        tracks = [
+          {
+            resolution: resHint ? `${resHint}p` : "—",
+            bandwidth: `${segmentsCount} 段`,
+          },
+        ];
+      }
+
+      setParsedData({
         success: true,
-        title: "解析成功: " + analyzerUrl.split("/").pop(),
-        encryption: "AES-128 (CBC)",
-        segmentsCount: 1240,
-        tracks: [
-          { resolution: "1920x1080", bandwidth: "4.5 Mbps" },
-          { resolution: "1280x720", bandwidth: "2.1 Mbps" },
-          { resolution: "854x480", bandwidth: "1.0 Mbps" },
-        ],
-      };
-      setParsedData(mockResult);
+        title,
+        encryption,
+        segmentsCount,
+        tracks,
+        isMaster,
+      });
+      onAddSystemLog(
+        `HLS 解析完成: ${isMaster ? "主清单" : "媒体清单"} · ${tracks.length} 轨道${segmentsCount ? ` · ${segmentsCount} 段` : ""}`,
+        "SUCCESS",
+      );
+    } catch (err: any) {
+      onAddSystemLog(`HLS 解析失败: ${err?.message || err}`, "ERROR");
+      setParsedData(null);
+    } finally {
       setIsParsing(false);
-      onAddSystemLog("HLS 深度解析完成，已提取所有媒体轨道。", "SUCCESS");
-    }, 1500);
+    }
   };
 
   const handleLoadParsedStream = () => {
@@ -629,95 +621,156 @@ export function PlayerPage({
 
         {/* PLYR VIDEO PLAYER */}
         <div className="relative flex flex-1 w-full bg-black rounded-xl overflow-hidden border border-slate-200/80 shadow-lg">
-          <video
-            ref={(el) => {
-              videoRef.current = el;
-              if (el && !plyrRef.current) {
-                // ref callback 中初始化 Plyr，确保 DOM 已存在
-                console.log("[Video Ref] 初始化 Plyr");
-                const plyr = new Plyr(el, {
-                  // 指向 public/plyr.svg（同源），避免 Plyr 默认从 cdn.plyr.io 在线拉取被 CORS 拦截
-                  iconUrl: "./plyr.svg",
-                  controls: [
-                    "play-large",
-                    "play",
-                    "progress",
-                    "current-time",
-                    "duration",
-                    "mute",
-                    "volume",
-                    "settings",
-                    "pip",
-                    "airplay",
-                    "fullscreen",
-                  ],
-                  i18n: {
-                    play: "播放",
-                    pause: "暂停",
-                    mute: "静音",
-                    unmute: "取消静音",
-                    volume: "音量",
-                    settings: "设置",
-                    pip: "画中画",
-                    airplay: "AirPlay",
-                    fullscreen: "全屏",
-                    exitFullscreen: "退出全屏",
-                    current: "当前时间",
-                    duration: "总时长",
-                  },
-                  settings: ["speed"],
-                  speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
-                  tooltips: { controls: true, seek: true },
-                  keyboard: { focused: true, global: true },
-                  // 缩略图在加载具体视频源时按需注入，避免空 src 触发 Plyr 异常。
-                  previewThumbnails: { enabled: false },
-                });
-                plyrRef.current = plyr;
-                console.log("[Video Ref] Plyr 初始化成功");
-              }
-            }}
-            className="w-full h-full object-contain"
-            playsInline
-          />
+          {activeStream.url ? (
+            <HlsVideoPlayer
+              key={activeStream.url}
+              url={activeStream.url}
+              autoPlay={!isFirstLoad.current}
+              previewVttUrl={previewVttUrl}
+              onMeta={handleMeta}
+              onVideoEl={setVideoEl}
+              onLog={onAddSystemLog}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-slate-600 text-xs">
+              等待选择视频...
+            </div>
+          )}
         </div>
       </div>
 
       {/* RIGHT SIDEBAR: M3U8 LIST & PARSING UTILITIES */}
       <div className="w-85 border-l border-slate-200 bg-[#fffaf5] flex flex-col shrink-0 h-full max-h-full overflow-hidden select-none text-xs font-sans">
-        {/* PARSING INTERFACE PANEL */}
-        <div className="p-4 border-b border-slate-200 shrink-0">
-          <h4
-            className="font-bold text-slate-800 tracking-wider flex items-center justify-between cursor-pointer hover:text-amber-600 transition"
+        {/* ========== 顶部固定区：折叠头 + 两行可切换槽位 ========== */}
+        <div className="shrink-0 border-b border-slate-200">
+          {/* 折叠头（常驻） */}
+          <button
             onClick={() => setIsAnalyzerCollapsed(!isAnalyzerCollapsed)}
+            className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-amber-50/40 transition cursor-pointer"
           >
-            <span className="flex items-center gap-1.5">
-              <Radio className="w-3.5 h-3.5 text-amber-500" />
-              列表深度解析
+            <span className="flex items-center gap-2 text-[11px] font-bold text-slate-700">
+              <Radio
+                className={`w-3.5 h-3.5 transition-colors ${isAnalyzerCollapsed ? "text-slate-400" : "text-amber-500"}`}
+              />
+              HLS 深度解析
+              {!isAnalyzerCollapsed && (
+                <span className="text-[9px] font-normal text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                  ON
+                </span>
+              )}
             </span>
             <ChevronDown
-              className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isAnalyzerCollapsed ? "" : "rotate-180"}`}
+              className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-300 ${isAnalyzerCollapsed ? "" : "rotate-180"}`}
             />
-          </h4>
+          </button>
 
-          {!isAnalyzerCollapsed && (
-            <div className="mt-3 space-y-3">
-              <p className="text-[10px] text-slate-400 leading-normal">
-                粘贴任何 m3u8 地址，提取其内置嵌套码率流与加密密钥证书状态。
-              </p>
-
-              <form onSubmit={handleParseM3u8List} className="space-y-2">
-                <div className="flex gap-1.5 focus-within:border-amber-500/50">
+          {/* 槽位容器：两行（输入栏 + 副行），根据状态切换内容 */}
+          <div
+            key={isAnalyzerCollapsed ? "search" : "analyze"}
+            className="px-4 pb-3 anim-mode-swap"
+          >
+            {isAnalyzerCollapsed ? (
+              <>
+                {/* —— 搜索模式 —— */}
+                <div className="relative mb-2">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="https://.../video.m3u8"
-                    value={analyzerUrl}
-                    onChange={(e) => setAnalyzerUrl(e.target.value)}
-                    className="flex-1 bg-white border border-slate-200 text-slate-700 text-xs font-mono rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-amber-500"
+                    placeholder={`搜索 ${localVideos.length} 个视频...`}
+                    value={videoSearchQuery}
+                    onChange={(e) => setVideoSearchQuery(e.target.value)}
+                    className="w-full bg-white border border-slate-200 text-slate-700 text-[11px] rounded-lg pl-7 pr-7 py-1.5 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
                   />
+                  {videoSearchQuery && (
+                    <button
+                      onClick={() => setVideoSearchQuery("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => {
+                      if (localVideos.length === 0) {
+                        onAddSystemLog("本地库为空，无法抽奖", "WARNING");
+                        return;
+                      }
+                      setLuckyOpen(true);
+                    }}
+                    className="flex-1 h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-gradient-to-br from-pink-500 to-amber-500 text-white text-[10px] font-bold cursor-pointer hover:opacity-90 transition shadow-sm"
+                    title="随机抽奖"
+                  >
+                    <Gift className="w-3 h-3" />
+                    抽奖
+                  </button>
+                  <button
+                    onClick={handleFixCovers}
+                    className="flex-1 h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition"
+                    title="为没有封面的视频从 CDN 下载封面"
+                  >
+                    <Download className="w-3 h-3" />
+                    封面
+                  </button>
+                  <button
+                    onClick={handleBackfillMeta}
+                    disabled={isBackfilling}
+                    className="flex-1 h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition disabled:opacity-60 disabled:cursor-not-allowed"
+                    title="回填元数据：扫描目录生成 meta.json (Shift+点击 强制覆盖)"
+                  >
+                    {isBackfilling ? (
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Database className="w-3 h-3" />
+                    )}
+                    元数据
+                  </button>
+                  <button
+                    onClick={refreshVideoList}
+                    disabled={isLoadingVideos}
+                    className="flex-1 h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition disabled:opacity-60"
+                    title="刷新视频列表"
+                  >
+                    <RefreshCw
+                      className={`w-3 h-3 ${isLoadingVideos ? "animate-spin" : ""}`}
+                    />
+                    刷新
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {/* —— 解析模式 —— */}
+                <form
+                  onSubmit={handleParseM3u8List}
+                  className="flex gap-1.5 mb-2"
+                >
+                  <div className="relative flex-1 min-w-0">
+                    <Radio className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-amber-500" />
+                    <input
+                      type="text"
+                      placeholder="粘贴 m3u8 地址..."
+                      value={analyzerUrl}
+                      onChange={(e) => setAnalyzerUrl(e.target.value)}
+                      autoFocus
+                      className="w-full bg-white border border-amber-200 text-slate-700 text-[11px] font-mono rounded-lg pl-7 pr-7 py-1.5 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 transition"
+                    />
+                    {analyzerUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setAnalyzerUrl("")}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                   <button
                     type="submit"
-                    className="px-3 bg-slate-100 text-slate-600 hover:bg-amber-500 hover:text-white border border-slate-200 hover:border-amber-500 rounded-lg font-bold transition flex items-center justify-center cursor-pointer"
                     disabled={isParsing}
+                    className="px-3 bg-slate-800 hover:bg-amber-500 text-white rounded-lg text-[10px] font-bold transition flex items-center justify-center cursor-pointer disabled:opacity-60"
                   >
                     {isParsing ? (
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -725,110 +778,41 @@ export function PlayerPage({
                       "解析"
                     )}
                   </button>
-                </div>
-              </form>
+                </form>
 
-              {/* PARSED DATA DETAILS VIEW */}
-              {parsedData && parsedData.success && (
-                <div className="p-3.5 bg-amber-50 border border-amber-100 rounded-xl space-y-2 select-text text-[10px] shadow-sm">
-                  <div className="font-bold text-slate-800">
-                    标题:{" "}
-                    <span className="text-amber-700 font-sans">
-                      {parsedData.title}
-                    </span>
+                {/* 副行：未解析时显示提示；已解析时显示精简结果摘要 */}
+                {!parsedData ? (
+                  <div className="h-7 px-2.5 rounded-md bg-amber-50/60 border border-dashed border-amber-200 flex items-center gap-1.5 text-[10px] text-amber-700/80">
+                    <Radio className="w-3 h-3 shrink-0" />
+                    <span className="truncate">等待解析 · 回车提交</span>
                   </div>
-                  <div className="flex justify-between text-slate-500">
-                    <span>
-                      加密:{" "}
-                      <b className="text-purple-700 font-mono">
-                        {parsedData.encryption}
-                      </b>
+                ) : (
+                  <div className="h-7 px-2.5 rounded-md bg-white border border-slate-200 flex items-center justify-between text-[10px] anim-fade-in">
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                      <span className="font-bold text-slate-700 truncate">
+                        {parsedData.title}
+                      </span>
+                      <span className="text-slate-500">
+                        {parsedData.segmentsCount} 片段
+                      </span>
                     </span>
-                    <span>
-                      片段数:{" "}
-                      <b className="text-emerald-700 font-mono">
-                        {parsedData.segmentsCount}个
-                      </b>
-                    </span>
+                    <button
+                      onClick={handleLoadParsedStream}
+                      className="shrink-0 ml-2 flex items-center gap-1 px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-600 text-white font-bold cursor-pointer transition"
+                    >
+                      <Play className="w-2.5 h-2.5 fill-current" />
+                      推入
+                    </button>
                   </div>
-                  <div className="h-px bg-amber-100 my-1"></div>
-
-                  <div className="space-y-1">
-                    <span className="text-slate-400 font-semibold block text-[9px]">
-                      检测到的流码率质量:
-                    </span>
-                    {parsedData.tracks.map((track: any, i: number) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between font-mono py-0.5 border-b border-amber-100 last:border-b-0 text-[9px] text-slate-600"
-                      >
-                        <span className="text-slate-700 font-bold">
-                          {track.resolution}
-                        </span>
-                        <span className="text-amber-700">
-                          {track.bandwidth}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <button
-                    onClick={handleLoadParsedStream}
-                    className="w-full mt-2.5 py-2 bg-amber-500 hover:bg-amber-600 font-bold text-white rounded-lg transition text-center flex items-center justify-center gap-1 cursor-pointer text-[10px] shadow-sm"
-                  >
-                    <Play className="w-3 h-3 fill-current" />
-                    推入主播放源
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+                )}
+              </>
+            )}
+          </div>
         </div>
 
-        {/* LOCAL VIDEO LIST */}
-        <div className="flex-1 flex flex-col min-h-0 bg-transparent p-4 text-xs">
-          <div className="flex items-center gap-2 mb-3 border-b border-slate-200 pb-2 font-sans">
-            <div className="relative flex-1">
-              <Search className="absolute left-2.5 top-[7.5px] w-3 h-3 text-black" />
-              <input
-                type="text"
-                placeholder="搜索番号或名称..."
-                value={videoSearchQuery}
-                onChange={(e) => setVideoSearchQuery(e.target.value)}
-                className="w-full bg-white border border-slate-200 text-slate-700 text-[10px] rounded-lg pl-7 pr-2.5 py-1.5 focus:outline-none focus:border-amber-500 transition"
-              />
-              {videoSearchQuery && (
-                <button
-                  onClick={() => setVideoSearchQuery("")}
-                  className="absolute right-2 top-[7.5px] text-slate-400 hover:text-slate-600 cursor-pointer"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-            <button
-              onClick={handleFixCovers}
-              className="shrink-0 px-2 py-1.5 bg-amber-500 text-white hover:bg-amber-600 border border-amber-200 rounded-lg text-[10px] font-bold transition cursor-pointer flex items-center gap-1"
-              title="为没有封面的视频从CDN下载封面和预览"
-            >
-              <Download className="w-3 h-3" />
-              修复封面
-            </button>
-            <button
-              onClick={handleBackfillMeta}
-              disabled={isBackfilling}
-              className="shrink-0 px-2 py-1.5 bg-white text-amber-700 hover:bg-amber-50 border border-amber-200 rounded-lg text-[10px] font-bold transition cursor-pointer flex items-center gap-1 disabled:opacity-60 disabled:cursor-not-allowed"
-              title="扫描视频目录，为缺少 meta.json 的文件夹生成元数据&#10;按住 Shift 点击 = 强制覆盖所有已存在的 meta.json"
-            >
-              {isBackfilling ? (
-                <RefreshCw className="w-3 h-3 animate-spin" />
-              ) : (
-                <Database className="w-3 h-3" />
-              )}
-              {isBackfilling ? "扫描中" : "回填元数据"}
-            </button>
-          </div>
-
+        {/* ========== 本地视频列表 ========== */}
+        <div className="flex-1 flex flex-col min-h-0 bg-transparent px-4 pt-3 pb-4 text-xs">
           {/* VIDEO CARDS LIST - 虚拟滚动 */}
           <div
             ref={listScrollRef}
@@ -860,7 +844,9 @@ export function PlayerPage({
                       <LocalVideoCard
                         video={video}
                         isActive={selectedVideoIndex === virtualRow.index}
-                        onPlay={() => handleLoadLocalVideo(video, virtualRow.index)}
+                        onPlay={() =>
+                          handleLoadLocalVideo(video, virtualRow.index)
+                        }
                         onDelete={() => setDeleteTarget(video)}
                         index={virtualRow.index}
                       />
@@ -886,6 +872,18 @@ export function PlayerPage({
         </div>
       </div>
 
+      {/* 抽奖弹窗 */}
+      {luckyOpen && (
+        <LuckyDraw
+          videos={localVideos}
+          onClose={() => setLuckyOpen(false)}
+          onPlay={(v) => {
+            const idx = localVideos.findIndex((x) => x.id === v.id);
+            if (idx >= 0) handleLoadLocalVideo(v, idx);
+          }}
+        />
+      )}
+
       {/* 删除确认弹窗 */}
       {deleteTarget && (
         <div
@@ -901,18 +899,40 @@ export function PlayerPage({
               </div>
               <div>
                 <h3 className="font-bold text-slate-800 text-sm">确认删除</h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">此操作不可撤销，将永久删除视频文件夹及其所有文件。</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  此操作不可撤销，将永久删除视频文件夹及其所有文件。
+                </p>
               </div>
             </div>
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-              <p className="text-xs text-slate-700 font-medium truncate">{deleteTarget.name}</p>
-              {deleteTarget.size && <p className="text-[10px] text-slate-400 mt-0.5">大小: {deleteTarget.size}</p>}
+              <p className="text-xs text-slate-700 font-medium truncate">
+                {deleteTarget.name}
+              </p>
+              {deleteTarget.size && (
+                <p className="text-[10px] text-slate-400 mt-0.5">
+                  大小: {deleteTarget.size}
+                </p>
+              )}
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setDeleteTarget(null)} className="flex-1 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer" disabled={isDeleting}>取消</button>
-              <button onClick={handleDeleteVideo} className="flex-1 py-2 text-xs font-bold text-white bg-red-500 hover:bg-red-600 rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5" disabled={isDeleting}>
-                {isDeleting ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
-                {isDeleting ? '删除中...' : '确认删除'}
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+                disabled={isDeleting}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleDeleteVideo}
+                className="flex-1 py-2 text-xs font-bold text-white bg-red-500 hover:bg-red-600 rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5"
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <RefreshCw className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3 h-3" />
+                )}
+                {isDeleting ? "删除中..." : "确认删除"}
               </button>
             </div>
           </div>

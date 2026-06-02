@@ -1,6 +1,7 @@
 import React, { useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import type { VideoItem } from "../../pages/player/types";
+import { CoverImage } from "../CoverImage";
 
 export const LocalVideoCard: React.FC<{
   video: VideoItem;
@@ -46,14 +47,7 @@ export const LocalVideoCard: React.FC<{
           #{index + 1}
         </span>
 
-        {video.coverUrl && (
-          <img
-            src={video.coverUrl}
-            alt={video.name}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        )}
+        <CoverImage src={video.coverUrl} alt={video.name} logoSize={48} />
 
         {/* HOVER PREVIEW OVERLAY */}
         {hovered && video.previewUrl && (

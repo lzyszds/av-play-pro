@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
-import { Play, Pause, Trash2, Copy, Check, Film } from "lucide-react";
+import { Play, Pause, Trash2, Copy, Check } from "lucide-react";
+import { CoverImage } from "../CoverImage";
 import type { DownloadTask } from "../../pages/download/types";
 import {
   formatBytes,
@@ -47,22 +48,12 @@ export function TaskCard({
     >
       {/* Cover / Preview */}
       <div className="relative aspect-video w-full overflow-hidden bg-slate-900">
-        {coverUrl ? (
-          <img
-            src={coverUrl}
-            alt={task.name}
-            loading="lazy"
-            className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-            onError={(e) => {
-              // 加载失败时隐藏图片，显示占位符
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
-            <Film className="w-10 h-10 text-slate-600" />
-          </div>
-        )}
+        <CoverImage
+          src={coverUrl}
+          alt={task.name}
+          logoSize={56}
+          className="transition-transform duration-300 group-hover:scale-105"
+        />
 
         <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
         <div className="absolute top-2 left-2 z-10">

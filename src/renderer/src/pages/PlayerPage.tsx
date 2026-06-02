@@ -15,6 +15,7 @@ import { trpc } from "../lib/trpc";
 import { LocalVideoCard } from "../components/player/LocalVideoCard";
 import { LuckyDraw } from "../components/player/LuckyDraw";
 import { HlsVideoPlayer } from "../components/player/HlsVideoPlayer";
+import { WhisperPanel } from "../components/whisper/WhisperPanel";
 import type { PlayerPageProps, VideoItem } from "./player/types";
 import {
   Play,
@@ -26,8 +27,8 @@ import {
   X,
   Trash2,
   Download,
-  Database,
   Gift,
+  Captions,
 } from "lucide-react";
 import {
   deriveFolderFromUrl,
@@ -41,6 +42,10 @@ function inferSeriesName(name: string): string {
   return code.replace("-", "").replace(/\d+$/, "").toUpperCase() || "未分类";
 }
 
+function toSubtitleMediaUrl(srtPath: string): string {
+  return `${pathToLocalMediaUrl(srtPath)}?t=${Date.now()}`;
+}
+
 export function PlayerPage({
   videoPath,
   onAddSystemLog,
@@ -51,6 +56,8 @@ export function PlayerPage({
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   // 当前缩略图 VTT 路径（异步解析后再传给播放器）
   const [previewVttUrl, setPreviewVttUrl] = useState<string | null>(null);
+  // 当前字幕 URL（whisper 生成的 video.srt 自动加载）
+  const [subtitleUrl, setSubtitleUrl] = useState<string | null>(null);
 
   // 当前播放流信息
   const [activeStream, setActiveStream] = useState({
@@ -72,6 +79,8 @@ export function PlayerPage({
 
   // 抽奖弹窗
   const [luckyOpen, setLuckyOpen] = useState(false);
+  // Whisper 字幕面板
+  const [whisperOpen, setWhisperOpen] = useState(false);
 
   // 本地视频列表
   const [localVideos, setLocalVideos] = useState<VideoItem[]>([]);
@@ -88,6 +97,28 @@ export function PlayerPage({
     null,
   );
 
+  // 当前选中视频的本地文件真实路径（解开 local-media:///）— 供 Whisper 等模块用
+  const currentVideoPath = useMemo(() => {
+    if (selectedVideoIndex == null) return null;
+    const v = filteredVideos[selectedVideoIndex];
+    if (!v?.url) return null;
+    try {
+      const decoded = decodeURIComponent(
+        v.url.replace(/^(file|local-media):\/\/\//, ""),
+      );
+      return decoded.replace(/\//g, "\\");
+    } catch {
+      return null;
+    }
+  }, [filteredVideos, selectedVideoIndex]);
+  const currentVideoName = useMemo(
+    () =>
+      selectedVideoIndex != null
+        ? filteredVideos[selectedVideoIndex]?.name ?? null
+        : null,
+    [filteredVideos, selectedVideoIndex],
+  );
+
   // 虚拟滚动
   const listScrollRef = useRef<HTMLDivElement | null>(null);
   const rowVirtualizer = useVirtualizer({
@@ -102,6 +133,7 @@ export function PlayerPage({
   const statsPlayedUrlRef = useRef("");
   const pendingWatchSecRef = useRef(0);
   const lastWatchTickRef = useRef<number | null>(null);
+  const handledSubtitleJobIdsRef = useRef<Set<string>>(new Set());
 
   const recordPlayStats = useCallback(
     (folder: string, url: string) => {
@@ -116,14 +148,41 @@ export function PlayerPage({
     [onAddSystemLog],
   );
 
+  const refreshSubtitleForActiveStream = useCallback(async () => {
+    if (!activeStream.url) {
+      setSubtitleUrl(null);
+      return;
+    }
+    const folder = deriveFolderFromUrl(activeStream.url);
+    if (!folder) {
+      setSubtitleUrl(null);
+      return;
+    }
+    try {
+      const sr = await trpc.whisper.hasSubtitle.query({ folder });
+      if (sr.exists && sr.srtPath) {
+        setSubtitleUrl(toSubtitleMediaUrl(sr.srtPath));
+      } else {
+        setSubtitleUrl(null);
+      }
+    } catch (err: any) {
+      onAddSystemLog(
+        `字幕检测失败: ${err?.message || err}`,
+        "WARNING",
+      );
+    }
+  }, [activeStream.url, onAddSystemLog]);
+
   // 当 activeStream.url 变化时:解析缩略图（VTT 路径），HlsVideoPlayer 会基于 key 重挂载并自行加载源
   useEffect(() => {
     if (!activeStream.url) {
       setPreviewVttUrl(null);
+      setSubtitleUrl(null);
       return;
     }
     let cancelled = false;
     setPreviewVttUrl(null);
+    setSubtitleUrl(null);
 
     (async () => {
       const folder = deriveFolderFromUrl(activeStream.url);
@@ -134,6 +193,15 @@ export function PlayerPage({
           const r = await trpc.videos.hasThumbs.query({ folder });
           if (cancelled) return;
           if (r.exists) vtt = pathToLocalMediaUrl(r.vttPath);
+        } catch {
+          /* ignore */
+        }
+        // 字幕检测
+        try {
+          const sr = await trpc.whisper.hasSubtitle.query({ folder });
+          if (!cancelled && sr.exists && sr.srtPath) {
+            setSubtitleUrl(toSubtitleMediaUrl(sr.srtPath));
+          }
         } catch {
           /* ignore */
         }
@@ -181,6 +249,23 @@ export function PlayerPage({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStream.url]);
+
+  useEffect(() => {
+    const off = (window as any).electronAPI?.whisper?.onJobUpdate?.(
+      (jobs: any[]) => {
+        const hasNewFinishedSubtitle = jobs.some((job) => {
+          if (job.status !== "done" || !job.srtPath || !job.id) return false;
+          if (handledSubtitleJobIdsRef.current.has(job.id)) return false;
+          handledSubtitleJobIdsRef.current.add(job.id);
+          return true;
+        });
+        if (hasNewFinishedSubtitle) {
+          void refreshSubtitleForActiveStream();
+        }
+      },
+    );
+    return () => off?.();
+  }, [refreshSubtitleForActiveStream]);
 
   useEffect(() => {
     const el = videoEl;
@@ -382,7 +467,7 @@ export function PlayerPage({
         );
         if (!overwrite && r.skipped === r.scanned && r.scanned > 0) {
           onAddSystemLog(
-            "所有文件夹都已存在 meta.json,未做改动。如需重新生成请按住 Shift 再点击「回填元数据」。",
+            "所有文件夹都已存在 meta.json,未做改动。如需重新生成请按住 Shift 再点击「刷新」。",
             "WARNING",
           );
         }
@@ -398,6 +483,7 @@ export function PlayerPage({
     } catch (err: any) {
       onAddSystemLog(`回填异常: ${err?.message || err}`, "ERROR");
     } finally {
+      await refreshVideoList();
       setIsBackfilling(false);
     }
   };
@@ -627,6 +713,7 @@ export function PlayerPage({
               url={activeStream.url}
               autoPlay={!isFirstLoad.current}
               previewVttUrl={previewVttUrl}
+              subtitleUrl={subtitleUrl}
               onMeta={handleMeta}
               onVideoEl={setVideoEl}
               onLog={onAddSystemLog}
@@ -716,27 +803,24 @@ export function PlayerPage({
                   </button>
                   <button
                     onClick={handleBackfillMeta}
-                    disabled={isBackfilling}
+                    disabled={isBackfilling || isLoadingVideos}
                     className="flex-1 h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition disabled:opacity-60 disabled:cursor-not-allowed"
-                    title="回填元数据：扫描目录生成 meta.json (Shift+点击 强制覆盖)"
-                  >
-                    {isBackfilling ? (
-                      <RefreshCw className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Database className="w-3 h-3" />
-                    )}
-                    元数据
-                  </button>
-                  <button
-                    onClick={refreshVideoList}
-                    disabled={isLoadingVideos}
-                    className="flex-1 h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition disabled:opacity-60"
-                    title="刷新视频列表"
+                    title="刷新视频列表并回填元数据 (Shift+点击 强制覆盖)"
                   >
                     <RefreshCw
-                      className={`w-3 h-3 ${isLoadingVideos ? "animate-spin" : ""}`}
+                      className={`w-3 h-3 ${
+                        isBackfilling || isLoadingVideos ? "animate-spin" : ""
+                      }`}
                     />
                     刷新
+                  </button>
+                  <button
+                    onClick={() => setWhisperOpen(true)}
+                    className="flex-1 h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition"
+                    title="AI 字幕（Whisper 离线转写）"
+                  >
+                    <Captions className="w-3 h-3" />
+                    字幕
                   </button>
                 </div>
               </>
@@ -881,6 +965,15 @@ export function PlayerPage({
             const idx = localVideos.findIndex((x) => x.id === v.id);
             if (idx >= 0) handleLoadLocalVideo(v, idx);
           }}
+        />
+      )}
+
+      {/* Whisper 字幕面板 */}
+      {whisperOpen && (
+        <WhisperPanel
+          currentVideoPath={currentVideoPath}
+          currentVideoName={currentVideoName}
+          onClose={() => setWhisperOpen(false)}
         />
       )}
 

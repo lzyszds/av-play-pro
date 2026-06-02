@@ -1,4 +1,4 @@
-import { app, Notification } from "electron";
+import { app, Notification, shell } from "electron";
 import * as path from "path";
 import * as fs from "fs";
 import { t } from "../trpc";
@@ -56,6 +56,14 @@ export const systemRouter = t.router({
       } catch {
         return { free: -1, total: -1 };
       }
+    }),
+
+  // 在系统资源管理器中打开路径
+  openPath: t.procedure
+    .input((input: unknown) => input as { path: string })
+    .mutation(async ({ input }) => {
+      const err = await shell.openPath(input.path);
+      return { success: !err, error: err || undefined };
     }),
 
   // 任务栏进度条（Win/Mac dock）

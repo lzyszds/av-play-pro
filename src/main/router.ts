@@ -10,6 +10,7 @@ import { loggerRouter } from "./routers/loggerRouter";
 import { systemRouter } from "./routers/systemRouter";
 import { metaRouter } from "./routers/metaRouter";
 import { statsRouter } from "./routers/statsRouter";
+import { whisperRouter } from "./routers/whisperRouter";
 
 export const appRouter = t.router({
   download: downloadRouter,
@@ -23,6 +24,7 @@ export const appRouter = t.router({
   system: systemRouter,
   meta: metaRouter,
   stats: statsRouter,
+  whisper: whisperRouter,
 });
 
 export type AppRouter = typeof appRouter;

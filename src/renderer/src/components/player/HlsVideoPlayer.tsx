@@ -7,10 +7,23 @@ interface Props {
   url: string;
   autoPlay?: boolean;
   previewVttUrl?: string | null;
+  /** 字幕文件的 local-media://... URL（srt 或 vtt） */
+  subtitleUrl?: string | null;
   onMeta?: (info: { width: number; height: number }) => void;
   /** 透传到 <video> 上的事件，外层挂播放/暂停统计 */
   onVideoEl?: (el: HTMLVideoElement) => void;
   onLog?: (msg: string, level: "INFO" | "WARNING" | "SUCCESS" | "ERROR") => void;
+}
+
+// 把 SRT 文本转 WebVTT：替换 "," → "."，前面加 "WEBVTT\n\n"
+function srtToVtt(srt: string): string {
+  const body = srt
+    .replace(/\r+/g, "")
+    .replace(
+      /(\d{2}:\d{2}:\d{2}),(\d{3})/g,
+      (_m, t, ms) => `${t}.${ms}`,
+    );
+  return "WEBVTT\n\n" + body;
 }
 
 function toProxied(url: string) {
@@ -24,6 +37,7 @@ export const HlsVideoPlayer: React.FC<Props> = ({
   url,
   autoPlay = true,
   previewVttUrl,
+  subtitleUrl,
   onMeta,
   onVideoEl,
   onLog,
@@ -31,6 +45,7 @@ export const HlsVideoPlayer: React.FC<Props> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const plyrRef = useRef<Plyr | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const subtitleBlobRef = useRef<string | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -40,6 +55,7 @@ export const HlsVideoPlayer: React.FC<Props> = ({
     const video = document.createElement("video");
     video.className = "w-full h-full object-contain";
     video.playsInline = true;
+
     container.appendChild(video);
 
     onVideoEl?.(video);
@@ -55,6 +71,7 @@ export const HlsVideoPlayer: React.FC<Props> = ({
         "duration",
         "mute",
         "volume",
+        "captions",
         "settings",
         "pip",
         "airplay",
@@ -67,6 +84,9 @@ export const HlsVideoPlayer: React.FC<Props> = ({
         unmute: "取消静音",
         volume: "音量",
         settings: "设置",
+        captions: "字幕",
+        enableCaptions: "开启字幕",
+        disableCaptions: "关闭字幕",
         pip: "画中画",
         airplay: "AirPlay",
         fullscreen: "全屏",
@@ -74,7 +94,8 @@ export const HlsVideoPlayer: React.FC<Props> = ({
         current: "当前时间",
         duration: "总时长",
       },
-      settings: ["speed"],
+      settings: ["captions", "speed"],
+      captions: { active: true, language: "auto", update: true },
       speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
       tooltips: { controls: true, seek: true },
       keyboard: { focused: true, global: true },
@@ -173,9 +194,96 @@ export const HlsVideoPlayer: React.FC<Props> = ({
       } catch {
         /* ignore */
       }
+      if (subtitleBlobRef.current) {
+        try {
+          URL.revokeObjectURL(subtitleBlobRef.current);
+        } catch {
+          /* ignore */
+        }
+        subtitleBlobRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const video = container?.querySelector("video");
+    if (!video) return;
+
+    for (const track of Array.from(
+      video.querySelectorAll("track[data-ai-subtitle='true']"),
+    )) {
+      track.remove();
+    }
+    if (subtitleBlobRef.current) {
+      try {
+        URL.revokeObjectURL(subtitleBlobRef.current);
+      } catch {
+        /* ignore */
+      }
+      subtitleBlobRef.current = null;
+    }
+    if (!subtitleUrl) return;
+
+    let cancelled = false;
+    let track: HTMLTrackElement | null = null;
+    let objectUrl: string | null = null;
+
+    (async () => {
+      try {
+        let trackSrc = subtitleUrl;
+        if (/\.srt(\?|$)/i.test(subtitleUrl)) {
+          const resp = await fetch(subtitleUrl);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          const srt = await resp.text();
+          const vtt = srtToVtt(srt);
+          const blob = new Blob([vtt], { type: "text/vtt" });
+          objectUrl = URL.createObjectURL(blob);
+          trackSrc = objectUrl;
+        }
+        if (cancelled) {
+          if (objectUrl) URL.revokeObjectURL(objectUrl);
+          return;
+        }
+
+        track = document.createElement("track");
+        track.dataset.aiSubtitle = "true";
+        track.kind = "subtitles";
+        track.label = "AI 字幕";
+        track.srclang = "auto";
+        track.src = trackSrc;
+        track.default = true;
+        video.appendChild(track);
+        if (objectUrl) subtitleBlobRef.current = objectUrl;
+
+        const showTrack = () => {
+          const textTrack = track?.track;
+          if (textTrack) textTrack.mode = "showing";
+        };
+        track.addEventListener("load", showTrack, { once: true });
+        setTimeout(showTrack, 100);
+      } catch (err) {
+        onLog?.(
+          `[Subtitle] 字幕加载失败: ${(err as Error).message}`,
+          "WARNING",
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      track?.remove();
+      if (objectUrl) {
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch {
+          /* ignore */
+        }
+      }
+      if (subtitleBlobRef.current === objectUrl) subtitleBlobRef.current = null;
+    };
+  }, [subtitleUrl, onLog]);
 
   return (
     <div ref={containerRef} className="w-full h-full flex bg-black" />

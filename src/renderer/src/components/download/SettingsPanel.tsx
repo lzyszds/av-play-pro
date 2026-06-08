@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   X,
   Folder,
@@ -13,10 +13,39 @@ import { trpc } from "../../lib/trpc";
 import type {
   AppSettings,
   CloseAction,
+  DownloadBackground,
+  LoaderStyle,
   ThemeMode,
 } from "../../pages/download/types";
+import { CoverLoader } from "../CoverLoader";
 
 type TabKey = "storage" | "network" | "appearance";
+const DOWNLOAD_BACKGROUNDS: DownloadBackground[] = [
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+];
+const LOADER_STYLES: Array<{ v: LoaderStyle; l: string }> = [
+  { v: "eq", l: "均衡器" },
+  { v: "vinyl", l: "黑胶" },
+  { v: "wave", l: "声波" },
+  { v: "radar", l: "雷达" },
+  { v: "prism", l: "棱镜" },
+  { v: "matrix", l: "矩阵" },
+  { v: "orbit", l: "星轨" },
+  { v: "pulse", l: "脉冲" },
+  { v: "scan", l: "扫描" },
+];
+
+function normalizeLoaderStyle(value: unknown): LoaderStyle {
+  return LOADER_STYLES.some((item) => item.v === value)
+    ? (value as LoaderStyle)
+    : "eq";
+}
 
 export interface SettingsPanelProps {
   settings: AppSettings;
@@ -49,6 +78,29 @@ export function SettingsPanel({
     settings.notifyOnComplete,
   );
   const [notifySound, setNotifySound] = useState(settings.notifySound);
+  const [loaderStyle, setLoaderStyle] = useState<LoaderStyle>(
+    normalizeLoaderStyle(settings.loaderStyle),
+  );
+  const [downloadBackground, setDownloadBackground] =
+    useState<DownloadBackground>(settings.downloadBackground ?? "1");
+  const [privacyScreenEnabled, setPrivacyScreenEnabled] = useState(
+    settings.privacyScreenEnabled ?? true,
+  );
+  const [privacyScreenIdleSeconds, setPrivacyScreenIdleSeconds] = useState(
+    settings.privacyScreenIdleSeconds ?? 60,
+  );
+  const [privacyScreenOnBlur, setPrivacyScreenOnBlur] = useState(
+    settings.privacyScreenOnBlur ?? true,
+  );
+  const [privacyScreenBlur, setPrivacyScreenBlur] = useState(
+    settings.privacyScreenBlur ?? 8,
+  );
+  const [privacyScreenImageOpacity, setPrivacyScreenImageOpacity] = useState(
+    settings.privacyScreenImageOpacity ?? 42,
+  );
+  const [privacyScreenChangeSeconds, setPrivacyScreenChangeSeconds] = useState(
+    settings.privacyScreenChangeSeconds ?? 10,
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,6 +114,14 @@ export function SettingsPanel({
       closeAction,
       notifyOnComplete,
       notifySound,
+      loaderStyle,
+      downloadBackground,
+      privacyScreenEnabled,
+      privacyScreenIdleSeconds,
+      privacyScreenOnBlur,
+      privacyScreenBlur,
+      privacyScreenImageOpacity,
+      privacyScreenChangeSeconds,
     });
     onAddSystemLog("Electron 核心: 系统配置已更新。", "SUCCESS");
   };
@@ -375,6 +435,107 @@ export function SettingsPanel({
 
                 <div className="space-y-2">
                   <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+                    隐私屏保
+                  </label>
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80 rounded-xl">
+                    <div>
+                      <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        自动遮挡下载内容
+                      </div>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                        空闲或窗口失焦时使用屏保遮住任务名、封面和路径
+                      </p>
+                    </div>
+                    <Toggle
+                      on={privacyScreenEnabled}
+                      onToggle={() =>
+                        setPrivacyScreenEnabled(!privacyScreenEnabled)
+                      }
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 gap-2">
+                    {DOWNLOAD_BACKGROUNDS.map((bg) => (
+                      <button
+                        key={bg}
+                        type="button"
+                        onClick={() => setDownloadBackground(bg)}
+                        className={`relative aspect-video overflow-hidden rounded-lg border transition cursor-pointer ${
+                          downloadBackground === bg
+                            ? "border-amber-500/50 ring-2 ring-amber-500/30"
+                            : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
+                        }`}
+                        title={`背景 ${bg}`}
+                      >
+                        <img
+                          src={`./${bg}.webp`}
+                          alt={`背景 ${bg}`}
+                          className="h-full w-full object-cover"
+                        />
+                        <span
+                          className={`absolute left-1.5 top-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-mono text-white backdrop-blur-sm ${
+                            downloadBackground === bg ? "bg-amber-500/90" : ""
+                          }`}
+                        >
+                          {bg}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="space-y-2 pt-2">
+                    <NumberControl
+                      label="空闲触发"
+                      value={privacyScreenIdleSeconds}
+                      min={5}
+                      max={300}
+                      step={5}
+                      suffix="s"
+                      onChange={setPrivacyScreenIdleSeconds}
+                    />
+                    <NumberControl
+                      label="模糊强度"
+                      value={privacyScreenBlur}
+                      min={0}
+                      max={32}
+                      step={1}
+                      suffix="px"
+                      onChange={setPrivacyScreenBlur}
+                    />
+                    <NumberControl
+                      label="图片透明度"
+                      value={privacyScreenImageOpacity}
+                      min={0}
+                      max={100}
+                      step={1}
+                      suffix="%"
+                      onChange={setPrivacyScreenImageOpacity}
+                    />
+                    <NumberControl
+                      label="切图间隔"
+                      value={privacyScreenChangeSeconds}
+                      min={3}
+                      max={60}
+                      step={1}
+                      suffix="s"
+                      onChange={setPrivacyScreenChangeSeconds}
+                    />
+                  </div>
+                  <div className="grid grid-cols-[1fr_auto] gap-3">
+                    <div className="flex min-w-38 items-center justify-between gap-3 rounded-lg border border-slate-200/70 dark:border-slate-800 bg-white/75 dark:bg-slate-900/75 px-3 py-2">
+                      <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400">
+                        失焦触发
+                      </span>
+                      <Toggle
+                        on={privacyScreenOnBlur}
+                        onToggle={() =>
+                          setPrivacyScreenOnBlur(!privacyScreenOnBlur)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
                     关闭主窗口行为
                   </label>
                   <div className="grid grid-cols-3 gap-2">
@@ -392,6 +553,39 @@ export function SettingsPanel({
                         className={segBtnClass(closeAction === v)}
                       >
                         {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+                    封面加载动画
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {LOADER_STYLES.map(({ v, l }) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setLoaderStyle(v)}
+                        className={`relative overflow-hidden rounded-lg border transition cursor-pointer ${
+                          loaderStyle === v
+                            ? "border-amber-500/40 ring-1 ring-amber-500/30"
+                            : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
+                        }`}
+                      >
+                        <div className="relative w-full h-16 bg-slate-900">
+                          <CoverLoader variant={v} />
+                        </div>
+                        <div
+                          className={`px-2 py-1 text-[10px] font-bold text-center ${
+                            loaderStyle === v
+                              ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                              : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400"
+                          }`}
+                        >
+                          {l}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -489,6 +683,86 @@ function PathInput({
           className="px-3 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition cursor-pointer flex items-center justify-center"
         >
           <Folder className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function NumberControl({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  suffix,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  suffix: string;
+  onChange: (value: number) => void;
+}) {
+  const clamp = (next: number) => Math.min(max, Math.max(min, next));
+  const [draftValue, setDraftValue] = useState(value);
+
+  useEffect(() => {
+    setDraftValue(value);
+  }, [value]);
+
+  const safeValue = clamp(draftValue);
+  const commit = (next: number) => {
+    const clamped = clamp(next);
+    setDraftValue(clamped);
+    onChange(clamped);
+  };
+  const commitDraft = () => commit(safeValue);
+
+  return (
+    <div className="rounded-lg border border-slate-200/70 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 px-3 py-2.5">
+      <div className="grid grid-cols-[84px_32px_1fr_32px] items-center gap-2">
+        <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+          {label}
+        </span>
+        <button
+          type="button"
+          onClick={() => commit(safeValue - step)}
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold text-slate-600 dark:text-slate-300 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-500/10 transition"
+          aria-label={`${label} 减少`}
+        >
+          -
+        </button>
+        <div className="relative">
+          <input
+            type="number"
+            min={min}
+            max={max}
+            step={step}
+            value={safeValue}
+            onChange={(e) => setDraftValue(clamp(Number(e.target.value || min)))}
+            onBlur={commitDraft}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                commitDraft();
+                e.currentTarget.blur();
+              }
+            }}
+            className="h-8 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 pr-9 text-center font-mono text-[12px] font-semibold text-slate-700 dark:text-slate-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
+          />
+          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">
+            {suffix}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => commit(safeValue + step)}
+          className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-bold text-slate-600 dark:text-slate-300 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700 dark:hover:bg-amber-500/10 transition"
+          aria-label={`${label} 增加`}
+        >
+          +
         </button>
       </div>
     </div>

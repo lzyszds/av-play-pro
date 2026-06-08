@@ -12,7 +12,8 @@
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:linux": "electron-vite build && electron-builder --linux",
+    "build:installer": "npm run build:unpack && npm --prefix installer install && npm --prefix installer run pack"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
@@ -86,13 +87,13 @@
         "nsis",
         "portable"
       ],
-      "icon": "resources/icon.png"
+      "icon": "resources/logo.png"
     },
     "mac": {
-      "icon": "resources/icon.png"
+      "icon": "resources/logo.png"
     },
     "linux": {
-      "icon": "resources/icon.png"
+      "icon": "resources/logo.png"
     },
     "nsis": {
       "oneClick": false,

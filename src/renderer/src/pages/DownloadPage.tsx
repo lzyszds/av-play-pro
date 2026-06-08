@@ -16,13 +16,16 @@ import {
   Check,
   Search,
   Settings,
+  EyeOff,
   X,
 } from "lucide-react";
 import { NewTaskModal } from "../components/download/NewTaskModal";
 import { SettingsPanel } from "../components/download/SettingsPanel";
 import { TaskCard } from "../components/download/TaskCard";
+import { PageLoader } from "../components/PageLoader";
 import type {
   AppSettings,
+  DownloadBackground,
   DownloadPageProps,
   DownloadTask,
   LogMessage,
@@ -54,6 +57,37 @@ interface ExtensionPushedTask {
 const EXTENSION_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
 
+const PRIVACY_BACKGROUNDS: DownloadBackground[] = [
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+];
+
+const PRIVACY_PARTICLES = [
+  [-42, -34],
+  [-26, -52],
+  [4, -58],
+  [32, -44],
+  [52, -18],
+  [58, 12],
+  [38, 42],
+  [8, 58],
+  [-24, 50],
+  [-52, 26],
+  [-62, -4],
+  [-54, -30],
+  [-16, -22],
+  [18, -24],
+  [28, 4],
+  [12, 28],
+  [-22, 22],
+  [-32, 0],
+] as const;
+
 function buildExtensionHeaders(task: ExtensionPushedTask): string {
   return JSON.stringify({
     "User-Agent": EXTENSION_USER_AGENT,
@@ -81,6 +115,11 @@ export function DownloadPage({
   const [searchTerm, setSearchTerm] = useState("");
   const [copiedTaskCmd, setCopiedTaskCmd] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [privacyScreenActive, setPrivacyScreenActive] = useState(false);
+  const [privacyScreenLeaving, setPrivacyScreenLeaving] = useState(false);
+  const [privacyBackground, setPrivacyBackground] = useState<DownloadBackground>(
+    settings.downloadBackground ?? "1",
+  );
 
   const activeDownloadId = useRef<string | null>(null);
   const tasksRef = useRef(tasks);
@@ -99,6 +138,124 @@ export function DownloadPage({
   const consumingExtensionPushesRef = useRef(false);
   // 队列调度器引用（供进度回调在 useEffect 内调用最新版本）
   const startNextRef = useRef<() => void>(() => {});
+  const privacyIdleTimerRef = useRef<number | null>(null);
+  const privacyExitTimerRef = useRef<number | null>(null);
+
+  const hidePrivacyScreen = useCallback(() => {
+    if (!privacyScreenActive || privacyScreenLeaving) return;
+    setPrivacyScreenLeaving(true);
+    if (privacyExitTimerRef.current) {
+      window.clearTimeout(privacyExitTimerRef.current);
+    }
+    privacyExitTimerRef.current = window.setTimeout(() => {
+      setPrivacyScreenActive(false);
+      setPrivacyScreenLeaving(false);
+      privacyExitTimerRef.current = null;
+    }, 620);
+  }, [privacyScreenActive, privacyScreenLeaving]);
+
+  useEffect(() => {
+    return () => {
+      if (privacyExitTimerRef.current) {
+        window.clearTimeout(privacyExitTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showPrivacyScreen = useCallback(() => {
+    if (!settingsRef.current.privacyScreenEnabled) return;
+    if (privacyExitTimerRef.current) {
+      window.clearTimeout(privacyExitTimerRef.current);
+      privacyExitTimerRef.current = null;
+    }
+    setPrivacyBackground(settingsRef.current.downloadBackground ?? "1");
+    setPrivacyScreenLeaving(false);
+    setPrivacyScreenActive(true);
+  }, []);
+
+  useEffect(() => {
+    if (privacyIdleTimerRef.current) {
+      window.clearTimeout(privacyIdleTimerRef.current);
+      privacyIdleTimerRef.current = null;
+    }
+
+    if (!settings.privacyScreenEnabled) {
+      hidePrivacyScreen();
+      return;
+    }
+
+    const resetIdleTimer = () => {
+      if (privacyIdleTimerRef.current) {
+        window.clearTimeout(privacyIdleTimerRef.current);
+      }
+      if (showSettingsModal) return;
+      const delay = Math.max(5, settingsRef.current.privacyScreenIdleSeconds ?? 60);
+      privacyIdleTimerRef.current = window.setTimeout(showPrivacyScreen, delay * 1000);
+    };
+
+    const handleActivity = () => {
+      hidePrivacyScreen();
+      resetIdleTimer();
+    };
+
+    const handleWindowBlur = () => {
+      if (showSettingsModal) return;
+      if (settingsRef.current.privacyScreenOnBlur) {
+        showPrivacyScreen();
+      }
+    };
+
+    const events: Array<keyof WindowEventMap> = [
+      "mousedown",
+      "mousemove",
+      "keydown",
+      "touchstart",
+      "wheel",
+    ];
+
+    events.forEach((eventName) =>
+      window.addEventListener(eventName, handleActivity, { passive: true }),
+    );
+    window.addEventListener("blur", handleWindowBlur);
+    resetIdleTimer();
+
+    return () => {
+      if (privacyIdleTimerRef.current) {
+        window.clearTimeout(privacyIdleTimerRef.current);
+        privacyIdleTimerRef.current = null;
+      }
+      events.forEach((eventName) =>
+        window.removeEventListener(eventName, handleActivity),
+      );
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  }, [
+    settings.privacyScreenEnabled,
+    settings.privacyScreenIdleSeconds,
+    settings.privacyScreenOnBlur,
+    showPrivacyScreen,
+    hidePrivacyScreen,
+    showSettingsModal,
+  ]);
+
+  useEffect(() => {
+    if (!privacyScreenActive) return;
+
+    const intervalSeconds = Math.max(
+      3,
+      settings.privacyScreenChangeSeconds ?? 10,
+    );
+    const timer = window.setInterval(() => {
+      setPrivacyBackground((current) => {
+        const currentIndex = PRIVACY_BACKGROUNDS.indexOf(current);
+        const nextIndex =
+          currentIndex >= 0 ? (currentIndex + 1) % PRIVACY_BACKGROUNDS.length : 0;
+        return PRIVACY_BACKGROUNDS[nextIndex];
+      });
+    }, intervalSeconds * 1000);
+
+    return () => window.clearInterval(timer);
+  }, [privacyScreenActive, settings.privacyScreenChangeSeconds]);
 
   const generateThumbsForCompletedTask = useCallback(
     async (taskDir: string, taskName: string) => {
@@ -708,7 +865,7 @@ export function DownloadPage({
           setTimeout(() => startNextRef.current(), 400);
         });
     },
-    [addLog, settings.temp_path],
+    [addLog, settings.temp_path, settings.globalSpeedLimit],
   );
 
   /* ---- 队列调度：仅在“队列下载”开启时，空闲则启动最早加入的等待任务 ---- */
@@ -893,6 +1050,22 @@ export function DownloadPage({
       t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       t.url.toLowerCase().includes(searchTerm.toLowerCase()),
   );
+  const downloadBackgroundUrl = `./${settings.downloadBackground ?? "1"}.webp`;
+  const privacyBackgroundUrl = `./${privacyBackground}.webp`;
+  const legacyPrivacySettings = settings as AppSettings & {
+    privacyScreenDim?: number;
+  };
+  const privacyBlur = Math.max(0, Math.min(32, settings.privacyScreenBlur ?? 0));
+  const privacyImageOpacity =
+    Math.max(
+      0,
+      Math.min(
+        100,
+        settings.privacyScreenImageOpacity ??
+          legacyPrivacySettings.privacyScreenDim ??
+          42,
+      ),
+    ) / 100;
 
   const handleCopySelectedCommand = useCallback(() => {
     if (!selectedTask) return;
@@ -913,9 +1086,31 @@ export function DownloadPage({
   );
   /* ---- render ---- */
   return (
-    <div className="h-full flex flex-col min-h-0">
+    <div className="relative h-full flex flex-col min-h-0 overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div
+          key={`blur-${downloadBackgroundUrl}`}
+          className="download-bg-layer absolute -inset-10 bg-cover bg-center blur-2xl"
+          style={{
+            ["--bg-opacity" as string]: 0.7,
+            ["--bg-scale" as string]: 1.1,
+            backgroundImage: `url("${downloadBackgroundUrl}")`,
+          }}
+        />
+        <div
+          key={`main-${downloadBackgroundUrl}`}
+          className="download-bg-layer absolute inset-0 bg-cover bg-center"
+          style={{
+            ["--bg-opacity" as string]: 0.42,
+            ["--bg-scale" as string]: 1.03,
+            backgroundImage: `url("${downloadBackgroundUrl}")`,
+          }}
+        />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(255,255,255,0.20),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.12),transparent_30%),linear-gradient(135deg,rgba(255,250,245,0.38),rgba(248,250,252,0.22)_52%,rgba(255,241,242,0.24))] dark:bg-[radial-gradient(circle_at_18%_16%,rgba(244,63,94,0.08),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(14,165,233,0.08),transparent_30%),linear-gradient(135deg,rgba(2,6,23,0.58),rgba(15,23,42,0.42)_52%,rgba(25,7,17,0.38))]" />
+      </div>
+      <PageLoader active={!storageLoaded} label="加载任务列表" />
       {/* ====== LEFT: Task List ====== */}
-      <div className="flex-1 overflow-y-scroll p-6 min-h-50 bg-[#fffaf5] dark:bg-slate-950">
+      <div className="relative z-10 flex-1 overflow-y-scroll p-6 min-h-50 bg-white/4 dark:bg-slate-950/10">
         {/* Queue Control Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
           <div className="flex items-center gap-3">
@@ -954,6 +1149,15 @@ export function DownloadPage({
             >
               <Plus className="w-3.5 h-3.5" />
               新建任务
+            </button>
+
+            <button
+              onClick={showPrivacyScreen}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
+              title="立即开启隐私屏保，遮住下载内容"
+            >
+              <EyeOff className="w-3.5 h-3.5" />
+              隐私屏保
             </button>
 
             {/* 队列下载开关 */}
@@ -1074,7 +1278,7 @@ export function DownloadPage({
         );
 
         return (
-          <div className="h-58 bg-white dark:bg-slate-900 flex flex-col shrink-0 select-text border-t border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 anim-fade-in">
+          <div className="relative z-10 h-58 bg-white/86 dark:bg-slate-900/86 backdrop-blur-xl flex flex-col shrink-0 select-text border-t border-white/60 dark:border-slate-800/80 text-slate-600 dark:text-slate-300 anim-fade-in">
             {/* 头部 */}
             <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
               <div className="flex items-center gap-2 min-w-0">
@@ -1164,6 +1368,49 @@ export function DownloadPage({
           </div>
         );
       })()}
+
+      {privacyScreenActive && (
+        <button
+          type="button"
+          onClick={hidePrivacyScreen}
+          className={`privacy-screen fixed inset-0 z-40 cursor-pointer overflow-hidden bg-[#050507] text-white ${
+            privacyScreenLeaving ? "is-leaving" : "is-entering"
+          }`}
+          title="点击返回"
+        >
+          <div className="privacy-particles absolute inset-0 z-20 pointer-events-none">
+            {PRIVACY_PARTICLES.map(([x, y], index) => (
+              <span
+                key={`${x}-${y}-${index}`}
+                style={{
+                  ["--px" as string]: `${x}vw`,
+                  ["--py" as string]: `${y}vh`,
+                  ["--pd" as string]: `${index * 18}ms`,
+                }}
+              />
+            ))}
+          </div>
+          <div
+            key={privacyBackgroundUrl}
+            className="privacy-screen-image absolute -inset-16 bg-cover bg-center"
+            style={{
+              ["--privacy-opacity" as string]: privacyImageOpacity,
+              backgroundImage: `url("${privacyBackgroundUrl}")`,
+              filter: `blur(${privacyBlur}px)`,
+            }}
+          />
+          <div className="privacy-screen-vignette absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(255,255,255,0.10),transparent_34%),linear-gradient(180deg,rgba(0,0,0,0.08),rgba(0,0,0,0.24))]" />
+          <div className="privacy-screen-copy relative z-10 flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+            <EyeOff className="h-8 w-8 text-white/70" />
+            <div className="text-sm font-bold tracking-[0.28em] text-white/85">
+              PRIVACY SCREEN
+            </div>
+            <div className="max-w-sm text-xs leading-relaxed text-white/56">
+              下载内容已遮挡。点击或按任意键返回。
+            </div>
+          </div>
+        </button>
+      )}
 
       {/* ====== Modals ====== */}
       {showNewTaskModal && (

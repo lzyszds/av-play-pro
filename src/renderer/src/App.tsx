@@ -23,10 +23,22 @@ const DEFAULT_SETTINGS: AppSettings = {
   closeAction: "ask",
   notifyOnComplete: true,
   notifySound: true,
-  consoleOpen: true,
+  consoleOpen: false,
   consoleHeight: 220,
   globalSpeedLimit: "",
+  loaderStyle: "eq",
+  downloadBackground: "1",
+  privacyScreenEnabled: true,
+  privacyScreenIdleSeconds: 60,
+  privacyScreenOnBlur: true,
+  privacyScreenBlur: 8,
+  privacyScreenImageOpacity: 42,
+  privacyScreenChangeSeconds: 10,
 };
+
+function applyLoaderStyle(style: AppSettings["loaderStyle"]): void {
+  document.documentElement.dataset.loader = style;
+}
 
 function applyTheme(mode: AppSettings["theme"]): void {
   const isDark =
@@ -134,6 +146,11 @@ export default function App() {
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
   }, [settings.theme]);
+
+  // Loader 样式
+  useEffect(() => {
+    applyLoaderStyle(settings.loaderStyle ?? "eq");
+  }, [settings.loaderStyle]);
 
   // 设置变更落盘（防抖 500ms）
   useEffect(() => {

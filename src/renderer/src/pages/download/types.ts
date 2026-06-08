@@ -44,6 +44,17 @@ export interface LogMessage {
 
 export type ThemeMode = "system" | "light" | "dark";
 export type CloseAction = "ask" | "tray" | "quit";
+export type DownloadBackground = "1" | "2" | "3" | "4" | "5" | "6" | "7";
+export type LoaderStyle =
+  | "eq"
+  | "wave"
+  | "radar"
+  | "prism"
+  | "vinyl"
+  | "matrix"
+  | "orbit"
+  | "pulse"
+  | "scan";
 
 export interface AppSettings {
   video_path: string;
@@ -62,6 +73,22 @@ export interface AppSettings {
   consoleHeight: number;
   /** N_m3u8DL-RE --max-speed 值，例 "5M" / "512K" / "" 为不限速 */
   globalSpeedLimit: string;
+  /** 封面加载动画样式 */
+  loaderStyle: LoaderStyle;
+  /** 下载页背景，对应 public/1.webp - public/7.webp */
+  downloadBackground: DownloadBackground;
+  /** 隐私屏保开关 */
+  privacyScreenEnabled: boolean;
+  /** 空闲多少秒后进入隐私屏保 */
+  privacyScreenIdleSeconds: number;
+  /** 窗口失焦时自动进入隐私屏保 */
+  privacyScreenOnBlur: boolean;
+  /** 隐私屏保模糊像素 */
+  privacyScreenBlur: number;
+  /** 隐私屏保背景图片透明度，0-100 */
+  privacyScreenImageOpacity: number;
+  /** 隐私屏保切换图片间隔秒数 */
+  privacyScreenChangeSeconds: number;
 }
 
 export interface DownloadPageProps {

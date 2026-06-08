@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { Logo } from "./Logo";
+import { CoverLoader } from "./CoverLoader";
 
 interface CoverImageProps {
   src?: string;
   alt?: string;
   className?: string;
+  /** 兼容旧参数：已废弃，loader 样式由全局设置控制 */
   logoSize?: number;
   onError?: (e: React.SyntheticEvent<HTMLImageElement>) => void;
 }
@@ -13,7 +14,6 @@ export const CoverImage: React.FC<CoverImageProps> = ({
   src,
   alt,
   className,
-  logoSize = 56,
   onError,
 }) => {
   const [loaded, setLoaded] = useState(false);
@@ -23,11 +23,7 @@ export const CoverImage: React.FC<CoverImageProps> = ({
 
   return (
     <div className={`relative w-full h-full bg-slate-900 ${className ?? ""}`}>
-      {showPlaceholder && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-[#1a1410] to-[#0a0606]">
-          <Logo size={logoSize} animated showBackground={false} />
-        </div>
-      )}
+      {showPlaceholder && <CoverLoader />}
       {src && !failed && (
         <img
           src={src}

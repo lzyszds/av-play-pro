@@ -17,6 +17,16 @@ import { LuckyDraw } from "../components/player/LuckyDraw";
 import { HlsVideoPlayer } from "../components/player/HlsVideoPlayer";
 import { WhisperPanel } from "../components/whisper/WhisperPanel";
 import type { PlayerPageProps, VideoItem } from "./player/types";
+import { PageLoader } from "../components/PageLoader";
+import { ResumePrompt } from "../components/player/ResumePrompt";
+
+const LAST_PLAYED_KEY = "av-play-pro:lastPlayed";
+interface LastPlayedRecord {
+  name: string;
+  url: string;
+  currentTime: number;
+  savedAt: number;
+}
 import {
   Play,
   FileVideo,
@@ -116,7 +126,7 @@ export function PlayerPage({
   const currentVideoName = useMemo(
     () =>
       selectedVideoIndex != null
-        ? filteredVideos[selectedVideoIndex]?.name ?? null
+        ? (filteredVideos[selectedVideoIndex]?.name ?? null)
         : null,
     [filteredVideos, selectedVideoIndex],
   );
@@ -132,6 +142,12 @@ export function PlayerPage({
 
   // 追踪是否为首次加载（首次选中不自动播放）
   const isFirstLoad = useRef(true);
+  // 上次播放记录提示
+  const [resumePrompt, setResumePrompt] = useState<LastPlayedRecord | null>(null);
+  // 待 seek 的恢复时间（在新视频 loadedmetadata 后跳转）
+  const pendingResumeSeekRef = useRef<number | null>(null);
+  // 是否已尝试过续播提示（避免重复弹）
+  const resumeChecked = useRef(false);
   const statsPlayedUrlRef = useRef("");
   const pendingWatchSecRef = useRef(0);
   const lastWatchTickRef = useRef<number | null>(null);
@@ -168,10 +184,7 @@ export function PlayerPage({
         setSubtitleUrl(null);
       }
     } catch (err: any) {
-      onAddSystemLog(
-        `字幕检测失败: ${err?.message || err}`,
-        "WARNING",
-      );
+      onAddSystemLog(`字幕检测失败: ${err?.message || err}`, "WARNING");
     }
   }, [activeStream.url, onAddSystemLog]);
 
@@ -284,30 +297,58 @@ export function PlayerPage({
       pendingWatchSecRef.current = 0;
       void trpc.stats.recordWatch
         .mutate({ folder, series, sec })
+        .then((r: any) => {
+          onAddSystemLog(
+            `观看 +${sec}s 已记录 [${folder}] 累计 ${r?.totalSec ?? "?"}s`,
+            "INFO",
+          );
+        })
         .catch((err: any) => {
           onAddSystemLog(
             `观看时长统计写入失败: ${err?.message || err}`,
             "WARNING",
           );
         });
+      // 同步保存"上次播放"记录
+      try {
+        const record: LastPlayedRecord = {
+          name: folder,
+          url: activeStream.url,
+          currentTime: el.currentTime || 0,
+          savedAt: Date.now(),
+        };
+        localStorage.setItem(LAST_PLAYED_KEY, JSON.stringify(record));
+      } catch {
+        /* ignore */
+      }
     };
 
+    // 用 video.currentTime 增量作为权威来源，回避 paused 状态判断误差
+    let lastCurrentTime = -1;
     const addElapsedWatch = () => {
-      if (el.paused || el.ended) {
+      if (el.ended) {
         lastWatchTickRef.current = null;
+        lastCurrentTime = -1;
+        return;
+      }
+      if (el.paused) {
+        lastWatchTickRef.current = null;
+        lastCurrentTime = -1;
         return;
       }
 
-      const now = Date.now();
-      if (lastWatchTickRef.current != null) {
-        const delta = Math.floor((now - lastWatchTickRef.current) / 1000);
-        if (delta > 0 && delta < 60) {
+      const ct = el.currentTime;
+      if (lastCurrentTime >= 0) {
+        const delta = ct - lastCurrentTime;
+        // 0.3s < delta < 5s 视为正常自然播放；seek 跳跃或卡顿过滤掉
+        if (delta > 0.3 && delta < 5) {
           pendingWatchSecRef.current += delta;
         }
       }
-      lastWatchTickRef.current = now;
+      lastCurrentTime = ct;
+      lastWatchTickRef.current = Date.now();
 
-      if (pendingWatchSecRef.current >= 15) {
+      if (pendingWatchSecRef.current >= 5) {
         flushWatch();
       }
     };
@@ -331,7 +372,8 @@ export function PlayerPage({
     el.addEventListener("playing", onPlay);
     el.addEventListener("pause", onStop);
     el.addEventListener("ended", onStop);
-    const timer = window.setInterval(addElapsedWatch, 1000);
+    // 500ms 高频采样，更精确捕获 currentTime 变化
+    const timer = window.setInterval(addElapsedWatch, 500);
 
     return () => {
       addElapsedWatch();
@@ -342,7 +384,96 @@ export function PlayerPage({
       el.removeEventListener("pause", onStop);
       el.removeEventListener("ended", onStop);
     };
-  }, [activeStream.name, activeStream.url, onAddSystemLog, recordPlayStats]);
+  }, [
+    videoEl,
+    activeStream.name,
+    activeStream.url,
+    onAddSystemLog,
+    recordPlayStats,
+  ]);
+
+  // 上次播放：localVideos 加载完成后弹一次提示
+  useEffect(() => {
+    if (resumeChecked.current) return;
+    if (!localVideos.length) return;
+    resumeChecked.current = true;
+    try {
+      const raw = localStorage.getItem(LAST_PLAYED_KEY);
+      if (!raw) return;
+      const r = JSON.parse(raw) as LastPlayedRecord;
+      if (!r?.url || !r?.name) return;
+      // 7 天内才提示
+      if (Date.now() - r.savedAt > 7 * 24 * 3600 * 1000) return;
+      // 必须能在当前视频列表里找到
+      if (!localVideos.some((v) => v.url === r.url || v.name === r.name)) return;
+      // 进度 < 5s 没必要续播
+      if ((r.currentTime || 0) < 5) return;
+      setResumePrompt(r);
+    } catch {
+      /* ignore */
+    }
+  }, [localVideos]);
+
+  // 续播 seek：videoEl 就绪后跳转到保存的时间并播放
+  useEffect(() => {
+    if (!videoEl) return;
+    if (pendingResumeSeekRef.current == null) return;
+    const target = pendingResumeSeekRef.current;
+    const doSeek = () => {
+      try {
+        videoEl.currentTime = target;
+        const p = videoEl.play();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      } catch {
+        /* ignore */
+      }
+      pendingResumeSeekRef.current = null;
+    };
+    if (videoEl.readyState >= 1) {
+      doSeek();
+    } else {
+      videoEl.addEventListener("loadedmetadata", doSeek, { once: true });
+    }
+  }, [videoEl]);
+
+  const handleResume = useCallback(() => {
+    if (!resumePrompt) return;
+    const target = filteredVideos.findIndex(
+      (v) => v.url === resumePrompt.url || v.name === resumePrompt.name,
+    );
+    const fallback = localVideos.find(
+      (v) => v.url === resumePrompt.url || v.name === resumePrompt.name,
+    );
+    const video =
+      target >= 0 ? filteredVideos[target] : fallback || null;
+    if (!video) {
+      setResumePrompt(null);
+      return;
+    }
+    pendingResumeSeekRef.current = resumePrompt.currentTime || 0;
+    if (target >= 0) {
+      setSelectedVideoIndex(target);
+      // 右侧列表滚动到该视频位置
+      requestAnimationFrame(() => {
+        try {
+          rowVirtualizer.scrollToIndex(target, { align: "center" });
+        } catch {
+          /* ignore */
+        }
+      });
+    }
+    recordPlayStats(video.name, video.url);
+    setActiveStream({
+      name: video.name,
+      url: video.url,
+      resolution: video.resolution,
+      encryptionType: video.encryptionType || "未检测",
+      referer: "",
+    });
+    isFirstLoad.current = false; // 允许 HlsVideoPlayer autoPlay
+    setResumePrompt(null);
+    onAddSystemLog(`从 ${resumePrompt.currentTime.toFixed(0)}s 续播: ${video.name}`, "INFO");
+  }, [resumePrompt, filteredVideos, localVideos, recordPlayStats, onAddSystemLog]);
 
   // HlsVideoPlayer 通过 onMeta 上报真实像素
   const handleMeta = useCallback((info: { width: number; height: number }) => {
@@ -706,7 +837,20 @@ export function PlayerPage({
   };
 
   return (
-    <div className="flex-1 flex overflow-hidden bg-[#fffaf5] h-full">
+    <div className="relative flex-1 flex overflow-hidden bg-[#fffaf5] h-full">
+      <PageLoader
+        active={isLoadingVideos && localVideos.length === 0}
+        label="加载视频库"
+      />
+      {resumePrompt && (
+        <ResumePrompt
+          videoName={resumePrompt.name}
+          currentTime={resumePrompt.currentTime}
+          savedAt={resumePrompt.savedAt}
+          onResume={handleResume}
+          onClose={() => setResumePrompt(null)}
+        />
+      )}
       {/* LEFT SECTION: MAIN VIDEO PLAYER (Plyr) */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0 p-6 bg-transparent">
         {/* TITLE HEADER */}
@@ -718,7 +862,7 @@ export function PlayerPage({
             </h3>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-[9px] bg-slate-100 text-slate-500 font-mono font-bold py-1 px-3 rounded border border-slate-200">
+            <span className="text-[9px] bg-white text-amber-500 font-mono font-bold py-1 px-3 rounded border border-slate-200">
               分辨率: {activeStream.resolution}
             </span>
           </div>
@@ -727,21 +871,23 @@ export function PlayerPage({
         {/* PLYR VIDEO PLAYER */}
         <div className="relative flex flex-1 w-full bg-black rounded-xl overflow-hidden border border-slate-200/80 shadow-lg">
           {activeStream.url ? (
-            <HlsVideoPlayer
+            <div
               key={`${activeStream.url}|${activeStream.referer}`}
-              url={activeStream.url}
-              autoPlay={!isFirstLoad.current}
-              referer={activeStream.referer}
-              previewVttUrl={previewVttUrl}
-              subtitleUrl={subtitleUrl}
-              onMeta={handleMeta}
-              onVideoEl={setVideoEl}
-              onLog={onAddSystemLog}
-            />
-          ) : (
-            <div className="flex-1 flex items-center justify-center text-slate-600 text-xs">
-              等待选择视频...
+              className="anim-player-mount absolute inset-0 flex"
+            >
+              <HlsVideoPlayer
+                url={activeStream.url}
+                autoPlay={!isFirstLoad.current}
+                referer={activeStream.referer}
+                previewVttUrl={previewVttUrl}
+                subtitleUrl={subtitleUrl}
+                onMeta={handleMeta}
+                onVideoEl={setVideoEl}
+                onLog={onAddSystemLog}
+              />
             </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-slate-600 text-xs"></div>
           )}
         </div>
       </div>
@@ -755,10 +901,10 @@ export function PlayerPage({
             onClick={() => setIsAnalyzerCollapsed(!isAnalyzerCollapsed)}
             className="w-full px-4 py-2.5 flex items-center justify-between text-left hover:bg-amber-50/40 transition cursor-pointer"
           >
-            <span className="flex items-center gap-2 text-[11px] font-bold text-slate-700">
-              <Radio
-                className={`w-3.5 h-3.5 transition-colors ${isAnalyzerCollapsed ? "text-slate-400" : "text-amber-500"}`}
-              />
+            <span
+              className={`flex items-center gap-2 text-[11px] font-bold transition-colors ${isAnalyzerCollapsed ? "text-slate-400" : "text-amber-500"}`}
+            >
+              <Radio className={`w-3.5 h-3.5`} />
               HLS 深度解析
               {!isAnalyzerCollapsed && (
                 <span className="text-[9px] font-normal text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded-full">

@@ -1,0 +1,9 @@
+{
+  "appName": "AVPlayPro",
+  "appDisplayName": "AVPlayPro",
+  "appPublisher": "AVPlayPro",
+  "appVersion": "1.0.0",
+  "exeName": "AVPlayPro.exe",
+  "appDescription": "AVPlayPro - 极速 M3U8 下载 & 智能流媒体播控终端",
+  "appIdentifier": "com.avplaypro.app"
+}

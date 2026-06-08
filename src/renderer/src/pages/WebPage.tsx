@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Globe, Home, RefreshCw } from "lucide-react";
+import { PageLoader } from "../components/PageLoader";
 
 const DEFAULT_WEB_URL = "https://missav.ai/dm816/cn/uncensored-leak";
 const WEBVIEW_PARTITION = "persist:missav-web";
@@ -111,7 +112,8 @@ export function WebPage({ onAddSystemLog }: WebPageProps) {
   );
 
   return (
-    <div className="h-full flex flex-col bg-[#0b0f14] text-slate-200">
+    <div className="relative h-full flex flex-col bg-[#0b0f14] text-slate-200">
+      <PageLoader active={isLoading} label="加载页面" />
       <div className="h-11 shrink-0 border-b border-slate-800/80 bg-slate-950/80 flex items-center px-3 gap-2">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <div className="w-7 h-7 rounded-md bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">

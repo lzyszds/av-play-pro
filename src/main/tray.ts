@@ -16,9 +16,9 @@ export function markQuitting(): void {
 
 function resolveTrayIcon(): string | undefined {
   const candidates = [
-    join(__dirname, "../../resources/icon.png"),
-    join(process.resourcesPath || "", "resources", "icon.png"),
-    join(process.resourcesPath || "", "icon.png"),
+    join(__dirname, "../../resources/logo.png"),
+    join(process.resourcesPath || "", "resources", "logo.png"),
+    join(process.resourcesPath || "", "logo.png"),
   ];
   return candidates.find((p) => existsSync(p));
 }

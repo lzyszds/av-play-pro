@@ -1,0 +1,36 @@
+{
+  "productName": "AVPlayPro",
+  "version": "1.0.0",
+  "identifier": "com.avplaypro.app",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "AVPlayPro 安装程序",
+        "width": 390,
+        "height": 510,
+        "decorations": false,
+        "transparent": true,
+        "resizable": false,
+        "shadow": false,
+        "center": true,
+        "visible": true
+      }
+    ],
+    "security": {
+      "capabilities": [
+        "default"
+      ]
+    }
+  },
+  "bundle": {
+    "active": false,
+    "targets": []
+  }
+}

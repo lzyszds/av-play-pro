@@ -33,6 +33,7 @@ import {
   YAxis,
 } from "recharts";
 import { trpc } from "../lib/trpc";
+import { PageLoader } from "../components/PageLoader";
 
 interface ActivityBucket {
   plays: number;
@@ -178,7 +179,7 @@ function StatCard({
         <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">
           {label}
         </div>
-        <div className="text-lg font-bold text-slate-800 dark:text-slate-100 truncate">
+        <div className="text-lg font-bold text-slate-800 dark:text-slate-100 truncate stats-number">
           {value}
         </div>
         {sub && (
@@ -205,7 +206,7 @@ function MiniMetric({
       <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">
         {label}
       </div>
-      <div className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+      <div className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate stats-number">
         {value}
       </div>
       {sub && <div className="text-[9px] text-slate-400 truncate">{sub}</div>}
@@ -232,7 +233,11 @@ function PanelControls({
         className="w-6 h-6 flex items-center justify-center rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer text-slate-400 hover:text-amber-500"
         title={expanded ? "收起" : "展开"}
       >
-        {expanded ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+        {expanded ? (
+          <Minimize2 className="w-3 h-3" />
+        ) : (
+          <Maximize2 className="w-3 h-3" />
+        )}
       </button>
       <button
         type="button"
@@ -295,9 +300,24 @@ function Heatmap({
     return value.toLocaleString();
   };
 
-  const cell = 11;
-  const gap = 2;
+  const cell = 12;
+  const gap = 3;
   const total = values.reduce((sum, value) => sum + value, 0);
+  const weekdayLabels = ["日", "一", "二", "三", "四", "五", "六"];
+  const monthLabels: Array<{ label: string; weekIndex: number }> = [];
+  let lastMonth = -1;
+  weeks.forEach((week, wi) => {
+    const firstReal = week.find((c) => c.day);
+    if (!firstReal?.day) return;
+    const d = parseDay(firstReal.day);
+    if (d.getMonth() !== lastMonth) {
+      lastMonth = d.getMonth();
+      monthLabels.push({ label: `${d.getMonth() + 1}月`, weekIndex: wi });
+    }
+  });
+
+  const svgWidth = weeks.length * (cell + gap) + 4;
+  const svgHeight = 7 * (cell + gap) + 18;
 
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4">
@@ -310,32 +330,61 @@ function Heatmap({
           365 天累计 {formatValue(total)}
         </span>
       </div>
-      <div className="overflow-x-auto pb-1">
-        <svg
-          width={weeks.length * (cell + gap)}
-          height={7 * (cell + gap)}
-          className="block"
+      <div className="flex gap-1.5">
+        {/* 左侧星期标签 */}
+        <div
+          className="flex flex-col text-[9px] text-slate-400 dark:text-slate-500 pt-[18px] shrink-0"
+          style={{ gap: `${gap}px` }}
         >
-          {weeks.map((week, weekIndex) =>
-            week.map((item, dayIndex) => (
-              <rect
-                key={`${weekIndex}-${dayIndex}`}
+          {weekdayLabels.map((label, i) => (
+            <span
+              key={i}
+              style={{ height: `${cell}px`, lineHeight: `${cell}px` }}
+              className={i % 2 === 1 ? "" : "opacity-0"}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+        {/* 热力图主体（可横向滚动兜底） */}
+        <div className="flex-1 overflow-x-auto pb-1">
+          <svg width={svgWidth} height={svgHeight} className="block">
+            {/* 月份标签 */}
+            {monthLabels.map(({ label, weekIndex }, i) => (
+              <text
+                key={i}
                 x={weekIndex * (cell + gap)}
-                y={dayIndex * (cell + gap)}
-                width={cell}
-                height={cell}
-                rx={2}
-                className={colorAt(item.value)}
+                y={11}
+                className="fill-slate-400 dark:fill-slate-500"
+                style={{ fontSize: 9 }}
               >
-                {item.day && item.value !== null && (
-                  <title>
-                    {item.day}: {formatValue(item.value)}
-                  </title>
-                )}
-              </rect>
-            )),
-          )}
-        </svg>
+                {label}
+              </text>
+            ))}
+            {/* 格子 */}
+            <g transform="translate(0, 18)">
+              {weeks.map((week, weekIndex) =>
+                week.map((item, dayIndex) => (
+                  <rect
+                    key={`${weekIndex}-${dayIndex}`}
+                    x={weekIndex * (cell + gap)}
+                    y={dayIndex * (cell + gap)}
+                    width={cell}
+                    height={cell}
+                    rx={2}
+                    className={colorAt(item.value)}
+                  >
+                    {item.day && item.value !== null && (
+                      <title>
+                        {item.day}: {formatValue(item.value)}
+                      </title>
+                    )}
+                  </rect>
+                )),
+              )}
+            </g>
+          </svg>
+        </div>
       </div>
       <div className="flex items-center justify-end gap-1.5 mt-2 text-[9px] text-slate-400 dark:text-slate-500">
         <span>少</span>
@@ -349,6 +398,273 @@ function Heatmap({
           <span key={index} className={`w-2.5 h-2.5 rounded-sm ${className}`} />
         ))}
         <span>多</span>
+      </div>
+    </div>
+  );
+}
+
+function HeatStat({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone: "amber" | "emerald";
+}) {
+  const ring =
+    tone === "amber"
+      ? "border-amber-200/70 dark:border-amber-500/20 bg-amber-50/50 dark:bg-amber-500/5"
+      : "border-emerald-200/70 dark:border-emerald-500/20 bg-emerald-50/50 dark:bg-emerald-500/5";
+  const fg =
+    tone === "amber"
+      ? "text-amber-700 dark:text-amber-300"
+      : "text-emerald-700 dark:text-emerald-300";
+  return (
+    <div className={`rounded-lg border ${ring} px-2.5 py-2`}>
+      <div className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+        {label}
+      </div>
+      <div className={`text-sm font-bold font-mono mt-0.5 truncate ${fg}`}>
+        {value}
+      </div>
+      {sub && (
+        <div className="text-[9px] text-slate-400 dark:text-slate-500 truncate">
+          {sub}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
+  const days = useMemo(() => lastNDays(365), []);
+  const playsValues = days.map((d) => daily[d]?.plays || 0);
+  const watchValues = days.map((d) => daily[d]?.watchSec || 0);
+  const maxPlays = Math.max(1, ...playsValues);
+  const maxWatch = Math.max(1, ...watchValues);
+  const first = parseDay(days[0]);
+  const startPad = first.getDay();
+  const padded: Array<{
+    day: string | null;
+    plays: number | null;
+    watch: number | null;
+  }> = [
+    ...Array.from({ length: startPad }, () => ({
+      day: null,
+      plays: null,
+      watch: null,
+    })),
+    ...days.map((d, i) => ({
+      day: d,
+      plays: playsValues[i],
+      watch: watchValues[i],
+    })),
+  ];
+  const weeks: (typeof padded)[] = [];
+  for (let i = 0; i < padded.length; i += 7) weeks.push(padded.slice(i, i + 7));
+
+  // amber 5 阶 (播放) / emerald 5 阶 (观看时长)
+  const amberTier = (v: number | null): string => {
+    if (v === null) return "fill-transparent";
+    if (v === 0) return "fill-slate-200 dark:fill-slate-800";
+    const r = v / maxPlays;
+    if (r < 0.25) return "fill-amber-200 dark:fill-amber-900/70";
+    if (r < 0.5) return "fill-amber-300 dark:fill-amber-700";
+    if (r < 0.75) return "fill-amber-400 dark:fill-amber-600";
+    return "fill-amber-500 dark:fill-amber-500";
+  };
+  const watchTier = (v: number | null): string => {
+    if (v === null) return "fill-transparent";
+    if (v === 0) return "fill-slate-200 dark:fill-slate-800";
+    const r = v / maxWatch;
+    if (r < 0.25) return "fill-emerald-200 dark:fill-emerald-900/70";
+    if (r < 0.5) return "fill-emerald-300 dark:fill-emerald-700";
+    if (r < 0.75) return "fill-emerald-400 dark:fill-emerald-600";
+    return "fill-emerald-500 dark:fill-emerald-500";
+  };
+
+  const cell = 15;
+  const gap = 3;
+  const totalPlays = playsValues.reduce((s, v) => s + v, 0);
+  const totalWatch = watchValues.reduce((s, v) => s + v, 0);
+  const activeDays = days.filter(
+    (d) => (daily[d]?.plays || 0) > 0 || (daily[d]?.watchSec || 0) > 0,
+  ).length;
+  const avgPlays = activeDays ? totalPlays / activeDays : 0;
+  const avgWatch = activeDays ? totalWatch / activeDays : 0;
+  const topDay = days.reduce<{
+    day: string;
+    watch: number;
+    plays: number;
+  } | null>((acc, d) => {
+    const w = daily[d]?.watchSec || 0;
+    const p = daily[d]?.plays || 0;
+    const score = w + p * 60;
+    if (!acc || score > acc.watch + acc.plays * 60) {
+      return { day: d, watch: w, plays: p };
+    }
+    return acc;
+  }, null);
+  // 连续观看天数
+  let bestStreak = 0;
+  let cur = 0;
+  for (const d of days) {
+    if ((daily[d]?.plays || 0) > 0 || (daily[d]?.watchSec || 0) > 0) {
+      cur += 1;
+      if (cur > bestStreak) bestStreak = cur;
+    } else {
+      cur = 0;
+    }
+  }
+
+  const weekdayLabels = ["日", "一", "二", "三", "四", "五", "六"];
+  const monthLabels: Array<{ label: string; weekIndex: number }> = [];
+  let lastMonth = -1;
+  weeks.forEach((week, wi) => {
+    const firstReal = week.find((c) => c.day);
+    if (!firstReal?.day) return;
+    const d = parseDay(firstReal.day);
+    if (d.getMonth() !== lastMonth) {
+      lastMonth = d.getMonth();
+      monthLabels.push({ label: `${d.getMonth() + 1}月`, weekIndex: wi });
+    }
+  });
+  const svgWidth = weeks.length * (cell + gap) + 4;
+  const svgHeight = 7 * (cell + gap) + 18;
+
+  return (
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4">
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+          <Activity className="w-3.5 h-3.5 text-amber-500" />
+          观影日历热力图（双指标）
+        </h3>
+        <div className="flex items-center gap-3 text-[10px] font-mono">
+          <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+            <span className="inline-block w-2 h-2 rounded-sm bg-amber-500" />
+            播放 {totalPlays.toLocaleString()} 次
+          </span>
+          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+            <span className="inline-block w-2 h-2 rounded-sm bg-emerald-500" />
+            观看 {formatDuration(totalWatch)}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex gap-4 items-start">
+        {/* 左侧星期标签 */}
+        <div
+          className="flex flex-col text-[9px] text-slate-400 dark:text-slate-500 pt-[18px] shrink-0"
+          style={{ gap: `${gap}px` }}
+        >
+          {weekdayLabels.map((label, i) => (
+            <span
+              key={i}
+              style={{ height: `${cell}px`, lineHeight: `${cell}px` }}
+              className={i % 2 === 1 ? "" : "opacity-0"}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
+        {/* 热力图主体 */}
+        <div className="flex-1 overflow-x-auto pb-1">
+          <svg width={svgWidth} height={svgHeight} className="block max-w-full">
+            {monthLabels.map(({ label, weekIndex }, i) => (
+              <text
+                key={i}
+                x={weekIndex * (cell + gap)}
+                y={11}
+                className="fill-slate-400 dark:fill-slate-500"
+                style={{ fontSize: 9 }}
+              >
+                {label}
+              </text>
+            ))}
+            <g transform="translate(0, 18)">
+              {weeks.map((week, weekIndex) =>
+                week.map((item, dayIndex) => {
+                  const x = weekIndex * (cell + gap);
+                  const y = dayIndex * (cell + gap);
+                  if (item.day === null) return null;
+                  // 对角分割：左上三角 = plays（amber），右下三角 = watch（emerald）
+                  const tl = `${x},${y} ${x + cell},${y} ${x},${y + cell}`;
+                  const br = `${x + cell},${y} ${x + cell},${y + cell} ${x},${y + cell}`;
+                  const tip =
+                    `${item.day}\n播放 ${item.plays?.toLocaleString() ?? 0} 次` +
+                    `\n观看 ${formatDuration(item.watch ?? 0)}`;
+                  return (
+                    <g key={`${weekIndex}-${dayIndex}`}>
+                      <polygon points={tl} className={amberTier(item.plays)} />
+                      <polygon points={br} className={watchTier(item.watch)} />
+                      <title>{tip}</title>
+                    </g>
+                  );
+                }),
+              )}
+            </g>
+          </svg>
+        </div>
+        {/* 右侧紧凑摘要面板 */}
+        <div className="w-44 shrink-0 grid grid-cols-2 gap-2 self-stretch">
+          <HeatStat
+            label="活跃天数"
+            value={`${activeDays}`}
+            sub="365 天内有记录"
+            tone="amber"
+          />
+          <HeatStat
+            label="最长连看"
+            value={`${bestStreak} 天`}
+            sub="连续有活动"
+            tone="emerald"
+          />
+          <HeatStat
+            label="日均播放"
+            value={avgPlays >= 10 ? avgPlays.toFixed(0) : avgPlays.toFixed(1)}
+            sub="活跃天平均"
+            tone="amber"
+          />
+          <HeatStat
+            label="日均时长"
+            value={formatDuration(Math.round(avgWatch))}
+            sub="活跃天平均"
+            tone="emerald"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between mt-2 text-[9px] text-slate-400 dark:text-slate-500">
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1">
+            <span>播放</span>
+            {[
+              "bg-slate-200 dark:bg-slate-800",
+              "bg-amber-200 dark:bg-amber-900/70",
+              "bg-amber-300 dark:bg-amber-700",
+              "bg-amber-400 dark:bg-amber-600",
+              "bg-amber-500",
+            ].map((c, i) => (
+              <span key={i} className={`w-2.5 h-2.5 rounded-sm ${c}`} />
+            ))}
+          </span>
+          <span className="flex items-center gap-1">
+            <span>时长</span>
+            {[
+              "bg-slate-200 dark:bg-slate-800",
+              "bg-emerald-200 dark:bg-emerald-900/70",
+              "bg-emerald-300 dark:bg-emerald-700",
+              "bg-emerald-400 dark:bg-emerald-600",
+              "bg-emerald-500",
+            ].map((c, i) => (
+              <span key={i} className={`w-2.5 h-2.5 rounded-sm ${c}`} />
+            ))}
+          </span>
+        </div>
+        <span>悬停查看当日明细 · 左上播放 · 右下时长</span>
       </div>
     </div>
   );
@@ -410,15 +726,26 @@ function DiskTrendChart({
     1,
     (new Date(last.at).getTime() - new Date(first.at).getTime()) / 86400000,
   );
-  const dailyGrowth = Math.max(0, (last.totalBytes - first.totalBytes) / elapsedDays);
+  const dailyGrowth = Math.max(
+    0,
+    (last.totalBytes - first.totalBytes) / elapsedDays,
+  );
   const daysLeft =
-    last.freeBytes && dailyGrowth > 0 ? Math.floor(last.freeBytes / dailyGrowth) : null;
-  const avgVideoSize = last.videoCount > 0 ? last.totalBytes / last.videoCount : 0;
+    last.freeBytes && dailyGrowth > 0
+      ? Math.floor(last.freeBytes / dailyGrowth)
+      : null;
+  const avgVideoSize =
+    last.videoCount > 0 ? last.totalBytes / last.videoCount : 0;
   const moreVideos =
-    last.freeBytes && avgVideoSize > 0 ? Math.floor(last.freeBytes / avgVideoSize) : null;
+    last.freeBytes && avgVideoSize > 0
+      ? Math.floor(last.freeBytes / avgVideoSize)
+      : null;
   const diskUsed =
     last.totalDiskBytes && last.totalDiskBytes > 0
-      ? percent(last.totalDiskBytes - (last.freeBytes || 0), last.totalDiskBytes)
+      ? percent(
+          last.totalDiskBytes - (last.freeBytes || 0),
+          last.totalDiskBytes,
+        )
       : null;
 
   return (
@@ -446,68 +773,94 @@ function DiskTrendChart({
       {hidden ? (
         <HiddenPanelNote />
       ) : (
-      <>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
-        {ticks.map((tick, index) => (
-          <g key={index}>
-            <line
-              x1={PAD.l}
-              x2={W - PAD.r}
-              y1={tick.y}
-              y2={tick.y}
-              className="stroke-slate-200 dark:stroke-slate-800"
-              strokeDasharray="2,3"
-              strokeWidth={0.5}
+        <>
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+            {ticks.map((tick, index) => (
+              <g key={index}>
+                <line
+                  x1={PAD.l}
+                  x2={W - PAD.r}
+                  y1={tick.y}
+                  y2={tick.y}
+                  className="stroke-slate-200 dark:stroke-slate-800"
+                  strokeDasharray="2,3"
+                  strokeWidth={0.5}
+                />
+                <text
+                  x={PAD.l - 7}
+                  y={tick.y + 3}
+                  textAnchor="end"
+                  className="fill-slate-400 dark:fill-slate-500 text-[9px] font-mono"
+                >
+                  {formatBytes(tick.value)}
+                </text>
+              </g>
+            ))}
+            <path d={areaPath} className="fill-emerald-500/10" />
+            <path
+              d={linePath}
+              fill="none"
+              className="stroke-emerald-500"
+              strokeWidth={2.2}
+              strokeLinejoin="round"
             />
+            {points.length <= 45 &&
+              points.map((point, index) => {
+                const p = xy(index, point.totalBytes);
+                return (
+                  <circle
+                    key={point.at}
+                    cx={p.x}
+                    cy={p.y}
+                    r={2}
+                    className="fill-emerald-500"
+                  >
+                    <title>
+                      {point.at.slice(0, 10)}: {formatBytes(point.totalBytes)} /{" "}
+                      {point.videoCount} 个视频
+                    </title>
+                  </circle>
+                );
+              })}
             <text
-              x={PAD.l - 7}
-              y={tick.y + 3}
+              x={PAD.l}
+              y={H - 7}
+              className="fill-slate-400 dark:fill-slate-500 text-[9px] font-mono"
+            >
+              {first.at.slice(0, 10)}
+            </text>
+            <text
+              x={W - PAD.r}
+              y={H - 7}
               textAnchor="end"
               className="fill-slate-400 dark:fill-slate-500 text-[9px] font-mono"
             >
-              {formatBytes(tick.value)}
+              {last.at.slice(0, 10)}
             </text>
-          </g>
-        ))}
-        <path d={areaPath} className="fill-emerald-500/10" />
-        <path
-          d={linePath}
-          fill="none"
-          className="stroke-emerald-500"
-          strokeWidth={2.2}
-          strokeLinejoin="round"
-        />
-        {points.length <= 45 &&
-          points.map((point, index) => {
-            const p = xy(index, point.totalBytes);
-            return (
-              <circle key={point.at} cx={p.x} cy={p.y} r={2} className="fill-emerald-500">
-                <title>
-                  {point.at.slice(0, 10)}: {formatBytes(point.totalBytes)} /{" "}
-                  {point.videoCount} 个视频
-                </title>
-              </circle>
-            );
-          })}
-        <text x={PAD.l} y={H - 7} className="fill-slate-400 dark:fill-slate-500 text-[9px] font-mono">
-          {first.at.slice(0, 10)}
-        </text>
-        <text
-          x={W - PAD.r}
-          y={H - 7}
-          textAnchor="end"
-          className="fill-slate-400 dark:fill-slate-500 text-[9px] font-mono"
-        >
-          {last.at.slice(0, 10)}
-        </text>
-      </svg>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-3">
-        <MiniMetric label="当前视频占用" value={formatBytes(last.totalBytes)} sub={`${last.videoCount} 个视频`} />
-        <MiniMetric label="磁盘剩余" value={last.freeBytes ? formatBytes(last.freeBytes) : "未知"} sub={diskUsed ? `磁盘已用 ${diskUsed}` : "需要新版快照"} />
-        <MiniMetric label="还能下多少天" value={daysLeft == null ? "待观察" : `${daysLeft} 天`} sub="按快照增长速度估算" />
-        <MiniMetric label="还能下多少部" value={moreVideos == null ? "待观察" : `${moreVideos} 部`} sub="按当前平均体积估算" />
-      </div>
-      </>
+          </svg>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-3">
+            <MiniMetric
+              label="当前视频占用"
+              value={formatBytes(last.totalBytes)}
+              sub={`${last.videoCount} 个视频`}
+            />
+            <MiniMetric
+              label="磁盘剩余"
+              value={last.freeBytes ? formatBytes(last.freeBytes) : "未知"}
+              sub={diskUsed ? `磁盘已用 ${diskUsed}` : "需要新版快照"}
+            />
+            <MiniMetric
+              label="还能下多少天"
+              value={daysLeft == null ? "待观察" : `${daysLeft} 天`}
+              sub="按快照增长速度估算"
+            />
+            <MiniMetric
+              label="还能下多少部"
+              value={moreVideos == null ? "待观察" : `${moreVideos} 部`}
+              sub="按当前平均体积估算"
+            />
+          </div>
+        </>
       )}
     </div>
   );
@@ -522,10 +875,34 @@ const ADVANCED_MODES: Array<{
   icon: IconType;
   color: string;
 }> = [
-  { key: "watch", label: "观看时长", field: "watchSec", icon: Clock, color: "#10b981" },
-  { key: "plays", label: "播放次数", field: "plays", icon: Play, color: "#f43f5e" },
-  { key: "downloads", label: "下载体量", field: "downloadBytes", icon: Download, color: "#0ea5e9" },
-  { key: "disk", label: "磁盘占用", field: "disk", icon: HardDrive, color: "#8b5cf6" },
+  {
+    key: "watch",
+    label: "观看时长",
+    field: "watchSec",
+    icon: Clock,
+    color: "#10b981",
+  },
+  {
+    key: "plays",
+    label: "播放次数",
+    field: "plays",
+    icon: Play,
+    color: "#f43f5e",
+  },
+  {
+    key: "downloads",
+    label: "下载体量",
+    field: "downloadBytes",
+    icon: Download,
+    color: "#0ea5e9",
+  },
+  {
+    key: "disk",
+    label: "磁盘占用",
+    field: "disk",
+    icon: HardDrive,
+    color: "#8b5cf6",
+  },
 ];
 
 function AdvancedStatsChart({
@@ -606,7 +983,9 @@ function AdvancedStatsChart({
   };
 
   return (
-    <div className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 ${expanded ? "lg:col-span-full" : ""}`}>
+    <div
+      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 ${expanded ? "lg:col-span-full" : ""}`}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
           <LineChart className="w-3.5 h-3.5 text-amber-500" />
@@ -651,14 +1030,35 @@ function AdvancedStatsChart({
         <>
           <div style={{ height: chartHeight }}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 12, right: 18, left: 8, bottom: 6 }}>
+              <AreaChart
+                data={chartData}
+                margin={{ top: 12, right: 18, left: 8, bottom: 6 }}
+              >
                 <defs>
-                  <linearGradient id={`recharts-advanced-${mode}`} x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor={meta.color} stopOpacity={0.3} />
-                    <stop offset="100%" stopColor={meta.color} stopOpacity={0.03} />
+                  <linearGradient
+                    id={`recharts-advanced-${mode}`}
+                    x1="0"
+                    x2="0"
+                    y1="0"
+                    y2="1"
+                  >
+                    <stop
+                      offset="0%"
+                      stopColor={meta.color}
+                      stopOpacity={0.3}
+                    />
+                    <stop
+                      offset="100%"
+                      stopColor={meta.color}
+                      stopOpacity={0.03}
+                    />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 4" stroke="rgba(148,163,184,0.22)" vertical={false} />
+                <CartesianGrid
+                  strokeDasharray="3 4"
+                  stroke="rgba(148,163,184,0.22)"
+                  vertical={false}
+                />
                 <XAxis
                   dataKey="label"
                   tick={{ fontSize: 10, fill: "#94a3b8" }}
@@ -697,9 +1097,21 @@ function AdvancedStatsChart({
             </ResponsiveContainer>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-3">
-            <MiniMetric label="当前值" value={formatValue(latest.value)} sub={latest.label} />
-            <MiniMetric label="峰值" value={formatValue(peak.value)} sub={peak.label} />
-            <MiniMetric label="平均值" value={formatValue(average)} sub={isDisk ? "快照均值" : "近 60 天日均"} />
+            <MiniMetric
+              label="当前值"
+              value={formatValue(latest.value)}
+              sub={latest.label}
+            />
+            <MiniMetric
+              label="峰值"
+              value={formatValue(peak.value)}
+              sub={peak.label}
+            />
+            <MiniMetric
+              label="平均值"
+              value={formatValue(average)}
+              sub={isDisk ? "快照均值" : "近 60 天日均"}
+            />
             <MiniMetric label="图表库" value="Recharts" sub="第三方图表渲染" />
           </div>
         </>
@@ -736,7 +1148,9 @@ function BarBlock({
         : value.toLocaleString();
 
   return (
-    <div className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 ${expanded ? "lg:col-span-full" : ""}`}>
+    <div
+      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 ${expanded ? "lg:col-span-full" : ""}`}
+    >
       <div className="flex items-center justify-between gap-3 mb-3">
         <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
           <Icon className="w-3.5 h-3.5 text-amber-500" />
@@ -752,29 +1166,32 @@ function BarBlock({
       {hidden ? (
         <HiddenPanelNote />
       ) : (
-      <div className="space-y-2">
-        {rows.map((row) => (
-          <div key={row.label} className="grid grid-cols-[56px_1fr_76px] items-center gap-2 text-[10px]">
-            <span className="text-slate-500 dark:text-slate-400 font-bold truncate">
-              {row.label}
-            </span>
-            <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-amber-500"
-                style={{ width: `${Math.max(2, (row.value / max) * 100)}%` }}
-              />
-            </div>
-            <span className="text-right text-slate-600 dark:text-slate-300 font-mono truncate">
-              {format(row.value)}
-            </span>
-            {row.sub && (
-              <span className="col-start-2 col-span-2 text-[9px] text-slate-400 truncate">
-                {row.sub}
+        <div className="space-y-2">
+          {rows.map((row) => (
+            <div
+              key={row.label}
+              className="grid grid-cols-[56px_1fr_76px] items-center gap-2 text-[10px]"
+            >
+              <span className="text-slate-500 dark:text-slate-400 font-bold truncate">
+                {row.label}
               </span>
-            )}
-          </div>
-        ))}
-      </div>
+              <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-amber-500"
+                  style={{ width: `${Math.max(2, (row.value / max) * 100)}%` }}
+                />
+              </div>
+              <span className="text-right text-slate-600 dark:text-slate-300 font-mono truncate">
+                {format(row.value)}
+              </span>
+              {row.sub && (
+                <span className="col-start-2 col-span-2 text-[9px] text-slate-400 truncate">
+                  {row.sub}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -798,7 +1215,9 @@ function TopList({
   onToggleExpanded: () => void;
 }) {
   return (
-    <div className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 ${expanded ? "lg:col-span-full" : ""}`}>
+    <div
+      className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg p-4 ${expanded ? "lg:col-span-full" : ""}`}
+    >
       <div className="flex items-center justify-between gap-3 mb-3">
         <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
           <Icon className="w-3.5 h-3.5 text-amber-500" />
@@ -860,7 +1279,9 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [libraryVideos, setLibraryVideos] = useState<LibraryVideo[]>([]);
   const [isSnapshotting, setIsSnapshotting] = useState(false);
-  const [panelState, setPanelState] = useState<Record<PanelKey, PanelStateValue>>({
+  const [panelState, setPanelState] = useState<
+    Record<PanelKey, PanelStateValue>
+  >({
     advanced: { hidden: false, expanded: false },
     disk: { hidden: false, expanded: false },
     hour: { hidden: false, expanded: false },
@@ -897,7 +1318,17 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
   };
 
   useEffect(() => {
-    void refresh();
+    void (async () => {
+      // 每天首次进入统计页自动拍一次磁盘快照（后端会按日期去重）
+      if (videoPath) {
+        try {
+          await trpc.stats.snapshotDisk.mutate({ rootPath: videoPath });
+        } catch {
+          /* ignore */
+        }
+      }
+      await refresh();
+    })();
   }, [videoPath]);
 
   const handleSnapshot = async () => {
@@ -923,7 +1354,10 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
         );
         await refresh();
       } else {
-        onAddSystemLog(`磁盘快照失败: ${(result as any).error || "未知错误"}`, "ERROR");
+        onAddSystemLog(
+          `磁盘快照失败: ${(result as any).error || "未知错误"}`,
+          "ERROR",
+        );
       }
     } catch (err: any) {
       onAddSystemLog(`磁盘快照异常: ${err?.message || err}`, "ERROR");
@@ -941,8 +1375,8 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
 
   if (!stats) {
     return (
-      <div className="h-full flex items-center justify-center text-slate-400 dark:text-slate-500 text-xs">
-        加载统计数据中...
+      <div className="relative h-full bg-[#fffaf5] dark:bg-slate-950">
+        <PageLoader active label="加载统计数据" />
       </div>
     );
   }
@@ -959,9 +1393,13 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
   const avgWatchPerPlay =
     stats.totals.plays > 0 ? stats.totals.watchSec / stats.totals.plays : 0;
   const playedSet = new Set(videosArr.map((video) => video.folder));
-  const unplayedCount = libraryVideos.filter((video) => !playedSet.has(video.name)).length;
+  const unplayedCount = libraryVideos.filter(
+    (video) => !playedSet.has(video.name),
+  ).length;
   const coverage =
-    libraryVideos.length > 0 ? percent(libraryVideos.length - unplayedCount, libraryVideos.length) : "0%";
+    libraryVideos.length > 0
+      ? percent(libraryVideos.length - unplayedCount, libraryVideos.length)
+      : "0%";
   const lastSnapshot = stats.diskSnapshots[stats.diskSnapshots.length - 1];
 
   const sortedDays = Object.keys(stats.daily).sort();
@@ -970,7 +1408,8 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
   let running = 0;
   for (let i = 0; i < sortedDays.length; i++) {
     const key = sortedDays[i];
-    const active = (stats.daily[key]?.plays || 0) + (stats.daily[key]?.watchSec || 0) > 0;
+    const active =
+      (stats.daily[key]?.plays || 0) + (stats.daily[key]?.watchSec || 0) > 0;
     if (!active) continue;
     if (i === 0 || dayDiff(sortedDays[i - 1], key) === 1) {
       running += 1;
@@ -998,7 +1437,10 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
     .sort((a, b) => (b.lastPlayedAt || "").localeCompare(a.lastPlayedAt || ""))
     .slice(0, 10);
 
-  const seriesMap = new Map<string, { plays: number; watchSec: number; count: number }>();
+  const seriesMap = new Map<
+    string,
+    { plays: number; watchSec: number; count: number }
+  >();
   for (const video of videosArr) {
     const key = video.series || inferSeries(video.folder);
     const item = seriesMap.get(key) || { plays: 0, watchSec: 0, count: 0 };
@@ -1014,8 +1456,14 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
   const hourRows = Array.from({ length: 24 }, (_, hour) => {
     const key = String(hour).padStart(2, "0");
     const bucket = stats.hourly?.[key] || emptyBucket();
-    return { label: `${key}:00`, value: bucket.watchSec, sub: `${bucket.plays} 次播放` };
-  }).sort((a, b) => b.value - a.value).slice(0, 8);
+    return {
+      label: `${key}:00`,
+      value: bucket.watchSec,
+      sub: `${bucket.plays} 次播放`,
+    };
+  })
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8);
 
   const weekdayRows = WEEKDAY_LABELS.map((label, index) => {
     const bucket = stats.weekdays?.[String(index)] || emptyBucket();
@@ -1031,12 +1479,17 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
       sub: `${bucket.downloads} 次下载 / ${bucket.plays} 次播放`,
     }));
 
-  const busiestDay = Object.entries(stats.daily)
-    .sort((a, b) => b[1].watchSec - a[1].watchSec)[0];
+  const busiestDay = Object.entries(stats.daily).sort(
+    (a, b) => b[1].watchSec - a[1].watchSec,
+  )[0];
   const bestHour = hourRows[0];
 
   return (
-    <div className="h-full overflow-y-auto bg-[#fffaf5] dark:bg-slate-950 p-6 space-y-4">
+    <div
+      className="relative h-full overflow-y-auto bg-[#fffaf5] dark:bg-slate-950 p-6 space-y-4 stats-stagger"
+      key={stats ? "ready" : "loading"}
+    >
+      <PageLoader active={!stats} label="加载统计数据" />
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
@@ -1079,7 +1532,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 stats-stagger-inner">
         <StatCard
           icon={Play}
           label="累计播放"
@@ -1105,7 +1558,11 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
           icon={HardDrive}
           label="当前占用"
           value={lastSnapshot ? formatBytes(lastSnapshot.totalBytes) : "暂无"}
-          sub={lastSnapshot ? `${lastSnapshot.videoCount} 个视频文件` : "先拍一张快照"}
+          sub={
+            lastSnapshot
+              ? `${lastSnapshot.videoCount} 个视频文件`
+              : "先拍一张快照"
+          }
           color="bg-violet-500"
         />
         <StatCard
@@ -1117,10 +1574,22 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
         />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MiniMetric label="活跃天数" value={`${activeDays} 天`} sub={`当前连看 ${currentStreak} 天`} />
-        <MiniMetric label="最长连续观看" value={`${bestStreak} 天`} sub="按有观看记录的日期计算" />
-        <MiniMetric label="平均单次观看" value={formatDuration(avgWatchPerPlay)} sub="总观看时长 / 播放次数" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 stats-stagger-inner">
+        <MiniMetric
+          label="活跃天数"
+          value={`${activeDays} 天`}
+          sub={`当前连看 ${currentStreak} 天`}
+        />
+        <MiniMetric
+          label="最长连续观看"
+          value={`${bestStreak} 天`}
+          sub="按有观看记录的日期计算"
+        />
+        <MiniMetric
+          label="平均单次观看"
+          value={formatDuration(avgWatchPerPlay)}
+          sub="总观看时长 / 播放次数"
+        />
         <MiniMetric
           label="最猛的一天"
           value={busiestDay ? busiestDay[0] : "暂无"}
@@ -1128,10 +1597,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
         />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-        <Heatmap daily={stats.daily} field="plays" title="观影日历热力图：每日播放次数" unit="count" />
-        <Heatmap daily={stats.daily} field="watchSec" title="观影日历热力图：每日观看时长" unit="duration" />
-      </div>
+      <DualHeatmap daily={stats.daily} />
 
       <AdvancedStatsChart
         daily={stats.daily}
@@ -1184,10 +1650,26 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-        <MiniMetric label="本周观看" value={formatDuration(sumRange(last7, "watchSec"))} sub={`${sumRange(last7, "plays")} 次播放`} />
-        <MiniMetric label="本月下载" value={formatBytes(sumRange(last30, "downloadBytes"))} sub={`${sumRange(last30, "downloads")} 次下载`} />
-        <MiniMetric label="收藏库规模" value={`${libraryVideos.length} 部`} sub={`${unplayedCount} 部还没播放过`} />
-        <MiniMetric label="黄金时段" value={bestHour?.label || "暂无"} sub={bestHour ? bestHour.sub : undefined} />
+        <MiniMetric
+          label="本周观看"
+          value={formatDuration(sumRange(last7, "watchSec"))}
+          sub={`${sumRange(last7, "plays")} 次播放`}
+        />
+        <MiniMetric
+          label="本月下载"
+          value={formatBytes(sumRange(last30, "downloadBytes"))}
+          sub={`${sumRange(last30, "downloads")} 次下载`}
+        />
+        <MiniMetric
+          label="收藏库规模"
+          value={`${libraryVideos.length} 部`}
+          sub={`${unplayedCount} 部还没播放过`}
+        />
+        <MiniMetric
+          label="黄金时段"
+          value={bestHour?.label || "暂无"}
+          sub={bestHour ? bestHour.sub : undefined}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -1200,7 +1682,9 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
           onToggleExpanded={() => togglePanelExpanded("ranking")}
           items={topByPlays.map((video) => ({
             label: video.folder,
-            sub: video.lastPlayedAt ? `最近 ${video.lastPlayedAt.slice(0, 10)}` : undefined,
+            sub: video.lastPlayedAt
+              ? `最近 ${video.lastPlayedAt.slice(0, 10)}`
+              : undefined,
             value: `${video.playCount} 次`,
             right: formatDuration(video.watchSec),
           }))}
@@ -1245,7 +1729,9 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
           onToggleExpanded={() => togglePanelExpanded("ranking")}
           items={recentVideos.map((video) => ({
             label: video.folder,
-            sub: video.lastPlayedAt ? video.lastPlayedAt.replace("T", " ").slice(0, 19) : undefined,
+            sub: video.lastPlayedAt
+              ? video.lastPlayedAt.replace("T", " ").slice(0, 19)
+              : undefined,
             value: `${video.playCount} 次`,
             right: formatDuration(video.watchSec),
           }))}

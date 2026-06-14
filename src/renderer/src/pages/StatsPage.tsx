@@ -59,6 +59,18 @@ interface DiskSnapshot {
   totalDiskBytes?: number;
 }
 
+interface ArousalSession {
+  startedAt: string;
+  endedAt: string;
+  durationSec: number;
+  videoFolder?: string | null;
+}
+
+interface ArousalData {
+  sessions: ArousalSession[];
+  totals: { count: number; totalSec: number };
+}
+
 interface StatsData {
   daily: Record<string, ActivityBucket>;
   hourly?: Record<string, ActivityBucket>;
@@ -67,6 +79,7 @@ interface StatsData {
   videos: Record<string, VideoEntry>;
   diskSnapshots: DiskSnapshot[];
   totals: ActivityBucket;
+  arousal?: ArousalData;
 }
 
 interface LibraryVideo {
@@ -1573,6 +1586,94 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
           color="bg-rose-500"
         />
       </div>
+
+      {(() => {
+        const arousal = stats.arousal;
+        if (!arousal || arousal.sessions.length === 0) return null;
+        const recent = arousal.sessions.slice(-10).reverse();
+        const avgSec =
+          arousal.totals.count > 0
+            ? Math.floor(arousal.totals.totalSec / arousal.totals.count)
+            : 0;
+        const fmtTime = (sec: number) => {
+          const m = Math.floor(sec / 60);
+          const s = sec % 60;
+          return `${m}分${String(s).padStart(2, "0")}秒`;
+        };
+        const fmtDate = (iso: string) => {
+          try {
+            const d = new Date(iso);
+            return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+          } catch {
+            return iso;
+          }
+        };
+        const last = arousal.sessions[arousal.sessions.length - 1];
+        return (
+          <div className="bg-white dark:bg-slate-900 border border-rose-200/60 dark:border-rose-900/40 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-md bg-rose-500">
+                  <Timer className="w-3.5 h-3.5 text-white" />
+                </div>
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                  私密时刻
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                {arousal.totals.count} 次记录
+              </span>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <MiniMetric
+                label="总次数"
+                value={`${arousal.totals.count}`}
+                sub="累计"
+              />
+              <MiniMetric
+                label="总时长"
+                value={formatDuration(arousal.totals.totalSec)}
+                sub="累计"
+              />
+              <MiniMetric
+                label="平均单次"
+                value={fmtTime(avgSec)}
+                sub="历史平均"
+              />
+              <MiniMetric
+                label="最近一次"
+                value={last ? fmtTime(last.durationSec) : "—"}
+                sub={last ? fmtDate(last.startedAt) : ""}
+              />
+            </div>
+            {recent.length > 0 && (
+              <div className="mt-3 border-t border-slate-100 dark:border-slate-800 pt-3">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
+                  最近记录
+                </div>
+                <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                  {recent.map((s, i) => (
+                    <div
+                      key={`${s.startedAt}-${i}`}
+                      className="flex items-center justify-between text-[11px] gap-2"
+                    >
+                      <span className="font-mono text-slate-500 dark:text-slate-400 shrink-0">
+                        {fmtDate(s.startedAt)}
+                      </span>
+                      <span className="flex-1 min-w-0 truncate text-slate-600 dark:text-slate-300 text-[10px]">
+                        {s.videoFolder || "—"}
+                      </span>
+                      <span className="font-mono font-bold text-rose-600 dark:text-rose-400 shrink-0 tabular-nums">
+                        {fmtTime(s.durationSec)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 stats-stagger-inner">
         <MiniMetric

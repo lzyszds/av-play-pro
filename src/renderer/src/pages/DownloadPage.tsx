@@ -3,12 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { trpc } from "../lib/trpc";
-import {
-  generateAndSaveThumbnails,
-  pathToLocalMediaUrl,
-} from "../lib/thumbnails";
+import { thumbnailQueue } from "../lib/thumbnailQueue";
 import {
   Plus,
   FileVideo,
@@ -22,6 +19,7 @@ import {
 import { NewTaskModal } from "../components/download/NewTaskModal";
 import { SettingsPanel } from "../components/download/SettingsPanel";
 import { TaskCard } from "../components/download/TaskCard";
+import { DownloadFloatingBall } from "../components/download/DownloadFloatingBall";
 import { PageLoader } from "../components/PageLoader";
 import type {
   AppSettings,
@@ -115,13 +113,13 @@ export function DownloadPage({
   const [searchTerm, setSearchTerm] = useState("");
   const [copiedTaskCmd, setCopiedTaskCmd] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
+  const flashTimerRef = useRef<number | null>(null);
   const [privacyScreenActive, setPrivacyScreenActive] = useState(false);
   const [privacyScreenLeaving, setPrivacyScreenLeaving] = useState(false);
-  const [privacyBackground, setPrivacyBackground] = useState<DownloadBackground>(
-    settings.downloadBackground ?? "1",
-  );
+  const [privacyBackground, setPrivacyBackground] =
+    useState<DownloadBackground>(settings.downloadBackground ?? "1");
 
-  const activeDownloadId = useRef<string | null>(null);
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
   // 让 IPC 回调访问最新设置（避免 effect 因 settings 变化而重订阅）
@@ -189,8 +187,14 @@ export function DownloadPage({
         window.clearTimeout(privacyIdleTimerRef.current);
       }
       if (showSettingsModal) return;
-      const delay = Math.max(5, settingsRef.current.privacyScreenIdleSeconds ?? 60);
-      privacyIdleTimerRef.current = window.setTimeout(showPrivacyScreen, delay * 1000);
+      const delay = Math.max(
+        5,
+        settingsRef.current.privacyScreenIdleSeconds ?? 60,
+      );
+      privacyIdleTimerRef.current = window.setTimeout(
+        showPrivacyScreen,
+        delay * 1000,
+      );
     };
 
     const handleActivity = () => {
@@ -249,7 +253,9 @@ export function DownloadPage({
       setPrivacyBackground((current) => {
         const currentIndex = PRIVACY_BACKGROUNDS.indexOf(current);
         const nextIndex =
-          currentIndex >= 0 ? (currentIndex + 1) % PRIVACY_BACKGROUNDS.length : 0;
+          currentIndex >= 0
+            ? (currentIndex + 1) % PRIVACY_BACKGROUNDS.length
+            : 0;
         return PRIVACY_BACKGROUNDS[nextIndex];
       });
     }, intervalSeconds * 1000);
@@ -264,27 +270,8 @@ export function DownloadPage({
         addLog(`进度条片段图已存在，跳过生成: ${taskName}`, "INFO");
         return;
       }
-
-      const found = await trpc.videos.findVideoFile.query({ folder: taskDir });
-      if (!found.success || !found.path) {
-        addLog(`未找到成片文件，无法生成进度条片段图: ${taskName}`, "WARNING");
-        return;
-      }
-
-      addLog(`开始生成进度条片段图: ${taskName}`, "INFO");
-      const result = await generateAndSaveThumbnails({
-        videoUrl: pathToLocalMediaUrl(found.path),
-        folder: taskDir,
-        onProgress: (done, total) => {
-          if (done === total || done % 20 === 0) {
-            addLog(`片段图生成中 [${done}/${total}]: ${taskName}`, "INFO");
-          }
-        },
-      });
-      addLog(
-        `进度条片段图已生成: ${taskName} (${result.count} 帧, ${result.spriteSizeKB} KB)`,
-        "SUCCESS",
-      );
+      addLog(`已入刻度图后台队列: ${taskName}`, "INFO");
+      thumbnailQueue.enqueue({ name: taskName, folderPath: taskDir });
     },
     [addLog],
   );
@@ -297,9 +284,7 @@ export function DownloadPage({
   // 应用启动时，上次会话遗留的“下载中/解析中”进程其实已不存在，重置为暂停，避免假象
   useEffect(() => {
     setTasks((prev) =>
-      prev.some(
-        (t) => t.status === "DOWNLOADING" || t.status === "PARSING",
-      )
+      prev.some((t) => t.status === "DOWNLOADING" || t.status === "PARSING")
         ? prev.map((t) =>
             t.status === "DOWNLOADING" || t.status === "PARSING"
               ? { ...t, status: "PAUSED", speed: 0 }
@@ -318,9 +303,11 @@ export function DownloadPage({
       .query()
       .then((state) => {
         if (disposed) return;
-        setTasks(Array.isArray(state.tasks) ? (state.tasks as DownloadTask[]) : []);
+        setTasks(
+          Array.isArray(state.tasks) ? (state.tasks as DownloadTask[]) : [],
+        );
         if (Array.isArray(state.logs)) {
-          setLogs((state.logs as LogMessage[]));
+          setLogs(state.logs as LogMessage[]);
         }
       })
       .catch((err: any) => {
@@ -430,6 +417,56 @@ export function DownloadPage({
       return value * (units[unit] || 1);
     };
 
+    // ===== 进度合并器：把高频 IPC 事件批处理成 ~5fps 的一次 setTasks =====
+    // 不是 done 的事件全部进 pending；done 事件立刻 flush。
+    // 这样 100 个任务 + 每秒几十条日志也不会触发 100 次全表 re-render。
+    type Pending = {
+      progress?: number;
+      speed?: number;
+      totalSize?: number;
+      downloadedSize?: number;
+      downloadedSegments?: number;
+      totalSegments?: number;
+      logLines: string[];
+    };
+    const pendingByTask = new Map<string, Pending>();
+    let flushTimer: number | null = null;
+
+    const flushPending = () => {
+      if (pendingByTask.size === 0) {
+        flushTimer = null;
+        return;
+      }
+      // 把所有 pending 一次性 apply 到 tasks 上
+      const snapshot = new Map(pendingByTask);
+      pendingByTask.clear();
+      flushTimer = null;
+      setTasks((prev) =>
+        prev.map((t) => {
+          const p = snapshot.get(t.id);
+          if (!p) return t;
+          const next: typeof t = { ...t };
+          if (p.progress != null) next.progress = p.progress;
+          if (p.speed != null) next.speed = p.speed;
+          if (p.totalSize != null) next.totalSize = p.totalSize;
+          if (p.downloadedSize != null) next.downloadedSize = p.downloadedSize;
+          if (p.downloadedSegments != null)
+            next.downloadedSegments = p.downloadedSegments;
+          if (p.totalSegments != null) next.totalSegments = p.totalSegments;
+          if (p.logLines.length > 0) {
+            // 一次合并多行日志，且只保留尾部 200 条
+            next.logs = [...t.logs, ...p.logLines].slice(-200);
+          }
+          return next;
+        }),
+      );
+    };
+
+    const scheduleFlush = () => {
+      if (flushTimer != null) return;
+      flushTimer = window.setTimeout(flushPending, 200);
+    };
+
     const handleProgress = (
       _event: any,
       data: {
@@ -437,19 +474,19 @@ export function DownloadPage({
         percent: number | null;
         done: boolean;
         success: boolean;
+        taskId?: string;
       },
     ) => {
       if (disposed) return;
       const { line, percent, done, success } = data;
-      const id = activeDownloadId.current;
+      const id = data.taskId || null;
 
-      // 解析速度和大小
       const info = parseProgressInfo(line);
 
-      // 更新任务栏进度条（节流 200ms,N_m3u8DL-RE 输出极频繁）
+      // 任务栏进度条：节流 250ms
       if (id && !done && info.percent != null) {
         const now = Date.now();
-        if (now - lastTaskbarPushRef.current >= 200) {
+        if (now - lastTaskbarPushRef.current >= 250) {
           lastTaskbarPushRef.current = now;
           void trpc.system.setTaskbarProgress
             .mutate({ progress: Math.max(0, Math.min(1, info.percent / 100)) })
@@ -457,45 +494,53 @@ export function DownloadPage({
         }
       }
 
-      // 如果有活动下载任务，更新任务日志
-      if (id) {
+      // 非 done 事件 → 进 pending；done 事件 → 立即 flush 再处理完成
+      if (id && !done) {
+        let p = pendingByTask.get(id);
+        if (!p) {
+          p = { logLines: [] };
+          pendingByTask.set(id, p);
+        }
+        const effPercent =
+          info.percent != null ? info.percent : percent != null ? percent : null;
+        if (effPercent != null) p.progress = effPercent;
+        if (info.speed != null) p.speed = info.speed;
+        if (info.totalSize != null) p.totalSize = info.totalSize;
+        if (info.downloadedSize != null) p.downloadedSize = info.downloadedSize;
+        if (info.downloadedSegments != null)
+          p.downloadedSegments = info.downloadedSegments;
+        if (info.totalSegments != null) p.totalSegments = info.totalSegments;
+        if (line) {
+          // 限制单批日志缓存上限，避免极端情况下 pending 自己也变巨大
+          if (p.logLines.length < 40) p.logLines.push(line);
+        }
+        scheduleFlush();
+      }
+
+      // done 事件 → 先把 pending 落地，再单独更新该任务为完成态
+      if (id && done) {
+        // 把当前任务的 pending 也并入
+        const p = pendingByTask.get(id);
+        pendingByTask.delete(id);
         setTasks((prev) =>
           prev.map((t) => {
             if (t.id !== id) return t;
-            const taskLogs = line ? [...t.logs, line].slice(-200) : t.logs;
-            if (done) {
-              return {
-                ...t,
-                status: success ? "COMPLETED" : "FAILED",
-                progress: success ? 100 : t.progress,
-                speed: 0,
-                logs: taskLogs,
-              };
+            const merged: typeof t = { ...t };
+            if (p) {
+              if (p.totalSize != null) merged.totalSize = p.totalSize;
+              if (p.downloadedSize != null) merged.downloadedSize = p.downloadedSize;
+              if (p.downloadedSegments != null)
+                merged.downloadedSegments = p.downloadedSegments;
+              if (p.totalSegments != null) merged.totalSegments = p.totalSegments;
             }
-            return {
-              ...t,
-              progress:
-                info.percent != null
-                  ? info.percent
-                  : percent != null
-                    ? percent
-                    : t.progress,
-              speed: info.speed != null ? info.speed : t.speed,
-              downloadedSize:
-                info.downloadedSize != null
-                  ? info.downloadedSize
-                  : t.downloadedSize,
-              totalSize: info.totalSize != null ? info.totalSize : t.totalSize,
-              downloadedSegments:
-                info.downloadedSegments != null
-                  ? info.downloadedSegments
-                  : t.downloadedSegments,
-              totalSegments:
-                info.totalSegments != null
-                  ? info.totalSegments
-                  : t.totalSegments,
-              logs: taskLogs,
-            };
+            merged.status = success ? "COMPLETED" : "FAILED";
+            merged.progress = success ? 100 : merged.progress;
+            merged.speed = 0;
+            const extraLines = [...(p?.logLines ?? []), line].filter(Boolean);
+            if (extraLines.length > 0) {
+              merged.logs = [...t.logs, ...extraLines].slice(-200);
+            }
+            return merged;
           }),
         );
       }
@@ -516,8 +561,11 @@ export function DownloadPage({
 
       // 下载完成处理
       if (done && id) {
-        const finished = activeDownloadId.current;
-        activeDownloadId.current = null;
+        const finished = id;
+        // 仅在没有其他下载中任务时清任务栏进度
+        const stillRunning = tasksRef.current.some(
+          (t) => t.id !== finished && t.status === "DOWNLOADING",
+        );
         addLog(
           success
             ? "下载任务已完成并合并。"
@@ -525,8 +573,12 @@ export function DownloadPage({
           success ? "SUCCESS" : "WARNING",
         );
 
-        // 清除任务栏进度
-        void trpc.system.setTaskbarProgress.mutate({ progress: -1 }).catch(() => {});
+        // 清除任务栏进度（仅最后一个收尾的任务）
+        if (!stillRunning) {
+          void trpc.system.setTaskbarProgress
+            .mutate({ progress: -1 })
+            .catch(() => {});
+        }
 
         // 系统通知 + 提示音
         const finishedTask = tasksRef.current.find((t) => t.id === finished);
@@ -575,9 +627,14 @@ export function DownloadPage({
               task.savePath.replace(/[\/\\]$/, "") +
               "\\" +
               task.name.replace(/[\\/:*?"<>|]/g, "_");
-            void generateThumbsForCompletedTask(taskDir, task.name).catch((err: any) => {
-              addLog(`进度条片段图生成失败: ${task.name} - ${err?.message || err}`, "ERROR");
-            });
+            void generateThumbsForCompletedTask(taskDir, task.name).catch(
+              (err: any) => {
+                addLog(
+                  `进度条片段图生成失败: ${task.name} - ${err?.message || err}`,
+                  "ERROR",
+                );
+              },
+            );
             trpc.download.downloadCoverPreview.mutate({
               id: videoCode, // 使用番号而非 task.id
               name: task.name,
@@ -617,6 +674,11 @@ export function DownloadPage({
 
     return () => {
       disposed = true;
+      if (flushTimer != null) {
+        window.clearTimeout(flushTimer);
+        flushTimer = null;
+      }
+      pendingByTask.clear();
       unlisten();
     };
   }, [addLog, generateThumbsForCompletedTask]);
@@ -628,7 +690,8 @@ export function DownloadPage({
 
       if (code) {
         const duplicateTasks = tasksRef.current.filter((task) => {
-          const taskCode = extractVideoCode(task.name) || extractVideoCode(task.url);
+          const taskCode =
+            extractVideoCode(task.name) || extractVideoCode(task.url);
           return taskCode === code;
         });
 
@@ -646,7 +709,8 @@ export function DownloadPage({
           });
         } catch (err: any) {
           addLog(
-            "\u68c0\u67e5\u672c\u5730\u89c6\u9891\u5e93\u91cd\u590d\u5931\u8d25: " + (err?.message || err),
+            "\u68c0\u67e5\u672c\u5730\u89c6\u9891\u5e93\u91cd\u590d\u5931\u8d25: " +
+              (err?.message || err),
             "WARNING",
           );
         }
@@ -654,11 +718,14 @@ export function DownloadPage({
         if (duplicateTasks.length > 0 || duplicateVideos.length > 0) {
           const details = [
             duplicateTasks.length > 0
-              ? "\u5df2\u6709\u4e0b\u8f7d\u4efb\u52a1: " + duplicateTasks.map((task) => task.name).join(", ")
+              ? "\u5df2\u6709\u4e0b\u8f7d\u4efb\u52a1: " +
+                duplicateTasks.map((task) => task.name).join(", ")
               : "",
             duplicateVideos.length > 0
               ? "\u672c\u5730\u89c6\u9891\u5e93\u5df2\u6709\u89c6\u9891: " +
-                duplicateVideos.map((video) => video.name || video.id || code).join(", ")
+                duplicateVideos
+                  .map((video) => video.name || video.id || code)
+                  .join(", ")
               : "",
           ].filter(Boolean);
 
@@ -671,11 +738,19 @@ export function DownloadPage({
           );
 
           if (!confirmed) {
-            addLog("\u5df2\u53d6\u6d88\u6dfb\u52a0\u91cd\u590d\u756a\u53f7\u4efb\u52a1: " + code, "WARNING");
+            addLog(
+              "\u5df2\u53d6\u6d88\u6dfb\u52a0\u91cd\u590d\u756a\u53f7\u4efb\u52a1: " +
+                code,
+              "WARNING",
+            );
             return false;
           }
 
-          addLog("\u7528\u6237\u786e\u8ba4\u6dfb\u52a0\u91cd\u590d\u756a\u53f7\u4efb\u52a1: " + code, "WARNING");
+          addLog(
+            "\u7528\u6237\u786e\u8ba4\u6dfb\u52a0\u91cd\u590d\u756a\u53f7\u4efb\u52a1: " +
+              code,
+            "WARNING",
+          );
         }
       }
 
@@ -704,7 +779,8 @@ export function DownloadPage({
         referer: data.referer || undefined,
         refererSource: data.refererSource || undefined,
         logs: [
-          "[\u7cfb\u7edf] \u4efb\u52a1\u5df2\u521b\u5efa\u3002\u76ee\u6807\u5730\u5740: " + data.url,
+          "[\u7cfb\u7edf] \u4efb\u52a1\u5df2\u521b\u5efa\u3002\u76ee\u6807\u5730\u5740: " +
+            data.url,
           ...(data.referer
             ? [
                 `[插件] Referer source: ${data.refererSource || "unknown"} | ${data.referer}`,
@@ -805,13 +881,14 @@ export function DownloadPage({
       const t = tasksRef.current.find((x) => x.id === id);
       if (!t) return;
       // 已在下载中则忽略
-      if (t.status === "DOWNLOADING" && activeDownloadId.current === t.id)
-        return;
+      if (t.status === "DOWNLOADING") return;
 
       // \u542f\u52a8\u524d\u68c0\u67e5\u76ee\u6807\u76d8\u5269\u4f59\u7a7a\u95f4\uff08<5GB \u7ed9\u8b66\u544a\uff09
       void (async () => {
         try {
-          const disk = await trpc.system.getDiskFree.query({ path: t.savePath });
+          const disk = await trpc.system.getDiskFree.query({
+            path: t.savePath,
+          });
           if (disk.free > 0 && disk.free < 5 * 1024 * 1024 * 1024) {
             const gb = (disk.free / 1024 / 1024 / 1024).toFixed(2);
             addLog(
@@ -822,7 +899,6 @@ export function DownloadPage({
         } catch {}
       })();
 
-      activeDownloadId.current = t.id;
       addLog(`\u5f00\u59cb\u4e0b\u8f7d\u4efb\u52a1: ${t.name}`, "INFO");
 
       // 每个任务创建独立文件夹: {savePath}/{任务名}/
@@ -844,8 +920,10 @@ export function DownloadPage({
         ),
       );
 
-      trpc.download.start
+      // 异步触发后端 spawn，不阻塞 UI（即使任务很多也只是排进 tRPC 队列即可）
+      void trpc.download.start
         .mutate({
+          taskId: t.id,
           url: t.url,
           saveDir: taskDir,
           saveName: "video",
@@ -857,7 +935,6 @@ export function DownloadPage({
         })
         .catch((err: any) => {
           addLog(`下载启动失败: ${err?.message || err}`, "ERROR");
-          if (activeDownloadId.current === t.id) activeDownloadId.current = null;
           setTasks((cur) =>
             cur.map((x) => (x.id === id ? { ...x, status: "FAILED" } : x)),
           );
@@ -868,16 +945,33 @@ export function DownloadPage({
     [addLog, settings.temp_path, settings.globalSpeedLimit],
   );
 
-  /* ---- 队列调度：仅在“队列下载”开启时，空闲则启动最早加入的等待任务 ---- */
+  /* ---- 调度器：根据队列开关与并发上限启动等待中的任务 ---- */
   const startNextInQueue = useCallback(() => {
-    if (!queueEnabledRef.current) return; // 队列下载未开启，不自动推进
-    if (activeDownloadId.current) return; // 有任务正在下载，保持串行
-    const next = tasksRef.current
+    const settingsNow = settingsRef.current;
+    const downloadingCount = tasksRef.current.filter(
+      (t) => t.status === "DOWNLOADING",
+    ).length;
+    // 队列开启 → 串行（最多 1 个）；关闭 → 并发上限 = maxConcurrentTasks
+    const limit = queueEnabledRef.current
+      ? 1
+      : Math.max(1, settingsNow.maxConcurrentTasks || 3);
+    let toStart = limit - downloadingCount;
+    if (toStart <= 0) return;
+    const pending = tasksRef.current
       .filter((t) => t.status === "PENDING")
-      .sort((a, b) => a.creationTime.localeCompare(b.creationTime))[0];
-    if (next) {
-      addLog(`队列：开始下载 ${next.name}`, "INFO");
-      startTask(next.id);
+      .sort((a, b) => a.creationTime.localeCompare(b.creationTime));
+    for (const next of pending) {
+      if (toStart <= 0) break;
+      addLog(
+        queueEnabledRef.current
+          ? `队列：开始下载 ${next.name}`
+          : `并发启动: ${next.name}`,
+        "INFO",
+      );
+      // 用 setTimeout 0 把每个 start 推到下一个 tick，避免一次性 setTasks 太多
+      const id = next.id;
+      setTimeout(() => startTask(id), 0);
+      toStart--;
     }
   }, [addLog, startTask]);
 
@@ -894,8 +988,7 @@ export function DownloadPage({
 
       // 暂停正在下载的任务
       if (t.status === "DOWNLOADING") {
-        trpc.download.stop.mutate();
-        activeDownloadId.current = null;
+        void trpc.download.stop.mutate({ taskId: id });
         setTasks((prev) =>
           prev.map((x) =>
             x.id === id
@@ -913,8 +1006,15 @@ export function DownloadPage({
 
       // 开始 / 恢复
       if (t.status === "PAUSED" || t.status === "PENDING") {
-        // 已有任务在下载 → 排队等待（串行下载，单进程）
-        if (activeDownloadId.current && activeDownloadId.current !== id) {
+        const settingsNow = settingsRef.current;
+        const downloadingCount = tasksRef.current.filter(
+          (x) => x.status === "DOWNLOADING",
+        ).length;
+        const limit = queueEnabledRef.current
+          ? 1
+          : Math.max(1, settingsNow.maxConcurrentTasks || 3);
+        if (downloadingCount >= limit) {
+          // 已达并发上限 → 进队列等待
           setTasks((prev) =>
             prev.map((x) =>
               x.id === id
@@ -929,7 +1029,6 @@ export function DownloadPage({
           addLog(`已加入下载队列：${t.name}`, "INFO");
           return;
         }
-        // 空闲 → 立即开始
         startTask(id);
       }
     },
@@ -971,26 +1070,26 @@ export function DownloadPage({
 
   /* ---- bulk actions ---- */
   const handleStartAll = useCallback(() => {
-    // 把所有暂停的任务加入队列，开启队列下载并串行启动（单进程，逐个下载）
+    // 把所有暂停的任务标记为 PENDING，由调度器按当前队列开关+并发上限分批启动
     setTasks((prev) =>
       prev.map((t) =>
         t.status === "PAUSED" ? { ...t, status: "PENDING" } : t,
       ),
     );
-    queueEnabledRef.current = true;
-    setQueueEnabled(true);
-    addLog("▶️ 操作: 已开启队列下载并加入全部待下载任务", "INFO");
-    setTimeout(() => startNextRef.current(), 300);
+    addLog(
+      queueEnabledRef.current
+        ? "▶️ 操作: 全部加入队列下载，逐个开始"
+        : `▶️ 操作: 全部加入并发下载（并发上限 ${settingsRef.current.maxConcurrentTasks || 3}）`,
+      "INFO",
+    );
+    setTimeout(() => startNextRef.current(), 100);
   }, [addLog]);
 
   const handlePauseAll = useCallback(() => {
-    // 关闭队列下载，停掉后端当前进程，活动任务与排队任务一并暂停
+    // 关闭队列下载，停掉后端所有进程，活动任务与排队任务一并暂停
     queueEnabledRef.current = false;
     setQueueEnabled(false);
-    if (activeDownloadId.current) {
-      trpc.download.stop.mutate();
-      activeDownloadId.current = null;
-    }
+    void trpc.download.stop.mutate({});
     setTasks((prev) =>
       prev.map((t) =>
         t.status === "DOWNLOADING" || t.status === "PENDING"
@@ -1020,6 +1119,27 @@ export function DownloadPage({
     setDetailOpen(true);
   }, []);
 
+  /* ---- 跳转并高亮指定任务卡片 ---- */
+  const handleJumpToTask = useCallback((id: string) => {
+    setSelectedTaskId(id);
+    const el = document.getElementById(`task-card-${id}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    setFlashTaskId(id);
+    if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = window.setTimeout(() => {
+      setFlashTaskId(null);
+      flashTimerRef.current = null;
+    }, 1800);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (flashTimerRef.current) window.clearTimeout(flashTimerRef.current);
+    };
+  }, []);
+
   /* ---- 立即查看（已完成任务跳到播放器） ---- */
   const handlePlayCompleted = useCallback(
     (task: DownloadTask) => {
@@ -1043,19 +1163,27 @@ export function DownloadPage({
   );
 
   /* ---- derived (必须在所有回调之前定义) ---- */
-  const selectedTask: DownloadTask | null =
-    tasks.find((t) => t.id === selectedTaskId) ?? null;
-  const filteredTasks = tasks.filter(
-    (t) =>
-      t.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.url.toLowerCase().includes(searchTerm.toLowerCase()),
+  const selectedTask: DownloadTask | null = useMemo(
+    () => tasks.find((t) => t.id === selectedTaskId) ?? null,
+    [tasks, selectedTaskId],
   );
+  const filteredTasks = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return tasks;
+    return tasks.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) || t.url.toLowerCase().includes(q),
+    );
+  }, [tasks, searchTerm]);
   const downloadBackgroundUrl = `./${settings.downloadBackground ?? "1"}.webp`;
   const privacyBackgroundUrl = `./${privacyBackground}.webp`;
   const legacyPrivacySettings = settings as AppSettings & {
     privacyScreenDim?: number;
   };
-  const privacyBlur = Math.max(0, Math.min(32, settings.privacyScreenBlur ?? 0));
+  const privacyBlur = Math.max(
+    0,
+    Math.min(32, settings.privacyScreenBlur ?? 0),
+  );
   const privacyImageOpacity =
     Math.max(
       0,
@@ -1109,112 +1237,120 @@ export function DownloadPage({
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(255,255,255,0.20),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.12),transparent_30%),linear-gradient(135deg,rgba(255,250,245,0.38),rgba(248,250,252,0.22)_52%,rgba(255,241,242,0.24))] dark:bg-[radial-gradient(circle_at_18%_16%,rgba(244,63,94,0.08),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(14,165,233,0.08),transparent_30%),linear-gradient(135deg,rgba(2,6,23,0.58),rgba(15,23,42,0.42)_52%,rgba(25,7,17,0.38))]" />
       </div>
       <PageLoader active={!storageLoaded} label="加载任务列表" />
-      {/* ====== LEFT: Task List ====== */}
-      <div className="relative z-10 flex-1 overflow-y-scroll p-6 min-h-50 bg-white/4 dark:bg-slate-950/10">
-        {/* Queue Control Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-bold text-slate-500">
-              当前任务队列 ({tasks.length})
-            </span>
-            {tasks.filter((t) => t.status === "DOWNLOADING").length > 0 && (
-              <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-2.5 py-0.5 font-mono font-bold">
-                {tasks.filter((t) => t.status === "DOWNLOADING").length}{" "}
-                任务下载中
-              </span>
-            )}
-            {tasks.filter((t) => t.status === "PENDING").length > 0 && (
-              <span className="text-[10px] bg-slate-200 text-slate-600 rounded-full px-2.5 py-0.5 font-mono font-bold">
-                {tasks.filter((t) => t.status === "PENDING").length} 个排队中
-              </span>
-            )}
-          </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Search */}
-            <div className="relative mr-2">
-              <input
-                type="text"
-                placeholder="搜索任务/链接..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-40 sm:w-48 bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:w-56 focus:border-amber-500 transition-all font-sans shadow-sm"
-              />
-              <Search className="w-3.5 h-3.5 text-black absolute left-2.5 top-2.5" />
+      {/* ====== Task List (scrollable) ====== */}
+      <div className="relative z-10 flex-1 overflow-y-scroll pt-0 min-h-50 bg-white/4 dark:bg-slate-950/10">
+        {/* ====== Sticky Toolbar ====== */}
+        <div className="shrink-0 mb-4 p-3 pt-4 sticky top-0 bg-white/4 dark:bg-slate-950/10 backdrop-blur-sm z-99">
+          {/* Queue Control Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold text-slate-500 dark:text-white bg-slate-200/50 rounded-full px-2.5 py-0.5">
+                当前任务队列 ({tasks.length})
+              </span>
+              {tasks.filter((t) => t.status === "DOWNLOADING").length > 0 && (
+                <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-2.5 py-0.5 font-mono font-bold">
+                  {tasks.filter((t) => t.status === "DOWNLOADING").length}{" "}
+                  任务下载中
+                </span>
+              )}
+              {tasks.filter((t) => t.status === "PENDING").length > 0 && (
+                <span className="text-[10px] bg-slate-200 text-slate-600 rounded-full px-2.5 py-0.5 font-mono font-bold">
+                  {tasks.filter((t) => t.status === "PENDING").length} 个排队中
+                </span>
+              )}
             </div>
 
-            <button
-              onClick={() => setShowNewTaskModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-xs text-white font-bold rounded-lg transition cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              新建任务
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Search */}
+              <div className="relative mr-2">
+                <input
+                  type="text"
+                  placeholder="搜索任务/链接..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-40 sm:w-48 bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:w-56 focus:border-amber-500 transition-all font-sans shadow-sm"
+                />
+                <Search className="w-3.5 h-3.5 text-black absolute left-2.5 top-2.5" />
+              </div>
 
-            <button
-              onClick={showPrivacyScreen}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
-              title="立即开启隐私屏保，遮住下载内容"
-            >
-              <EyeOff className="w-3.5 h-3.5" />
-              隐私屏保
-            </button>
-
-            {/* 队列下载开关 */}
-            <button
-              onClick={handleToggleQueue}
-              title={queueEnabled ? "点击关闭队列下载" : "点击开启队列下载（完成自动下一个）"}
-              className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] w-28 font-bold rounded-lg border transition cursor-pointer ${
-                queueEnabled
-                  ? "bg-amber-500 border-amber-500 text-white shadow-sm"
-                  : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-              }`}
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  queueEnabled ? "bg-white animate-pulse" : "bg-slate-300"
-                }`}
-              />
-              队列下载 {queueEnabled ? "ON" : "OFF"}
-            </button>
-
-            <button
-              onClick={handleStartAll}
-              className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
-            >
-              全部开始
-            </button>
-
-            <button
-              onClick={handlePauseAll}
-              className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
-            >
-              全部暂停
-            </button>
-
-            {tasks.some((t) => t.status === "COMPLETED") && (
               <button
-                onClick={handleClearCompleted}
-                className="px-2.5 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-[11px] text-rose-600 font-semibold rounded-lg transition cursor-pointer"
-                title="从列表中清空已完成任务"
+                onClick={() => setShowNewTaskModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-xs text-white font-bold rounded-lg transition cursor-pointer"
               >
-                清空已完成
+                <Plus className="w-3.5 h-3.5" />
+                新建任务
               </button>
-            )}
 
-            <button
-              onClick={() => setShowSettingsModal(true)}
-              className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
-              title="系统设置"
-            >
-              <Settings className="w-3.5 h-3.5" />
-            </button>
+              <button
+                onClick={showPrivacyScreen}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
+                title="立即开启隐私屏保，遮住下载内容"
+              >
+                <EyeOff className="w-3.5 h-3.5" />
+                隐私屏保
+              </button>
+
+              {/* 队列下载开关 */}
+              <button
+                onClick={handleToggleQueue}
+                title={
+                  queueEnabled
+                    ? "点击关闭队列下载"
+                    : "点击开启队列下载（完成自动下一个）"
+                }
+                className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] w-28 font-bold rounded-lg border transition cursor-pointer ${
+                  queueEnabled
+                    ? "bg-amber-500 border-amber-500 text-white shadow-sm"
+                    : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    queueEnabled ? "bg-white animate-pulse" : "bg-slate-300"
+                  }`}
+                />
+                队列下载 {queueEnabled ? "ON" : "OFF"}
+              </button>
+
+              <button
+                onClick={handleStartAll}
+                className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
+              >
+                全部开始
+              </button>
+
+              <button
+                onClick={handlePauseAll}
+                className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
+              >
+                全部暂停
+              </button>
+
+              {tasks.some((t) => t.status === "COMPLETED") && (
+                <button
+                  onClick={handleClearCompleted}
+                  className="px-2.5 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-[11px] text-rose-600 font-semibold rounded-lg transition cursor-pointer"
+                  title="从列表中清空已完成任务"
+                >
+                  清空已完成
+                </button>
+              )}
+
+              <button
+                onClick={() => setShowSettingsModal(true)}
+                className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
+                title="系统设置"
+              >
+                <Settings className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
-        </div>
 
+        </div>
         {/* Task Grid */}
         {filteredTasks.length === 0 ? (
-          <div className="bg-white h-[calc(100%-50px)] rounded-xl border border-slate-200 flex items-center justify-center shadow-sm text-center text-black text-xs">
+          <div className="bg-white h-[calc(100%-50px)] p-3 pt-0 rounded-xl border border-slate-200 flex items-center justify-center shadow-sm text-center text-black text-xs">
             <div className="flex flex-col items-center justify-center gap-3">
               <FileVideo className="w-8 h-8 text-slate-300" />
               <div>
@@ -1230,13 +1366,14 @@ export function DownloadPage({
             </div>
           </div>
         ) : (
-          <div className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
+          <div className="grid gap-4 p-3 pt-0 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
             {filteredTasks.map((task, index) => (
               <TaskCard
                 key={task.id}
                 task={task}
                 index={index}
                 isSelected={selectedTaskId === task.id}
+                isFlashing={flashTaskId === task.id}
                 copiedTaskId={copiedTaskId}
                 onSelectTask={handleSelectTask}
                 onTriggerPauseResume={handleTriggerPauseResume}
@@ -1250,124 +1387,143 @@ export function DownloadPage({
       </div>
 
       {/* ====== 选中详情抽屉（可关闭） ====== */}
-      {detailOpen && selectedTask && (() => {
-        const sizeText =
-          selectedTask.totalSize > 0
-            ? `${formatBytes(selectedTask.downloadedSize)} / ${formatBytes(selectedTask.totalSize)}`
-            : selectedTask.fileSize > 0
-              ? formatBytes(selectedTask.fileSize)
-              : "—";
-        const segText =
-          selectedTask.downloadedSegments > 0 && selectedTask.totalSegments > 0
-            ? `${selectedTask.downloadedSegments} / ${selectedTask.totalSegments}`
-            : `${selectedTask.progress.toFixed(1)}%`;
-        const encText =
-          selectedTask.encryptionType === "NONE"
-            ? "未加密"
-            : selectedTask.encryptionType || "AES-128";
+      {detailOpen &&
+        selectedTask &&
+        (() => {
+          const sizeText =
+            selectedTask.totalSize > 0
+              ? `${formatBytes(selectedTask.downloadedSize)} / ${formatBytes(selectedTask.totalSize)}`
+              : selectedTask.fileSize > 0
+                ? formatBytes(selectedTask.fileSize)
+                : "—";
+          const segText =
+            selectedTask.downloadedSegments > 0 &&
+            selectedTask.totalSegments > 0
+              ? `${selectedTask.downloadedSegments} / ${selectedTask.totalSegments}`
+              : `${selectedTask.progress.toFixed(1)}%`;
+          const encText =
+            selectedTask.encryptionType === "NONE"
+              ? "未加密"
+              : selectedTask.encryptionType || "AES-128";
 
-        const Stat = ({ label, value }: { label: string; value: React.ReactNode }) => (
-          <div className="flex flex-col gap-0.5 min-w-0">
-            <span className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-sans">
-              {label}
-            </span>
-            <span className="text-[12px] font-semibold text-slate-800 dark:text-slate-100 font-mono truncate">
-              {value}
-            </span>
-          </div>
-        );
-
-        return (
-          <div className="relative z-10 h-58 bg-white/86 dark:bg-slate-900/86 backdrop-blur-xl flex flex-col shrink-0 select-text border-t border-white/60 dark:border-slate-800/80 text-slate-600 dark:text-slate-300 anim-fade-in">
-            {/* 头部 */}
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
-                  {selectedTask.name}
-                </span>
-                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono shrink-0">
-                  #{selectedTask.id.slice(0, 8)}
-                </span>
-              </div>
-              <button
-                onClick={() => setDetailOpen(false)}
-                className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-                title="关闭"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+          const Stat = ({
+            label,
+            value,
+          }: {
+            label: string;
+            value: React.ReactNode;
+          }) => (
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span className="text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-sans">
+                {label}
+              </span>
+              <span className="text-[12px] font-semibold text-slate-800 dark:text-slate-100 font-mono truncate">
+                {value}
+              </span>
             </div>
+          );
 
-            {/* 内容 */}
-            <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-[1fr_1fr] gap-4">
-              {/* 左：元信息 */}
-              <div className="flex flex-col gap-3 min-w-0">
-                {/* 统计行 */}
-                <div className="grid grid-cols-3 gap-3 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                  <Stat label="格式" value={selectedTask.format} />
-                  <Stat label="质量" value={selectedTask.resolution || "1080p"} />
-                  <Stat label="加密" value={encText} />
-                  <Stat label="大小" value={sizeText} />
-                  <Stat label="片段" value={segText} />
-                  <Stat label="速度" value={formatSpeed(selectedTask.speed)} />
+          return (
+            <div className="relative z-10 h-58 bg-white/86 dark:bg-slate-900/86 backdrop-blur-xl flex flex-col shrink-0 select-text border-t border-white/60 dark:border-slate-800/80 text-slate-600 dark:text-slate-300 anim-fade-in">
+              {/* 头部 */}
+              <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                    {selectedTask.name}
+                  </span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono shrink-0">
+                    #{selectedTask.id.slice(0, 8)}
+                  </span>
                 </div>
-
-                {/* 链接 / 路径 */}
-                <div className="space-y-1.5">
-                  <div className="flex items-start gap-2 text-[11px]">
-                    <span className="shrink-0 text-[9px] uppercase tracking-wider text-slate-400 mt-0.5 w-10">HLS</span>
-                    <span className="font-mono text-slate-700 dark:text-slate-300 break-all select-all leading-snug">
-                      {selectedTask.url}
-                    </span>
-                  </div>
-                  <div className="flex items-start gap-2 text-[11px]">
-                    <span className="shrink-0 text-[9px] uppercase tracking-wider text-slate-400 mt-0.5 w-10">DIR</span>
-                    <span className="font-mono text-slate-700 dark:text-slate-300 break-all select-all leading-snug">
-                      {selectedTask.savePath}
-                    </span>
-                  </div>
-                </div>
+                <button
+                  onClick={() => setDetailOpen(false)}
+                  className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                  title="关闭"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
               </div>
 
-              {/* 右：终端命令 */}
-              <div className="flex flex-col min-w-0 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-[#0d1117]">
-                <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-800/70 bg-[#161b22]">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-[#ff5f56]" />
-                    <span className="w-2 h-2 rounded-full bg-[#ffbd2e]" />
-                    <span className="w-2 h-2 rounded-full bg-[#27c93f]" />
-                    <span className="ml-2 text-[10px] font-mono text-slate-400">
-                      N_m3u8DL-RE
-                    </span>
+              {/* 内容 */}
+              <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 md:grid-cols-[1fr_1fr] gap-4">
+                {/* 左：元信息 */}
+                <div className="flex flex-col gap-3 min-w-0">
+                  {/* 统计行 */}
+                  <div className="grid grid-cols-3 gap-3 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                    <Stat label="格式" value={selectedTask.format} />
+                    <Stat
+                      label="质量"
+                      value={selectedTask.resolution || "1080p"}
+                    />
+                    <Stat label="加密" value={encText} />
+                    <Stat label="大小" value={sizeText} />
+                    <Stat label="片段" value={segText} />
+                    <Stat
+                      label="速度"
+                      value={formatSpeed(selectedTask.speed)}
+                    />
                   </div>
-                  <button
-                    onClick={handleCopySelectedCommand}
-                    className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-slate-300 hover:text-white hover:bg-white/10 rounded transition cursor-pointer"
-                    title="复制终端命令"
-                  >
-                    {copiedTaskCmd ? (
-                      <>
-                        <Check className="w-3 h-3 text-emerald-400" />
-                        已复制
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3 h-3" />
-                        复制
-                      </>
-                    )}
-                  </button>
+
+                  {/* 链接 / 路径 */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-start gap-2 text-[11px]">
+                      <span className="shrink-0 text-[9px] uppercase tracking-wider text-slate-400 mt-0.5 w-10">
+                        HLS
+                      </span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300 break-all select-all leading-snug">
+                        {selectedTask.url}
+                      </span>
+                    </div>
+                    <div className="flex items-start gap-2 text-[11px]">
+                      <span className="shrink-0 text-[9px] uppercase tracking-wider text-slate-400 mt-0.5 w-10">
+                        DIR
+                      </span>
+                      <span className="font-mono text-slate-700 dark:text-slate-300 break-all select-all leading-snug">
+                        {selectedTask.savePath}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex-1 overflow-y-auto px-3 py-2 text-[11px] font-mono text-slate-200 leading-relaxed select-all break-all">
-                  <span className="text-emerald-400">$</span>{" "}
-                  {generateN3u8DLCommand(selectedTask)}
+
+                {/* 右：终端命令 */}
+                <div className="flex flex-col min-w-0 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-[#0d1117]">
+                  <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-800/70 bg-[#161b22]">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#ff5f56]" />
+                      <span className="w-2 h-2 rounded-full bg-[#ffbd2e]" />
+                      <span className="w-2 h-2 rounded-full bg-[#27c93f]" />
+                      <span className="ml-2 text-[10px] font-mono text-slate-400">
+                        N_m3u8DL-RE
+                      </span>
+                    </div>
+                    <button
+                      onClick={handleCopySelectedCommand}
+                      className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-slate-300 hover:text-white hover:bg-white/10 rounded transition cursor-pointer"
+                      title="复制终端命令"
+                    >
+                      {copiedTaskCmd ? (
+                        <>
+                          <Check className="w-3 h-3 text-emerald-400" />
+                          已复制
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          复制
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto px-3 py-2 text-[11px] font-mono text-slate-200 leading-relaxed select-all break-all">
+                    <span className="text-emerald-400">$</span>{" "}
+                    {generateN3u8DLCommand(selectedTask)}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
 
       {privacyScreenActive && (
         <button
@@ -1411,6 +1567,14 @@ export function DownloadPage({
           </div>
         </button>
       )}
+
+      {/* ====== 下载悬浮球（在刻度图浮球左侧 80px 处）====== */}
+      <DownloadFloatingBall
+        tasks={tasks}
+        onJumpToTask={handleJumpToTask}
+        bottomOffset={16}
+        rightOffset={88}
+      />
 
       {/* ====== Modals ====== */}
       {showNewTaskModal && (

@@ -9,6 +9,7 @@ import { t } from "../trpc";
 import { getMainWindow } from "../windowState";
 
 export interface DownloadPayload {
+  taskId?: string;
   url: string;
   saveDir: string;
   saveName: string;
@@ -28,6 +29,7 @@ export interface ProgressPayload {
   percent: number | null;
   done: boolean;
   success: boolean;
+  taskId?: string;
 }
 
 export interface VideoItem {
@@ -44,9 +46,12 @@ export interface VideoItem {
 
 // ============ 鍏ㄥ眬鐘舵€?============
 
-let downloadProcess: ChildProcess | null = null;
-let downloadPid: number | null = null;
-let stopping = false;
+interface ActiveDownload {
+  proc: ChildProcess;
+  pid: number;
+  stopping: boolean;
+}
+const activeDownloads = new Map<string, ActiveDownload>();
 let progressCallbacks: Array<(data: ProgressPayload) => void> = [];
 let coverChain: Promise<unknown> = Promise.resolve();
 
@@ -114,6 +119,10 @@ function sendProgress(payload: ProgressPayload): void {
   getMainWindow()?.webContents.send("download-progress", payload);
 }
 
+function sendTaskProgress(taskId: string | undefined, payload: Omit<ProgressPayload, "taskId">): void {
+  sendProgress({ ...payload, taskId });
+}
+
 // ============ 封面/棰勮鏃ュ織锛氬啓鍏ユ枃浠?+ 瀹炴椂鎺ㄩ€?============
 export interface CoverLogEntry {
   timestamp: string;
@@ -174,15 +183,30 @@ export const downloadRouter = t.router({
     start: t.procedure
       .input((input: unknown) => input as DownloadPayload)
       .mutation(async ({ input }) => {
+        const taskId = input.taskId;
         const toolPath = resolveToolPath(input.toolPath);
         if (!toolPath) {
-          sendProgress({
+          sendTaskProgress(taskId, {
             line: "[ERROR] N_m3u8DL-RE.exe not found. Please check your bin directory and tool path.",
             percent: null,
             done: true,
             success: false,
           });
           throw new Error("N_m3u8DL-RE.exe not found");
+        }
+
+        // 同一任务再次 start：先杀掉旧进程；不同任务允许并发，不互相影响
+        if (taskId && activeDownloads.has(taskId)) {
+          const old = activeDownloads.get(taskId)!;
+          sendTaskProgress(taskId, {
+            line: `[系统] 同一任务的旧进程仍在运行 (PID: ${old.pid})，重启中…`,
+            percent: null,
+            done: false,
+            success: false,
+          });
+          old.stopping = true;
+          killProcessTree(old.pid);
+          activeDownloads.delete(taskId);
         }
 
         const tmpDir = input.tmpDir || path.join(input.saveDir, "temp");
@@ -225,21 +249,6 @@ export const downloadRouter = t.router({
               if (value) args.push("-H", `${key}: ${value}`);
             }
           } catch {}
-        }
-
-        if (downloadProcess?.pid || downloadPid) {
-          const oldPid = downloadProcess?.pid || downloadPid;
-          if (oldPid) {
-            sendProgress({
-              line: `[系统] 检测到已有下载进程 (PID: ${oldPid})锛屾鍦ㄧ粓姝?..`,
-              percent: null,
-              done: false,
-              success: false,
-            });
-            killProcessTree(oldPid);
-            downloadProcess = null;
-            downloadPid = null;
-          }
         }
 
         if (!fs.existsSync(input.saveDir)) {
@@ -324,39 +333,39 @@ export const downloadRouter = t.router({
           success: false,
         });
 
-        // Use direct spawn to avoid shell path parsing issues.
-        downloadProcess = spawn(toolPath, args, {
+        // Use direct spawn to avoid shell path parsing issues. 进程跑在子进程，主线程不阻塞。
+        const proc = spawn(toolPath, args, {
           windowsHide: true,
           detached: false,
           stdio: ["ignore", "pipe", "pipe"],
         });
-        const pid = downloadProcess.pid || 0;
-        downloadPid = pid; // 持久保存 PID
-        sendProgress({
-          line: `[系统] N_m3u8DL-RE 宸插惎鍔?(PID: ${pid})`,
+        const pid = proc.pid || 0;
+        const slot: ActiveDownload = { proc, pid, stopping: false };
+        if (taskId) activeDownloads.set(taskId, slot);
+
+        sendTaskProgress(taskId, {
+          line: `[系统] N_m3u8DL-RE 已启动 (PID: ${pid})`,
           percent: 0,
           done: false,
           success: false,
         });
 
-        downloadProcess.on("spawn", () => {
-          sendProgress({
-            line: "[系统] 杩涚▼宸叉垚鍔?spawn",
+        proc.on("spawn", () => {
+          sendTaskProgress(taskId, {
+            line: "[系统] 进程已成功 spawn",
             percent: 0,
             done: false,
             success: false,
           });
         });
 
-        downloadProcess.stdout?.on("data", (data: Buffer) => {
+        proc.stdout?.on("data", (data: Buffer) => {
           const text = data.toString();
           process.stdout.write(text);
           for (const line of text.split(/\r?\n/)) {
             const cleaned = stripAnsi(line);
             if (!cleaned) continue;
-            // 注意：完成判定只依赖进程 close 事件，不再根据日志文本提前判定，
-            // 否则会把仍在运行的进程误标记为“已完成”，导致无法暂停/终止。
-            sendProgress({
+            sendTaskProgress(taskId, {
               line: cleaned,
               percent: parsePercent(cleaned),
               done: false,
@@ -365,13 +374,13 @@ export const downloadRouter = t.router({
           }
         });
 
-        downloadProcess.stderr?.on("data", (data: Buffer) => {
+        proc.stderr?.on("data", (data: Buffer) => {
           const text = data.toString();
           process.stderr.write(text);
           for (const line of text.split(/\r?\n/)) {
             const cleaned = stripAnsi(line);
             if (!cleaned) continue;
-            sendProgress({
+            sendTaskProgress(taskId, {
               line: cleaned,
               percent: parsePercent(cleaned),
               done: false,
@@ -380,18 +389,15 @@ export const downloadRouter = t.router({
           }
         });
 
-        downloadProcess.on(
+        proc.on(
           "close",
           (code: number | null, signal: string | null) => {
-            console.log(`[下载] 进程关闭: code=${code}, signal=${signal}`);
-            const wasStopping = stopping;
-            stopping = false;
-            downloadProcess = null;
-            downloadPid = null;
+            console.log(`[下载 ${taskId ?? ""}] 进程关闭: code=${code}, signal=${signal}`);
+            const wasStopping = slot.stopping;
+            if (taskId) activeDownloads.delete(taskId);
 
             if (wasStopping) {
-              // 用户手动暂停/停止：前端已置为“已暂停”，这里只发非完成状态
-              sendProgress({
+              sendTaskProgress(taskId, {
                 line: `[系统] 下载已停止`,
                 percent: null,
                 done: false,
@@ -401,14 +407,14 @@ export const downloadRouter = t.router({
             }
 
             if (code === 0) {
-              sendProgress({
+              sendTaskProgress(taskId, {
                 line: `[系统] 下载已完成 (code: 0)`,
                 percent: 100,
                 done: true,
                 success: true,
               });
             } else {
-              sendProgress({
+              sendTaskProgress(taskId, {
                 line: `[系统] 下载进程异常退出 (code: ${code})`,
                 percent: null,
                 done: true,
@@ -418,47 +424,63 @@ export const downloadRouter = t.router({
           },
         );
 
-        downloadProcess.on("error", (err: Error) => {
-          console.error(`[下载] 启动失败: ${err.message}`);
-          sendProgress({
+        proc.on("error", (err: Error) => {
+          console.error(`[下载 ${taskId ?? ""}] 启动失败: ${err.message}`);
+          sendTaskProgress(taskId, {
             line: `[错误] 启动失败: ${err.message}`,
             percent: null,
             done: true,
             success: false,
           });
-          downloadProcess = null;
+          if (taskId) activeDownloads.delete(taskId);
         });
 
-        return { success: true, pid };
+        return { success: true, pid, taskId };
       }),
 
-    stop: t.procedure.mutation(() => {
-      const pid = downloadProcess?.pid || downloadPid;
-      if (pid) {
-        stopping = true; // 标记为手动停止，close 事件不会发“完成”
-        sendProgress({
-          line: `[系统] 正在停止下载进程 (PID: ${pid})`,
-          percent: null,
-          done: false,
-          success: false,
-        });
-        // 双保险：既杀进程树，也直接 kill 句柄
-        killProcessTree(pid);
-        try {
-          downloadProcess?.kill();
-        } catch {}
-        downloadProcess = null;
-        downloadPid = null;
+    stop: t.procedure
+      .input((input: unknown) => (input as { taskId?: string } | undefined) || {})
+      .mutation(({ input }) => {
+        const taskId = input?.taskId;
+        if (taskId) {
+          const slot = activeDownloads.get(taskId);
+          if (!slot) {
+            return { success: false, message: "No active download for task" };
+          }
+          slot.stopping = true;
+          sendTaskProgress(taskId, {
+            line: `[系统] 正在停止下载进程 (PID: ${slot.pid})`,
+            percent: null,
+            done: false,
+            success: false,
+          });
+          killProcessTree(slot.pid);
+          try {
+            slot.proc.kill();
+          } catch {}
+          activeDownloads.delete(taskId);
+          return { success: true };
+        }
+        // 不带 taskId：停止所有
+        if (activeDownloads.size === 0) {
+          return { success: false, message: "No running download" };
+        }
+        for (const [id, slot] of activeDownloads) {
+          slot.stopping = true;
+          sendTaskProgress(id, {
+            line: `[系统] 正在停止下载进程 (PID: ${slot.pid})`,
+            percent: null,
+            done: false,
+            success: false,
+          });
+          killProcessTree(slot.pid);
+          try {
+            slot.proc.kill();
+          } catch {}
+        }
+        activeDownloads.clear();
         return { success: true };
-      }
-      sendProgress({
-        line: "[系统] 当前没有正在运行的下载进程",
-        percent: null,
-        done: false,
-        success: false,
-      });
-      return { success: false, message: "No running download process" };
-    }),
+      }),
 
     onProgress: t.procedure.subscription(() => {
       return observable<ProgressPayload>((emit) => {
@@ -539,7 +561,15 @@ export const downloadRouter = t.router({
     downloadCoverPreview: t.procedure
       .input(
         (input: unknown) =>
-          input as { id: string; name: string; saveDir: string },
+          input as {
+            id: string;
+            name: string;
+            saveDir: string;
+            customCoverUrl?: string;
+            customPreviewUrl?: string;
+            skipCover?: boolean;
+            skipPreview?: boolean;
+          },
       )
       .mutation(async ({ input }) => {
         const previous = coverChain;
@@ -554,7 +584,7 @@ export const downloadRouter = t.router({
         }
 
         try {
-          const { id, name, saveDir } = input;
+          const { id, name, saveDir, customCoverUrl, customPreviewUrl, skipCover, skipPreview } = input;
           clog("INFO", `开始下载封面和预览: ${name}`);
 
           if (name.toLowerCase().startsWith("desktop")) {
@@ -566,17 +596,53 @@ export const downloadRouter = t.router({
           const videoId = id.toLowerCase();
           const referer = `https://missav.ai/cn/${videoId}-uncensored-leak`;
           const coverLocalPath = path.join(saveDir, "cover.jpg");
+          const coverAltPath = path.join(saveDir, "cover.jpeg");
+          const coverPngPath = path.join(saveDir, "cover.png");
           const previewLocalPath = path.join(saveDir, "preview.mp4");
-          const coverUrls = [
-            `https://fourhoi.com/${videoId}-uncensored-leak/cover-n.jpg`,
-            `https://fourhoi.com/${videoId}-uncensored-leak/cover-t.jpg`,
-            `https://fourhoi.com/${videoId}/cover-n.jpg`,
-            `https://fourhoi.com/${videoId}/cover-t.jpg`,
-          ];
-          const previewUrls = [
-            `https://fourhoi.com/${videoId}-uncensored-leak/preview.mp4`,
-            `https://fourhoi.com/${videoId}/preview.mp4`,
-          ];
+
+          // 缺少相应文件时才修复；已存在则直接跳过
+          const coverExists =
+            fs.existsSync(coverLocalPath) ||
+            fs.existsSync(coverAltPath) ||
+            fs.existsSync(coverPngPath);
+          const previewExists = fs.existsSync(previewLocalPath);
+          const effectiveSkipCover = !!skipCover || coverExists;
+          const effectiveSkipPreview = !!skipPreview || previewExists;
+
+          if (coverExists && !skipCover) {
+            clog("INFO", `封面已存在，跳过: ${name} (${coverLocalPath})`);
+          }
+          if (previewExists && !skipPreview) {
+            clog("INFO", `预览已存在，跳过: ${name} (${previewLocalPath})`);
+          }
+          if (effectiveSkipCover && effectiveSkipPreview) {
+            clog("SUCCESS", `封面和预览均已存在，无需修复: ${name}`);
+            return { success: true, skipped: true, message: "all files exist" };
+          }
+          const coverUrls = customCoverUrl
+            ? [customCoverUrl]
+            : [
+                `https://fourhoi.com/${videoId}-uncensored-leak/cover-n.jpg`,
+                `https://fourhoi.com/${videoId}-uncensored-leak/cover-t.jpg`,
+                `https://fourhoi.com/${videoId}/cover-n.jpg`,
+                `https://fourhoi.com/${videoId}/cover-t.jpg`,
+              ];
+          const previewUrls = customPreviewUrl
+            ? [customPreviewUrl]
+            : [
+                `https://fourhoi.com/${videoId}-uncensored-leak/preview.mp4`,
+                `https://fourhoi.com/${videoId}/preview.mp4`,
+              ];
+
+          // 如果用户显式传入了自定义 URL，视为强制重新下载（覆盖已有）
+          if (customCoverUrl) {
+            if (fs.existsSync(coverLocalPath)) fs.unlinkSync(coverLocalPath);
+            if (fs.existsSync(coverAltPath)) fs.unlinkSync(coverAltPath);
+            if (fs.existsSync(coverPngPath)) fs.unlinkSync(coverPngPath);
+          }
+          if (customPreviewUrl) {
+            if (fs.existsSync(previewLocalPath)) fs.unlinkSync(previewLocalPath);
+          }
 
           const downloadFile = (
             url: string,
@@ -664,8 +730,12 @@ export const downloadRouter = t.router({
             throw lastError || new Error(`${label} download failed`);
           };
 
-          await tryCandidates(coverUrls, coverLocalPath, "cover");
-          await tryCandidates(previewUrls, previewLocalPath, "preview");
+          if (!effectiveSkipCover) {
+            await tryCandidates(coverUrls, coverLocalPath, "cover");
+          }
+          if (!effectiveSkipPreview) {
+            await tryCandidates(previewUrls, previewLocalPath, "preview");
+          }
           clog("SUCCESS", `封面和预览下载完成: ${name}`);
           return { success: true };
         } catch (err: any) {

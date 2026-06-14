@@ -128,10 +128,14 @@ export const videosRouter = t.router({
     hasThumbs: t.procedure
       .input((input: unknown) => input as { folder: string })
       .query(({ input }) => {
-        const sprite = path.join(input.folder, "thumbs.jpg");
+        const webp = path.join(input.folder, "thumbs.webp");
+        const jpg = path.join(input.folder, "thumbs.jpg");
         const vtt = path.join(input.folder, "thumbs.vtt");
+        const webpExists = fs.existsSync(webp);
+        const jpgExists = fs.existsSync(jpg);
+        const sprite = webpExists ? webp : jpg;
         return {
-          exists: fs.existsSync(sprite) && fs.existsSync(vtt),
+          exists: (webpExists || jpgExists) && fs.existsSync(vtt),
           spritePath: sprite,
           vttPath: vtt,
         };
@@ -175,18 +179,57 @@ export const videosRouter = t.router({
         }
       }),
 
+    // 删除已存在的刻度雪碧图（强制重新生成场景）
+    deleteThumbs: t.procedure
+      .input((input: unknown) => input as { folder: string })
+      .mutation(({ input }) => {
+        try {
+          const files = [
+            path.join(input.folder, "thumbs.webp"),
+            path.join(input.folder, "thumbs.jpg"),
+            path.join(input.folder, "thumbs.vtt"),
+          ];
+          let removed = 0;
+          for (const f of files) {
+            if (fs.existsSync(f)) {
+              fs.unlinkSync(f);
+              removed++;
+            }
+          }
+          return { success: true, removed };
+        } catch (err: any) {
+          return { success: false, error: err?.message || String(err) };
+        }
+      }),
+
     writeThumbs: t.procedure
       .input(
         (input: unknown) =>
-          input as { folder: string; jpegBase64: string; vttText: string },
+          input as {
+            folder: string;
+            // 优先 webp；兼容旧 jpegBase64
+            webpBase64?: string;
+            jpegBase64?: string;
+            vttText: string;
+          },
       )
       .mutation(({ input }) => {
         try {
           if (!fs.existsSync(input.folder)) {
             return { success: false, error: "folder not found" };
           }
-          const buf = Buffer.from(input.jpegBase64, "base64");
-          fs.writeFileSync(path.join(input.folder, "thumbs.jpg"), buf);
+          if (input.webpBase64) {
+            const buf = Buffer.from(input.webpBase64, "base64");
+            fs.writeFileSync(path.join(input.folder, "thumbs.webp"), buf);
+            // 清理旧 jpg 避免双副本
+            const oldJpg = path.join(input.folder, "thumbs.jpg");
+            if (fs.existsSync(oldJpg)) fs.unlinkSync(oldJpg);
+          } else if (input.jpegBase64) {
+            const buf = Buffer.from(input.jpegBase64, "base64");
+            fs.writeFileSync(path.join(input.folder, "thumbs.jpg"), buf);
+          } else {
+            return { success: false, error: "missing image data" };
+          }
           fs.writeFileSync(
             path.join(input.folder, "thumbs.vtt"),
             input.vttText,

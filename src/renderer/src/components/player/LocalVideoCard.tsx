@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, Wrench } from "lucide-react";
 import type { VideoItem } from "../../pages/player/types";
 import { CoverImage } from "../CoverImage";
 
@@ -8,8 +8,9 @@ export const LocalVideoCard: React.FC<{
   isActive: boolean;
   onPlay: () => void;
   onDelete: () => void;
+  onRepair?: () => void;
   index: number;
-}> = ({ video, isActive, onPlay, onDelete, index }) => {
+}> = ({ video, isActive, onPlay, onDelete, onRepair, index }) => {
   const [hovered, setHovered] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewRef = useRef<HTMLVideoElement | null>(null);
@@ -84,13 +85,30 @@ export const LocalVideoCard: React.FC<{
           <div className="flex items-center gap-2 text-[9px] font-mono text-slate-400">
             {video.size && <span>{video.size}</span>}
           </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete() }}
-            className="p-0.5 text-slate-300 hover:text-red-400 transition cursor-pointer opacity-0 group-hover:opacity-100"
-            title="删除视频"
-          >
-            <Trash2 className="w-3 h-3" />
-          </button>
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+            {onRepair && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRepair();
+                }}
+                className="p-0.5 text-slate-300 hover:text-amber-500 transition cursor-pointer"
+                title="修复此视频（封面/预览/字幕/刻度图）"
+              >
+                <Wrench className="w-3 h-3" />
+              </button>
+            )}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className="p-0.5 text-slate-300 hover:text-red-400 transition cursor-pointer"
+              title="删除视频"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

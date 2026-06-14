@@ -30,6 +30,18 @@ export interface DiskSnapshot {
   totalDiskBytes?: number;
 }
 
+export interface ArousalSession {
+  startedAt: string;
+  endedAt: string;
+  durationSec: number;
+  videoFolder?: string | null;
+}
+
+export interface ArousalData {
+  sessions: ArousalSession[];
+  totals: { count: number; totalSec: number };
+}
+
 export interface StatsData {
   version: 2;
   daily: Record<string, ActivityBucket>;
@@ -39,10 +51,15 @@ export interface StatsData {
   videos: Record<string, VideoEntry>;
   diskSnapshots: DiskSnapshot[];
   totals: ActivityBucket;
+  arousal: ArousalData;
 }
 
 function emptyBucket(): ActivityBucket {
   return { plays: 0, watchSec: 0, downloads: 0, downloadBytes: 0 };
+}
+
+function emptyArousal(): ArousalData {
+  return { sessions: [], totals: { count: 0, totalSec: 0 } };
 }
 
 function emptyStats(): StatsData {
@@ -55,6 +72,7 @@ function emptyStats(): StatsData {
     videos: {},
     diskSnapshots: [],
     totals: emptyBucket(),
+    arousal: emptyArousal(),
   };
 }
 
@@ -122,6 +140,20 @@ function loadStats(): StatsData {
           snap.totalDiskBytes == null ? undefined : Number(snap.totalDiskBytes || 0),
       })),
       totals: normalizeBucket(data.totals),
+      arousal: {
+        sessions: Array.isArray((data as any).arousal?.sessions)
+          ? (data as any).arousal.sessions.map((s: any) => ({
+              startedAt: String(s.startedAt || ""),
+              endedAt: String(s.endedAt || ""),
+              durationSec: Math.max(0, Math.floor(Number(s.durationSec) || 0)),
+              videoFolder: s.videoFolder ?? null,
+            }))
+          : [],
+        totals: {
+          count: Math.max(0, Number((data as any).arousal?.totals?.count) || 0),
+          totalSec: Math.max(0, Number((data as any).arousal?.totals?.totalSec) || 0),
+        },
+      },
     };
   } catch (err: any) {
     log.error(`[stats] load failed: ${err?.message}`);
@@ -319,6 +351,38 @@ export const statsRouter = t.router({
       }
       saveStats(s);
       return { success: true, ...usage, ...diskSpace };
+    }),
+
+  recordArousal: t.procedure
+    .input(
+      (input: unknown) =>
+        input as {
+          startedAt: string;
+          endedAt: string;
+          durationSec: number;
+          videoFolder?: string | null;
+        },
+    )
+    .mutation(({ input }) => {
+      const durationSec = Math.max(0, Math.floor(input.durationSec || 0));
+      if (durationSec < 1) return { success: false, error: "duration too short" };
+
+      const s = loadStats();
+      if (!s.arousal) s.arousal = emptyArousal();
+      const session: ArousalSession = {
+        startedAt: input.startedAt || new Date().toISOString(),
+        endedAt: input.endedAt || new Date().toISOString(),
+        durationSec,
+        videoFolder: input.videoFolder ?? null,
+      };
+      s.arousal.sessions.push(session);
+      if (s.arousal.sessions.length > 2000) {
+        s.arousal.sessions = s.arousal.sessions.slice(-2000);
+      }
+      s.arousal.totals.count += 1;
+      s.arousal.totals.totalSec += durationSec;
+      saveStats(s);
+      return { success: true, totals: s.arousal.totals };
     }),
 
   reset: t.procedure.mutation(() => {

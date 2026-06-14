@@ -19,6 +19,7 @@ import { WhisperPanel } from "../components/whisper/WhisperPanel";
 import type { PlayerPageProps, VideoItem } from "./player/types";
 import { PageLoader } from "../components/PageLoader";
 import { ResumePrompt } from "../components/player/ResumePrompt";
+import { RepairModal, type RepairTarget } from "../components/player/RepairModal";
 
 const LAST_PLAYED_KEY = "av-play-pro:lastPlayed";
 interface LastPlayedRecord {
@@ -36,9 +37,9 @@ import {
   Search,
   X,
   Trash2,
-  Download,
   Gift,
   Captions,
+  Wrench,
 } from "lucide-react";
 import {
   deriveFolderFromUrl,
@@ -61,6 +62,7 @@ export function PlayerPage({
   onAddSystemLog,
   pendingPlayName,
   onConsumePendingPlay,
+  onActiveVideoChange,
 }: PlayerPageProps) {
   // 当前激活的 <video> 元素（由 HlsVideoPlayer 通过 onVideoEl 回调暴露给统计逻辑）
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
@@ -93,6 +95,9 @@ export function PlayerPage({
   const [luckyOpen, setLuckyOpen] = useState(false);
   // Whisper 字幕面板
   const [whisperOpen, setWhisperOpen] = useState(false);
+  // 修复面板（单个 / 全部）
+  const [repairTargets, setRepairTargets] = useState<RepairTarget[] | null>(null);
+  const [repairMode, setRepairMode] = useState<"single" | "all">("all");
 
   // 本地视频列表
   const [localVideos, setLocalVideos] = useState<VideoItem[]>([]);
@@ -486,6 +491,11 @@ export function PlayerPage({
     onAddSystemLog,
   ]);
 
+  // 通知上层当前播放的视频名（私密计时关联用）
+  useEffect(() => {
+    onActiveVideoChange?.(activeStream.url ? activeStream.name : null);
+  }, [activeStream.name, activeStream.url, onActiveVideoChange]);
+
   // HlsVideoPlayer 通过 onMeta 上报真实像素
   const handleMeta = useCallback((info: { width: number; height: number }) => {
     if (info.width > 0 && info.height > 0) {
@@ -540,6 +550,36 @@ export function PlayerPage({
     if (listScrollRef.current) listScrollRef.current.scrollTop = 0;
     rowVirtualizer.scrollToIndex(0);
   }, [localVideos, videoSearchQuery]);
+
+  const videoToRepairTarget = useCallback(
+    (v: VideoItem): RepairTarget => {
+      const normalized = decodeURIComponent(
+        v.url.replace(/^(file|local-media):\/\/\//, ""),
+      ).replace(/\//g, "\\");
+      const lastSlash = normalized.lastIndexOf("\\");
+      const folderPath =
+        lastSlash > 0 ? normalized.substring(0, lastSlash) : normalized;
+      return { name: v.name, folderPath, videoFilePath: normalized };
+    },
+    [],
+  );
+
+  const openRepairForVideo = useCallback(
+    (v: VideoItem) => {
+      setRepairMode("single");
+      setRepairTargets([videoToRepairTarget(v)]);
+    },
+    [videoToRepairTarget],
+  );
+
+  const openRepairForAll = useCallback(() => {
+    if (localVideos.length === 0) {
+      onAddSystemLog("本地库为空，无可修复内容", "WARNING");
+      return;
+    }
+    setRepairMode("all");
+    setRepairTargets(localVideos.map(videoToRepairTarget));
+  }, [localVideos, onAddSystemLog, videoToRepairTarget]);
 
   // 修复封面：为没有封面的视频从 CDN 下载封面和预览
   const handleFixCovers = async () => {
@@ -971,12 +1011,12 @@ export function PlayerPage({
                     抽奖
                   </button>
                   <button
-                    onClick={handleFixCovers}
+                    onClick={openRepairForAll}
                     className="flex-1 h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition"
-                    title="为没有封面的视频从 CDN 下载封面"
+                    title="批量修复封面/预览/字幕/刻度图"
                   >
-                    <Download className="w-3 h-3" />
-                    封面
+                    <Wrench className="w-3 h-3" />
+                    修复
                   </button>
                   <button
                     onClick={handleBackfillMeta}
@@ -1118,6 +1158,7 @@ export function PlayerPage({
                           handleLoadLocalVideo(video, virtualRow.index)
                         }
                         onDelete={() => setDeleteTarget(video)}
+                        onRepair={() => openRepairForVideo(video)}
                         index={virtualRow.index}
                       />
                     </div>
@@ -1150,6 +1191,19 @@ export function PlayerPage({
           onPlay={(v) => {
             const idx = localVideos.findIndex((x) => x.id === v.id);
             if (idx >= 0) handleLoadLocalVideo(v, idx);
+          }}
+        />
+      )}
+
+      {/* 修复面板（单个 / 全部） */}
+      {repairTargets && (
+        <RepairModal
+          mode={repairMode}
+          targets={repairTargets}
+          onLog={onAddSystemLog}
+          onClose={() => setRepairTargets(null)}
+          onDone={() => {
+            void refreshVideoList();
           }}
         />
       )}

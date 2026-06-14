@@ -101,6 +101,12 @@ export function SettingsPanel({
   const [privacyScreenChangeSeconds, setPrivacyScreenChangeSeconds] = useState(
     settings.privacyScreenChangeSeconds ?? 10,
   );
+  const [maxConcurrentTasks, setMaxConcurrentTasks] = useState(
+    settings.maxConcurrentTasks ?? 3,
+  );
+  const [thumbQueueConcurrency, setThumbQueueConcurrency] = useState(
+    settings.thumbQueueConcurrency ?? 2,
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,6 +128,8 @@ export function SettingsPanel({
       privacyScreenBlur,
       privacyScreenImageOpacity,
       privacyScreenChangeSeconds,
+      maxConcurrentTasks: Math.max(1, Math.min(20, maxConcurrentTasks || 1)),
+      thumbQueueConcurrency: Math.max(1, Math.min(8, thumbQueueConcurrency || 1)),
     });
     onAddSystemLog("Electron 核心: 系统配置已更新。", "SUCCESS");
   };
@@ -373,6 +381,82 @@ export function SettingsPanel({
                         }`}
                       >
                         {preset || "不限"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 并发下载数 */}
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80 rounded-xl space-y-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      最大并发下载数
+                    </h4>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                      关闭"队列下载"后，同时下载的任务数上限。建议 2–4，过高会占带宽与磁盘 IO。
+                    </p>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={maxConcurrentTasks}
+                      onChange={(e) =>
+                        setMaxConcurrentTasks(parseInt(e.target.value) || 1)
+                      }
+                      className="w-24 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 dark:text-slate-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
+                    />
+                    {[1, 2, 3, 5, 8].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setMaxConcurrentTasks(preset)}
+                        className={`px-2.5 py-2 text-[10px] font-bold rounded-lg border transition cursor-pointer ${
+                          maxConcurrentTasks === preset
+                            ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                            : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 刻度图修复并发数 */}
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80 rounded-xl space-y-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      刻度图修复并发数
+                    </h4>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                      后台同时跑几个刻度图生成任务。每个任务都要解码视频，太高会占 CPU/GPU 导致播放卡顿。建议 2–3。
+                    </p>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="number"
+                      min={1}
+                      max={8}
+                      value={thumbQueueConcurrency}
+                      onChange={(e) =>
+                        setThumbQueueConcurrency(parseInt(e.target.value) || 1)
+                      }
+                      className="w-24 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 dark:text-slate-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
+                    />
+                    {[1, 2, 3, 4, 6].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setThumbQueueConcurrency(preset)}
+                        className={`px-2.5 py-2 text-[10px] font-bold rounded-lg border transition cursor-pointer ${
+                          thumbQueueConcurrency === preset
+                            ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                            : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
+                        }`}
+                      >
+                        {preset}
                       </button>
                     ))}
                   </div>

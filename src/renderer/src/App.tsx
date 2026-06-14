@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { TitleBar } from "./components/TitleBar";
 import { GlobalConsole } from "./components/GlobalConsole";
+import { ThumbnailQueueWidget } from "./components/ThumbnailQueueWidget";
+import { thumbnailQueue } from "./lib/thumbnailQueue";
 import { DownloadPage } from "./pages/DownloadPage";
 import { PlayerPage } from "./pages/PlayerPage";
 import { WebPage } from "./pages/WebPage";
@@ -16,6 +18,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   defaultFormat: "MP4",
   defaultThreads: 16,
   maxConcurrentTasks: 3,
+  thumbQueueConcurrency: 2,
   autoMerge: true,
   proxyUrl: "",
   nm3u8dlPath: "N_m3u8DL-RE.exe",
@@ -60,6 +63,12 @@ export default function App() {
   const [logs, setLogs] = useState<LogMessage[]>([]);
   // 「立即查看」目标
   const [pendingPlayName, setPendingPlayName] = useState<string | null>(null);
+  // 私密计时器
+  const [arousalActive, setArousalActive] = useState(false);
+  const [arousalElapsed, setArousalElapsed] = useState(0);
+  const arousalStartRef = useRef<number | null>(null);
+  // 当前正在播放的视频文件夹（PlayerPage 报告）
+  const currentPlayingFolderRef = useRef<string | null>(null);
 
   // 统一的 addLog：同时写入标题栏 ticker 和底部控制台
   const addLog = useCallback(
@@ -137,6 +146,60 @@ export default function App() {
     };
   }, []);
 
+  // 把 addLog 注入刻度图队列
+  useEffect(() => {
+    thumbnailQueue.setLogger(addLog);
+  }, [addLog]);
+
+  // 同步并发数到刻度图队列
+  useEffect(() => {
+    thumbnailQueue.setConcurrency(settings.thumbQueueConcurrency ?? 2);
+  }, [settings.thumbQueueConcurrency]);
+
+  // 私密计时：实时秒数 + 切换逻辑
+  useEffect(() => {
+    if (!arousalActive) return;
+    const tick = () => {
+      if (arousalStartRef.current != null) {
+        setArousalElapsed(
+          Math.floor((Date.now() - arousalStartRef.current) / 1000),
+        );
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [arousalActive]);
+
+  const handleToggleArousal = useCallback(() => {
+    if (arousalActive) {
+      const start = arousalStartRef.current;
+      const end = Date.now();
+      const durationSec = start ? Math.floor((end - start) / 1000) : 0;
+      arousalStartRef.current = null;
+      setArousalActive(false);
+      setArousalElapsed(0);
+      if (durationSec >= 1) {
+        const mm = String(Math.floor(durationSec / 60)).padStart(2, "0");
+        const ss = String(durationSec % 60).padStart(2, "0");
+        addLog(`💗 私密计时结束：本次 ${mm}:${ss}`, "SUCCESS");
+        void trpc.stats.recordArousal
+          .mutate({
+            startedAt: new Date(start!).toISOString(),
+            endedAt: new Date(end).toISOString(),
+            durationSec,
+            videoFolder: currentPlayingFolderRef.current,
+          })
+          .catch(() => {});
+      }
+    } else {
+      arousalStartRef.current = Date.now();
+      setArousalElapsed(0);
+      setArousalActive(true);
+      addLog("💗 私密计时已开启", "INFO");
+    }
+  }, [arousalActive, addLog]);
+
   // 主题
   useEffect(() => {
     applyTheme(settings.theme);
@@ -189,6 +252,9 @@ export default function App() {
         onToggleConsole={() =>
           setSettings((s) => ({ ...s, consoleOpen: !s.consoleOpen }))
         }
+        arousalActive={arousalActive}
+        arousalElapsed={arousalElapsed}
+        onToggleArousal={handleToggleArousal}
       />
 
       {/* 页面内容区 */}
@@ -213,6 +279,9 @@ export default function App() {
             onAddSystemLog={addLog}
             pendingPlayName={pendingPlayName}
             onConsumePendingPlay={() => setPendingPlayName(null)}
+            onActiveVideoChange={(name) => {
+              currentPlayingFolderRef.current = name;
+            }}
           />
         )}
         {currentPage === "web" && <WebPage onAddSystemLog={addLog} />}
@@ -224,6 +293,9 @@ export default function App() {
         )}
       </div>
 
+      {/* 刻度图后台队列浮窗 */}
+      <ThumbnailQueueWidget />
+
       {/* 全局控制台 */}
       {settings.consoleOpen && (
         <GlobalConsole
@@ -233,6 +305,7 @@ export default function App() {
           onHeightChange={(h) =>
             setSettings((s) => ({ ...s, consoleHeight: h }))
           }
+          onClose={() => setSettings((s) => ({ ...s, consoleOpen: false }))}
         />
       )}
     </div>

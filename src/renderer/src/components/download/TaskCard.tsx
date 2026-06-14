@@ -13,6 +13,7 @@ import { getStatusBadge } from "./StatusBadge";
 export interface TaskCardProps {
   task: DownloadTask;
   isSelected: boolean;
+  isFlashing?: boolean;
   copiedTaskId: string | null;
   index: number;
   onSelectTask: (id: string) => void;
@@ -22,9 +23,10 @@ export interface TaskCardProps {
   onPlayCompleted?: (task: DownloadTask) => void;
 }
 
-export function TaskCard({
+function TaskCardImpl({
   task,
   isSelected,
+  isFlashing,
   copiedTaskId,
   index,
   onSelectTask,
@@ -38,12 +40,15 @@ export function TaskCard({
 
   return (
     <div
+      id={`task-card-${task.id}`}
       onClick={() => onSelectTask(task.id)}
       style={{ ["--i" as string]: Math.min(index, 12) }}
       className={`anim-fade-stagger group relative flex flex-col bg-white rounded-xl border overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${
-        isSelected
-          ? "border-amber-500 ring-2 ring-amber-500/30"
-          : "border-slate-200 shadow-sm"
+        isFlashing
+          ? "border-amber-500 ring-4 ring-amber-400/60 shadow-xl shadow-amber-500/30 animate-pulse"
+          : isSelected
+            ? "border-amber-500 ring-2 ring-amber-500/30"
+            : "border-slate-200 shadow-sm"
       }`}
     >
       {/* Cover / Preview */}
@@ -173,3 +178,33 @@ export function TaskCard({
     </div>
   );
 }
+
+// 只在影响本卡片显示的字段变化时才重渲染。下载进度高频更新时，
+// 没在下载的其它卡片完全不会被波及。
+export const TaskCard = React.memo(TaskCardImpl, (prev, next) => {
+  if (prev.isSelected !== next.isSelected) return false;
+  if (prev.isFlashing !== next.isFlashing) return false;
+  if (prev.copiedTaskId !== next.copiedTaskId && (prev.copiedTaskId === prev.task.id || next.copiedTaskId === next.task.id)) return false;
+  if (prev.index !== next.index) return false;
+  if (prev.onSelectTask !== next.onSelectTask) return false;
+  if (prev.onTriggerPauseResume !== next.onTriggerPauseResume) return false;
+  if (prev.onDeleteTask !== next.onDeleteTask) return false;
+  if (prev.onCopyCommand !== next.onCopyCommand) return false;
+  if (prev.onPlayCompleted !== next.onPlayCompleted) return false;
+  const a = prev.task;
+  const b = next.task;
+  if (a === b) return true;
+  return (
+    a.id === b.id &&
+    a.name === b.name &&
+    a.status === b.status &&
+    a.progress === b.progress &&
+    a.speed === b.speed &&
+    a.totalSize === b.totalSize &&
+    a.downloadedSize === b.downloadedSize &&
+    a.downloadedSegments === b.downloadedSegments &&
+    a.totalSegments === b.totalSegments &&
+    a.coverUrl === b.coverUrl &&
+    a.previewUrl === b.previewUrl
+  );
+});

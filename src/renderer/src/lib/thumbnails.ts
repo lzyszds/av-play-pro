@@ -3,14 +3,24 @@ import { trpc } from "./trpc";
 const THUMB_W = 120;
 const THUMB_H = 68;
 const COLS = 10;
-const JPEG_QUALITY = 0.7;
+const WEBP_QUALITY = 0.75;
+
+export class CancelledError extends Error {
+  constructor() {
+    super("cancelled");
+    this.name = "CancelledError";
+  }
+}
 
 // 由本地 mp4 url 推导文件夹绝对路径（Windows）
 export function deriveFolderFromUrl(url: string): string | null {
   if (!/^(local-media|file):\/\/\//.test(url)) return null;
   const rest = url.replace(/^(local-media|file):\/\/\//, "");
   const decoded = decodeURIComponent(rest);
-  const lastSlash = Math.max(decoded.lastIndexOf("/"), decoded.lastIndexOf("\\"));
+  const lastSlash = Math.max(
+    decoded.lastIndexOf("/"),
+    decoded.lastIndexOf("\\"),
+  );
   if (lastSlash < 0) return null;
   return decoded.substring(0, lastSlash).replace(/\//g, "\\");
 }
@@ -56,6 +66,11 @@ export interface GenerateOptions {
   videoUrl: string;
   folder: string;
   onProgress?: (done: number, total: number) => void;
+  signal?: AbortSignal;
+}
+
+function checkCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new CancelledError();
 }
 
 /**
@@ -66,7 +81,8 @@ export interface GenerateOptions {
 export async function generateAndSaveThumbnails(
   opts: GenerateOptions,
 ): Promise<{ count: number; spriteSizeKB: number }> {
-  const { videoUrl, folder, onProgress } = opts;
+  const { videoUrl, folder, onProgress, signal } = opts;
+  checkCancelled(signal);
 
   const video = document.createElement("video");
   video.src = videoUrl;
@@ -99,7 +115,7 @@ export async function generateAndSaveThumbnails(
     throw new Error("invalid video duration");
   }
 
-  const N = Math.max(20, Math.min(120, Math.floor(duration / 5)));
+  const N = Math.max(20, Math.min(300, Math.floor(duration / 5)));
   const rows = Math.ceil(N / COLS);
   const interval = duration / N;
 
@@ -112,6 +128,7 @@ export async function generateAndSaveThumbnails(
   const vttLines: string[] = ["WEBVTT", ""];
 
   for (let i = 0; i < N; i++) {
+    checkCancelled(signal);
     const t = i * interval;
     await new Promise<void>((resolve, reject) => {
       const onSeek = () => {
@@ -122,12 +139,18 @@ export async function generateAndSaveThumbnails(
         cleanup();
         reject(new Error("seek error"));
       };
+      const onAbort = () => {
+        cleanup();
+        reject(new CancelledError());
+      };
       const cleanup = () => {
         video.removeEventListener("seeked", onSeek);
         video.removeEventListener("error", onErr);
+        signal?.removeEventListener("abort", onAbort);
       };
       video.addEventListener("seeked", onSeek);
       video.addEventListener("error", onErr);
+      signal?.addEventListener("abort", onAbort);
       video.currentTime = t;
     });
 
@@ -137,25 +160,26 @@ export async function generateAndSaveThumbnails(
 
     const endT = Math.min((i + 1) * interval, duration);
     vttLines.push(`${formatVttTime(t)} --> ${formatVttTime(endT)}`);
-    vttLines.push(`thumbs.jpg#xywh=${x},${y},${THUMB_W},${THUMB_H}`);
+    vttLines.push(`thumbs.webp#xywh=${x},${y},${THUMB_W},${THUMB_H}`);
     vttLines.push("");
 
     onProgress?.(i + 1, N);
   }
 
+  checkCancelled(signal);
   const blob = await new Promise<Blob | null>((resolve) =>
-    sprite.toBlob(resolve, "image/jpeg", JPEG_QUALITY),
+    sprite.toBlob(resolve, "image/webp", WEBP_QUALITY),
   );
   if (!blob) throw new Error("toBlob failed");
 
   const buf = await blob.arrayBuffer();
   const base64 = arrayBufferToBase64(buf);
 
-  const res = await trpc.videos.writeThumbs.mutate({
+  const res = (await trpc.videos.writeThumbs.mutate({
     folder,
-    jpegBase64: base64,
+    webpBase64: base64,
     vttText: vttLines.join("\n"),
-  });
+  })) as { success: boolean; error?: string };
   if (!res.success) throw new Error(res.error || "write failed");
 
   // 清理

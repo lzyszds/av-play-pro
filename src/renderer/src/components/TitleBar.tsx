@@ -14,6 +14,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  Heart,
 } from "lucide-react";
 import { trpc } from "../lib/trpc";
 import type { ThemeMode } from "../pages/download/types";
@@ -30,6 +31,15 @@ interface TitleBarProps {
   onCycleTheme: () => void;
   consoleOpen: boolean;
   onToggleConsole: () => void;
+  arousalActive: boolean;
+  arousalElapsed: number;
+  onToggleArousal: () => void;
+}
+
+function formatArousalTime(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
@@ -58,6 +68,9 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   onCycleTheme,
   consoleOpen,
   onToggleConsole,
+  arousalActive,
+  arousalElapsed,
+  onToggleArousal,
 }) => {
   const ThemeIcon = themeMeta[theme].icon;
   return (
@@ -110,6 +123,29 @@ export const TitleBar: React.FC<TitleBarProps> = ({
       </div>
 
       <div className="flex items-center h-full" style={noDrag}>
+        <button
+          type="button"
+          onClick={onToggleArousal}
+          title={
+            arousalActive
+              ? `私密计时进行中（点击结束并记录） · ${formatArousalTime(arousalElapsed)}`
+              : "开启私密计时（关闭后记录到统计）"
+          }
+          className={`h-full flex items-center gap-1.5 px-2.5 transition cursor-pointer ${
+            arousalActive
+              ? "bg-rose-600 text-white"
+              : "text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+          }`}
+        >
+          <Heart
+            className={`w-3.5 h-3.5 ${arousalActive ? "animate-pulse fill-current" : ""}`}
+          />
+          {arousalActive && (
+            <span className="text-[10px] font-mono font-bold tabular-nums">
+              {formatArousalTime(arousalElapsed)}
+            </span>
+          )}
+        </button>
         <button
           type="button"
           onClick={onToggleConsole}

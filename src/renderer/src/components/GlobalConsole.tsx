@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Terminal, Trash2, GripHorizontal } from "lucide-react";
+import { Terminal, Trash2, GripHorizontal, X } from "lucide-react";
 import { Dropdown } from "./Dropdown";
 import type { LogMessage } from "../pages/download/types";
 
@@ -10,6 +10,7 @@ interface GlobalConsoleProps {
   setLogs: React.Dispatch<React.SetStateAction<LogMessage[]>>;
   height: number;
   onHeightChange: (h: number) => void;
+  onClose?: () => void;
 }
 
 const MIN_HEIGHT = 80;
@@ -65,6 +66,7 @@ export function GlobalConsole({
   setLogs,
   height,
   onHeightChange,
+  onClose,
 }: GlobalConsoleProps) {
   const [filter, setFilter] = useState<LevelFilter>("ALL");
   const [autoScroll, setAutoScroll] = useState(true);
@@ -160,6 +162,15 @@ export function GlobalConsole({
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              title="关闭控制台"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 

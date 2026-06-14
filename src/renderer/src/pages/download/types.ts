@@ -62,6 +62,8 @@ export interface AppSettings {
   defaultFormat: "MP4" | "MKV" | "TS";
   defaultThreads: number;
   maxConcurrentTasks: number;
+  /** 刻度图后台修复并发数（1–8） */
+  thumbQueueConcurrency?: number;
   autoMerge: boolean;
   proxyUrl: string;
   nm3u8dlPath: string;

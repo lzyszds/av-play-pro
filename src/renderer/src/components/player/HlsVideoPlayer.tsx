@@ -13,17 +13,17 @@ interface Props {
   onMeta?: (info: { width: number; height: number }) => void;
   /** 透传到 <video> 上的事件，外层挂播放/暂停统计 */
   onVideoEl?: (el: HTMLVideoElement) => void;
-  onLog?: (msg: string, level: "INFO" | "WARNING" | "SUCCESS" | "ERROR") => void;
+  onLog?: (
+    msg: string,
+    level: "INFO" | "WARNING" | "SUCCESS" | "ERROR",
+  ) => void;
 }
 
 // 把 SRT 文本转 WebVTT：替换 "," → "."，前面加 "WEBVTT\n\n"
 function srtToVtt(srt: string): string {
   const body = srt
     .replace(/\r+/g, "")
-    .replace(
-      /(\d{2}:\d{2}:\d{2}),(\d{3})/g,
-      (_m, t, ms) => `${t}.${ms}`,
-    );
+    .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, (_m, t, ms) => `${t}.${ms}`);
   return "WEBVTT\n\n" + body;
 }
 
@@ -56,7 +56,12 @@ export const HlsVideoPlayer: React.FC<Props> = ({
   const plyrRef = useRef<Plyr | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const subtitleBlobRef = useRef<string | null>(null);
-
+  console.log("渲染 HlsVideoPlayer", {
+    url,
+    referer,
+    previewVttUrl,
+    subtitleUrl,
+  });
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !url) return;
@@ -69,9 +74,7 @@ export const HlsVideoPlayer: React.FC<Props> = ({
     container.appendChild(video);
 
     onVideoEl?.(video);
-
-    // 初始化 Plyr（每次挂载都新建）
-    const plyr = new Plyr(video, {
+    const plyrOption = {
       iconUrl: "./plyr.svg",
       controls: [
         "play-large",
@@ -112,7 +115,10 @@ export const HlsVideoPlayer: React.FC<Props> = ({
       previewThumbnails: previewVttUrl
         ? { enabled: true, src: previewVttUrl }
         : { enabled: false },
-    });
+    };
+    console.log("Plyr options:", plyrOption);
+    // 初始化 Plyr（每次挂载都新建）
+    const plyr = new Plyr(video, plyrOption);
     plyrRef.current = plyr;
 
     const onLoadedMeta = () => {
@@ -131,10 +137,10 @@ export const HlsVideoPlayer: React.FC<Props> = ({
     if (isHls && Hls.isSupported()) {
       const hls = new Hls({
         // 性能
-        enableWorker: true,            // demux 放 worker，不阻塞主线程
-        lowLatencyMode: false,         // 关 LL，普通 VOD 用不到
-        backBufferLength: 30,          // 播过的最多保留 30s，释放内存
-        maxBufferLength: 60,           // 前向最多缓 60s，扛网络抖动
+        enableWorker: true, // demux 放 worker，不阻塞主线程
+        lowLatencyMode: false, // 关 LL，普通 VOD 用不到
+        backBufferLength: 30, // 播过的最多保留 30s，释放内存
+        maxBufferLength: 60, // 前向最多缓 60s，扛网络抖动
         maxMaxBufferLength: 120,
         maxBufferSize: 120 * 1024 * 1024, // 120MB 缓冲
         // 超时
@@ -214,7 +220,7 @@ export const HlsVideoPlayer: React.FC<Props> = ({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [previewVttUrl]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -295,7 +301,5 @@ export const HlsVideoPlayer: React.FC<Props> = ({
     };
   }, [subtitleUrl, onLog]);
 
-  return (
-    <div ref={containerRef} className="w-full h-full flex bg-black" />
-  );
+  return <div ref={containerRef} className="w-full h-full flex bg-black" />;
 };

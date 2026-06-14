@@ -143,7 +143,9 @@ export function PlayerPage({
   // 追踪是否为首次加载（首次选中不自动播放）
   const isFirstLoad = useRef(true);
   // 上次播放记录提示
-  const [resumePrompt, setResumePrompt] = useState<LastPlayedRecord | null>(null);
+  const [resumePrompt, setResumePrompt] = useState<LastPlayedRecord | null>(
+    null,
+  );
   // 待 seek 的恢复时间（在新视频 loadedmetadata 后跳转）
   const pendingResumeSeekRef = useRef<number | null>(null);
   // 是否已尝试过续播提示（避免重复弹）
@@ -202,7 +204,7 @@ export function PlayerPage({
     (async () => {
       const folder = deriveFolderFromUrl(activeStream.url);
       let vtt: string | null = null;
-
+      debugger;
       if (folder) {
         try {
           const r = await trpc.videos.hasThumbs.query({ folder });
@@ -405,7 +407,8 @@ export function PlayerPage({
       // 7 天内才提示
       if (Date.now() - r.savedAt > 7 * 24 * 3600 * 1000) return;
       // 必须能在当前视频列表里找到
-      if (!localVideos.some((v) => v.url === r.url || v.name === r.name)) return;
+      if (!localVideos.some((v) => v.url === r.url || v.name === r.name))
+        return;
       // 进度 < 5s 没必要续播
       if ((r.currentTime || 0) < 5) return;
       setResumePrompt(r);
@@ -444,8 +447,7 @@ export function PlayerPage({
     const fallback = localVideos.find(
       (v) => v.url === resumePrompt.url || v.name === resumePrompt.name,
     );
-    const video =
-      target >= 0 ? filteredVideos[target] : fallback || null;
+    const video = target >= 0 ? filteredVideos[target] : fallback || null;
     if (!video) {
       setResumePrompt(null);
       return;
@@ -472,8 +474,17 @@ export function PlayerPage({
     });
     isFirstLoad.current = false; // 允许 HlsVideoPlayer autoPlay
     setResumePrompt(null);
-    onAddSystemLog(`从 ${resumePrompt.currentTime.toFixed(0)}s 续播: ${video.name}`, "INFO");
-  }, [resumePrompt, filteredVideos, localVideos, recordPlayStats, onAddSystemLog]);
+    onAddSystemLog(
+      `从 ${resumePrompt.currentTime.toFixed(0)}s 续播: ${video.name}`,
+      "INFO",
+    );
+  }, [
+    resumePrompt,
+    filteredVideos,
+    localVideos,
+    recordPlayStats,
+    onAddSystemLog,
+  ]);
 
   // HlsVideoPlayer 通过 onMeta 上报真实像素
   const handleMeta = useCallback((info: { width: number; height: number }) => {

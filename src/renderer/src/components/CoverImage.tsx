@@ -29,14 +29,16 @@ export const CoverImage: React.FC<CoverImageProps> = ({
           src={src}
           alt={alt}
           loading="lazy"
+          decoding="async"
+          draggable={false}
           onLoad={() => setLoaded(true)}
           onError={(e) => {
             setFailed(true);
             onError?.(e);
           }}
-          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ${
-            loaded ? "opacity-100" : "opacity-0"
-          }`}
+          // 用 visibility 切换避开 opacity 渐变带来的合成层重算；fade 视觉收益很小，但每次滚动出现新卡片都付一次代价
+          style={{ visibility: loaded ? "visible" : "hidden" }}
+          className="absolute inset-0 w-full h-full object-cover"
         />
       )}
     </div>

@@ -116,7 +116,7 @@ export const thumbnailQueue = {
 
   /** 设置同时跑的修复任务数（1–8）。调低不会取消已在跑的任务；调高会立刻补满。 */
   setConcurrency(n: number): void {
-    const next = Math.max(1, Math.min(8, Math.floor(n) || 1));
+    const next = Math.max(1, Math.min(50, Math.floor(n) || 1));
     if (next === maxConcurrent) return;
     maxConcurrent = next;
     pump();
@@ -138,7 +138,11 @@ export const thumbnailQueue = {
     return Array.from(jobs.values());
   },
 
-  enqueue(input: { name: string; folderPath: string; force?: boolean }): string {
+  enqueue(input: {
+    name: string;
+    folderPath: string;
+    force?: boolean;
+  }): string {
     // 同一文件夹已有任务时避免重复入队：存在 + 非强制 → 复用；存在 + 新任务强制 → 先删旧的再起
     let existingId: string | null = null;
     for (const [jid, j] of jobs) {
@@ -159,7 +163,10 @@ export const thumbnailQueue = {
     if (existingId && input.force) {
       // 强制重新生成：取消旧任务后移除
       const oldJob = jobs.get(existingId);
-      if (oldJob && (oldJob.status === "pending" || oldJob.status === "running")) {
+      if (
+        oldJob &&
+        (oldJob.status === "pending" || oldJob.status === "running")
+      ) {
         const ctrl = controllers.get(existingId);
         if (ctrl) ctrl.abort();
       }

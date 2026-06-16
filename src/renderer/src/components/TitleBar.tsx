@@ -15,6 +15,7 @@ import {
   Moon,
   Monitor,
   Heart,
+  Settings as SettingsIcon,
 } from "lucide-react";
 import { trpc } from "../lib/trpc";
 import type { ThemeMode } from "../pages/download/types";
@@ -34,6 +35,7 @@ interface TitleBarProps {
   arousalActive: boolean;
   arousalElapsed: number;
   onToggleArousal: () => void;
+  onOpenSettings: () => void;
 }
 
 function formatArousalTime(sec: number): string {
@@ -71,6 +73,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
   arousalActive,
   arousalElapsed,
   onToggleArousal,
+  onOpenSettings,
 }) => {
   const ThemeIcon = themeMeta[theme].icon;
   return (
@@ -177,6 +180,15 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           className="w-9 h-full flex items-center justify-center text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition cursor-pointer"
         >
           <ThemeIcon className="w-3.5 h-3.5" />
+        </button>
+        {/* 全局设置按钮 */}
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          title="打开设置面板"
+          className="w-9 h-full flex items-center justify-center text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition cursor-pointer"
+        >
+          <SettingsIcon className="w-3.5 h-3.5" />
         </button>
         <div className="w-px h-4 bg-slate-700 mx-1" />
         <button

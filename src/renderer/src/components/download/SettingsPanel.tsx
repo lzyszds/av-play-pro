@@ -129,7 +129,10 @@ export function SettingsPanel({
       privacyScreenImageOpacity,
       privacyScreenChangeSeconds,
       maxConcurrentTasks: Math.max(1, Math.min(20, maxConcurrentTasks || 1)),
-      thumbQueueConcurrency: Math.max(1, Math.min(8, thumbQueueConcurrency || 1)),
+      thumbQueueConcurrency: Math.max(
+        1,
+        Math.min(50, thumbQueueConcurrency || 1),
+      ),
     });
     onAddSystemLog("Electron 核心: 系统配置已更新。", "SUCCESS");
   };
@@ -195,13 +198,7 @@ export function SettingsPanel({
         : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800"
     }`;
 
-  const Toggle = ({
-    on,
-    onToggle,
-  }: {
-    on: boolean;
-    onToggle: () => void;
-  }) => (
+  const Toggle = ({ on, onToggle }: { on: boolean; onToggle: () => void }) => (
     <button
       type="button"
       onClick={onToggle}
@@ -358,7 +355,9 @@ export function SettingsPanel({
                       全局下载速度限制
                     </h4>
                     <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-                      传给 N_m3u8DL-RE 的 <code className="font-mono">--max-speed</code> 参数。空 = 不限速。
+                      传给 N_m3u8DL-RE 的{" "}
+                      <code className="font-mono">--max-speed</code> 参数。空 =
+                      不限速。
                     </p>
                   </div>
                   <div className="flex gap-2">
@@ -393,7 +392,8 @@ export function SettingsPanel({
                       最大并发下载数
                     </h4>
                     <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-                      关闭"队列下载"后，同时下载的任务数上限。建议 2–4，过高会占带宽与磁盘 IO。
+                      关闭"队列下载"后，同时下载的任务数上限。建议
+                      2–4，过高会占带宽与磁盘 IO。
                     </p>
                   </div>
                   <div className="flex gap-2 items-center">
@@ -431,21 +431,22 @@ export function SettingsPanel({
                       刻度图修复并发数
                     </h4>
                     <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-                      后台同时跑几个刻度图生成任务。每个任务都要解码视频，太高会占 CPU/GPU 导致播放卡顿。建议 2–3。
+                      后台同时跑几个刻度图生成任务。每个任务都要解码视频，太高会占
+                      CPU/GPU 导致播放卡顿。建议 2–3。
                     </p>
                   </div>
                   <div className="flex gap-2 items-center">
                     <input
                       type="number"
                       min={1}
-                      max={8}
+                      max={50}
                       value={thumbQueueConcurrency}
                       onChange={(e) =>
                         setThumbQueueConcurrency(parseInt(e.target.value) || 1)
                       }
                       className="w-24 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-700 dark:text-slate-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition"
                     />
-                    {[1, 2, 3, 4, 6].map((preset) => (
+                    {[1, 2, 3, 4, 6, 10, 20, 50].map((preset) => (
                       <button
                         key={preset}
                         type="button"
@@ -826,7 +827,9 @@ function NumberControl({
             max={max}
             step={step}
             value={safeValue}
-            onChange={(e) => setDraftValue(clamp(Number(e.target.value || min)))}
+            onChange={(e) =>
+              setDraftValue(clamp(Number(e.target.value || min)))
+            }
             onBlur={commitDraft}
             onKeyDown={(e) => {
               if (e.key === "Enter") {

@@ -22,6 +22,27 @@ import { ResumePrompt } from "../components/player/ResumePrompt";
 import { RepairModal, type RepairTarget } from "../components/player/RepairModal";
 
 const LAST_PLAYED_KEY = "av-play-pro:lastPlayed";
+const FAVORITES_KEY = "av-play-pro:favorites";
+
+function loadFavorites(): Set<string> {
+  try {
+    const raw = localStorage.getItem(FAVORITES_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return new Set();
+    return new Set(arr.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveFavorites(set: Set<string>): void {
+  try {
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(set)));
+  } catch {
+    /* ignore */
+  }
+}
 interface LastPlayedRecord {
   name: string;
   url: string;
@@ -40,6 +61,7 @@ import {
   Gift,
   Captions,
   Wrench,
+  Heart,
 } from "lucide-react";
 import {
   deriveFolderFromUrl,
@@ -103,12 +125,36 @@ export function PlayerPage({
   const [localVideos, setLocalVideos] = useState<VideoItem[]>([]);
   const [videoSearchQuery, setVideoSearchQuery] = useState("");
 
-  // 搜索过滤
+  // 心爱（收藏）：用 id 集合管理；持久化到 localStorage
+  const [favorites, setFavorites] = useState<Set<string>>(() => loadFavorites());
+  const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
+
+  const toggleFavorite = useCallback(
+    (video: VideoItem) => {
+      setFavorites((prev) => {
+        const next = new Set(prev);
+        if (next.has(video.id)) {
+          next.delete(video.id);
+          onAddSystemLog(`已取消心爱: ${video.name}`, "INFO");
+        } else {
+          next.add(video.id);
+          onAddSystemLog(`已加入心爱: ${video.name}`, "SUCCESS");
+        }
+        saveFavorites(next);
+        return next;
+      });
+    },
+    [onAddSystemLog],
+  );
+
+  // 搜索 + 心爱过滤
   const filteredVideos = useMemo(() => {
-    if (!videoSearchQuery.trim()) return localVideos;
+    let list = localVideos;
+    if (showOnlyFavorites) list = list.filter((v) => favorites.has(v.id));
     const q = videoSearchQuery.toLowerCase().trim();
-    return localVideos.filter((v) => v.name.toLowerCase().includes(q));
-  }, [localVideos, videoSearchQuery]);
+    if (q) list = list.filter((v) => v.name.toLowerCase().includes(q));
+    return list;
+  }, [localVideos, videoSearchQuery, showOnlyFavorites, favorites]);
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [selectedVideoIndex, setSelectedVideoIndex] = useState<number | null>(
     null,
@@ -142,11 +188,12 @@ export function PlayerPage({
     count: filteredVideos.length,
     getScrollElement: () => listScrollRef.current,
     estimateSize: () => 230, // 卡片实际高度（aspect-video ~191px + info ~50px + padding + gap）
-    overscan: 20,
+    overscan: 4,
   });
 
-  // 追踪是否为首次加载（首次选中不自动播放）
-  const isFirstLoad = useRef(true);
+  // 是否由用户显式触发了播放（点击列表 / 续播 / 跨页跳转 / 推入解析流）。
+  // 仅在用户主动播放时才允许自动播放 + 生成缩略图，避免进入页面就卡住或自动开播。
+  const [userInitiated, setUserInitiated] = useState(false);
   // 上次播放记录提示
   const [resumePrompt, setResumePrompt] = useState<LastPlayedRecord | null>(
     null,
@@ -209,7 +256,6 @@ export function PlayerPage({
     (async () => {
       const folder = deriveFolderFromUrl(activeStream.url);
       let vtt: string | null = null;
-      debugger;
       if (folder) {
         try {
           const r = await trpc.videos.hasThumbs.query({ folder });
@@ -230,10 +276,10 @@ export function PlayerPage({
       }
 
       if (!cancelled) setPreviewVttUrl(vtt);
-      isFirstLoad.current = false;
 
       // 没有缓存:后台异步生成,完成下次播放生效
-      if (!vtt && folder && !activeStream.url.includes(".m3u8")) {
+      // 仅在用户主动播放当前视频时才生成（默认进入页面、自动选中第一个视频时不生成，避免卡顿）
+      if (userInitiated && !vtt && folder && !activeStream.url.includes(".m3u8")) {
         const name = activeStream.name;
         onAddSystemLog(`开始生成缩略图: ${name}`, "INFO");
         generateAndSaveThumbnails({
@@ -477,7 +523,7 @@ export function PlayerPage({
       encryptionType: video.encryptionType || "未检测",
       referer: "",
     });
-    isFirstLoad.current = false; // 允许 HlsVideoPlayer autoPlay
+    setUserInitiated(true); // 允许 HlsVideoPlayer autoPlay
     setResumePrompt(null);
     onAddSystemLog(
       `从 ${resumePrompt.currentTime.toFixed(0)}s 续播: ${video.name}`,
@@ -511,7 +557,7 @@ export function PlayerPage({
     if (!pendingPlayName || localVideos.length === 0) return;
     const target = localVideos.findIndex((v) => v.name === pendingPlayName);
     if (target >= 0) {
-      isFirstLoad.current = false; // 跳转过来直接自动播放
+      setUserInitiated(true); // 跳转过来直接自动播放
       handleLoadLocalVideo(localVideos[target], target);
       onConsumePendingPlay?.();
     }
@@ -759,18 +805,22 @@ export function PlayerPage({
     }
   };
 
-  const handleLoadLocalVideo = (video: VideoItem, index: number) => {
-    setSelectedVideoIndex(index);
-    recordPlayStats(video.name, video.url);
-    setActiveStream({
-      name: video.name,
-      url: video.url,
-      resolution: video.resolution,
-      encryptionType: video.encryptionType || "未检测",
-      referer: "",
-    });
-    onAddSystemLog(`正在播放本地视频: ${video.name}`, "SUCCESS");
-  };
+  const handleLoadLocalVideo = useCallback(
+    (video: VideoItem, index: number) => {
+      setSelectedVideoIndex(index);
+      setUserInitiated(true);
+      recordPlayStats(video.name, video.url);
+      setActiveStream({
+        name: video.name,
+        url: video.url,
+        resolution: video.resolution,
+        encryptionType: video.encryptionType || "未检测",
+        referer: "",
+      });
+      onAddSystemLog(`正在播放本地视频: ${video.name}`, "SUCCESS");
+    },
+    [onAddSystemLog, recordPlayStats],
+  );
 
   const handleParseM3u8List = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -877,6 +927,7 @@ export function PlayerPage({
 
   const handleLoadParsedStream = () => {
     if (!parsedData) return;
+    setUserInitiated(true);
     setActiveStream({
       name: parsedData.title,
       url: analyzerUrl,
@@ -928,7 +979,7 @@ export function PlayerPage({
             >
               <HlsVideoPlayer
                 url={activeStream.url}
-                autoPlay={!isFirstLoad.current}
+                autoPlay={userInitiated}
                 referer={activeStream.referer}
                 previewVttUrl={previewVttUrl}
                 subtitleUrl={subtitleUrl}
@@ -1009,6 +1060,24 @@ export function PlayerPage({
                   >
                     <Gift className="w-3 h-3" />
                     抽奖
+                  </button>
+                  <button
+                    onClick={() => setShowOnlyFavorites((v) => !v)}
+                    className={`flex-1 h-7 flex items-center justify-center gap-1 px-2 rounded-md text-[10px] font-bold cursor-pointer transition border ${
+                      showOnlyFavorites
+                        ? "bg-rose-500 border-rose-500 text-white hover:bg-rose-600"
+                        : "bg-white border-slate-200 text-slate-600 hover:border-rose-300 hover:text-rose-500 hover:bg-rose-50"
+                    }`}
+                    title={
+                      showOnlyFavorites
+                        ? `仅显示心爱（${favorites.size}）— 点击显示全部`
+                        : `仅看心爱（已收藏 ${favorites.size}）`
+                    }
+                  >
+                    <Heart
+                      className={`w-3 h-3 ${showOnlyFavorites ? "fill-current" : ""}`}
+                    />
+                    心爱
                   </button>
                   <button
                     onClick={openRepairForAll}
@@ -1126,8 +1195,11 @@ export function PlayerPage({
           {/* VIDEO CARDS LIST - 虚拟滚动 */}
           <div
             ref={listScrollRef}
-            className="flex-1 overflow-y-auto pr-2"
-            style={{ contain: "strict" }}
+            className="flex-1 overflow-y-auto pr-2 overscroll-contain"
+            style={{
+              contain: "strict",
+              willChange: "scroll-position",
+            }}
           >
             {filteredVideos.length > 0 ? (
               <div
@@ -1147,18 +1219,20 @@ export function PlayerPage({
                         top: 0,
                         left: 0,
                         width: "100%",
-                        transform: `translateY(${virtualRow.start}px)`,
+                        // translate3d 强制独立合成层；contain 阻止子树的布局/样式/绘制影响外部
+                        transform: `translate3d(0, ${virtualRow.start}px, 0)`,
                         paddingBottom: "8px",
+                        contain: "layout style paint",
                       }}
                     >
                       <LocalVideoCard
                         video={video}
                         isActive={selectedVideoIndex === virtualRow.index}
-                        onPlay={() =>
-                          handleLoadLocalVideo(video, virtualRow.index)
-                        }
-                        onDelete={() => setDeleteTarget(video)}
-                        onRepair={() => openRepairForVideo(video)}
+                        onPlay={handleLoadLocalVideo}
+                        onDelete={setDeleteTarget}
+                        onRepair={openRepairForVideo}
+                        isFavorite={favorites.has(video.id)}
+                        onToggleFavorite={toggleFavorite}
                         index={virtualRow.index}
                       />
                     </div>

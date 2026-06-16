@@ -639,6 +639,8 @@ export function DownloadPage({
               id: videoCode, // 使用番号而非 task.id
               name: task.name,
               saveDir: taskDir,
+              customCoverUrl: task.coverUrl || undefined,
+              skipPreview: true,
             });
             // 写 meta.json（离线层：番号 + 文件信息 + 来源 URL）
             void trpc.meta.writeForTask
@@ -652,7 +654,7 @@ export function DownloadPage({
                 encryptionType: task.encryptionType,
                 format: task.format,
               })
-              .then((r) => {
+              .then((r: any) => {
                 if (r.success && r.meta) {
                   addLog(
                     `meta.json 已写入${r.meta.code ? `（番号: ${r.meta.code}）` : "（未识别番号）"}`,
@@ -945,23 +947,32 @@ export function DownloadPage({
     [addLog, settings.temp_path, settings.globalSpeedLimit],
   );
 
+  /* ---- 并发上限解析：Infinity = 不限制 ---- */
+  const resolveConcurrencyLimit = useCallback((): number => {
+    const limit = settingsRef.current.maxConcurrentTasks;
+    if (limit == null || Number.isNaN(limit) || limit <= 0) return Infinity;
+    return limit;
+  }, []);
+
   /* ---- 调度器：根据队列开关与并发上限启动等待中的任务 ---- */
   const startNextInQueue = useCallback(() => {
-    const settingsNow = settingsRef.current;
     const downloadingCount = tasksRef.current.filter(
       (t) => t.status === "DOWNLOADING",
     ).length;
-    // 队列开启 → 串行（最多 1 个）；关闭 → 并发上限 = maxConcurrentTasks
+    // 队列开启 → 串行（最多 1 个）；关闭 → 并发上限 = maxConcurrentTasks（Infinity 表示不限制）
     const limit = queueEnabledRef.current
       ? 1
-      : Math.max(1, settingsNow.maxConcurrentTasks || 3);
-    let toStart = limit - downloadingCount;
+      : resolveConcurrencyLimit();
+    const toStart = limit === Infinity ? Infinity : limit - downloadingCount;
     if (toStart <= 0) return;
     const pending = tasksRef.current
       .filter((t) => t.status === "PENDING")
       .sort((a, b) => a.creationTime.localeCompare(b.creationTime));
-    for (const next of pending) {
-      if (toStart <= 0) break;
+    const actualStart =
+      limit === Infinity ? pending.length : Math.min(toStart, pending.length);
+    if (actualStart === 0) return;
+    for (let i = 0; i < actualStart; i++) {
+      const next = pending[i];
       addLog(
         queueEnabledRef.current
           ? `队列：开始下载 ${next.name}`
@@ -971,9 +982,8 @@ export function DownloadPage({
       // 用 setTimeout 0 把每个 start 推到下一个 tick，避免一次性 setTasks 太多
       const id = next.id;
       setTimeout(() => startTask(id), 0);
-      toStart--;
     }
-  }, [addLog, startTask]);
+  }, [addLog, startTask, resolveConcurrencyLimit]);
 
   // 同步最新调度器到 ref，供进度回调使用
   useEffect(() => {
@@ -1006,14 +1016,13 @@ export function DownloadPage({
 
       // 开始 / 恢复
       if (t.status === "PAUSED" || t.status === "PENDING") {
-        const settingsNow = settingsRef.current;
         const downloadingCount = tasksRef.current.filter(
           (x) => x.status === "DOWNLOADING",
         ).length;
         const limit = queueEnabledRef.current
           ? 1
-          : Math.max(1, settingsNow.maxConcurrentTasks || 3);
-        if (downloadingCount >= limit) {
+          : resolveConcurrencyLimit();
+        if (limit !== Infinity && downloadingCount >= limit) {
           // 已达并发上限 → 进队列等待
           setTasks((prev) =>
             prev.map((x) =>
@@ -1076,14 +1085,16 @@ export function DownloadPage({
         t.status === "PAUSED" ? { ...t, status: "PENDING" } : t,
       ),
     );
+    const limit = resolveConcurrencyLimit();
+    const limitLabel = limit === Infinity ? "无上限" : String(limit);
     addLog(
       queueEnabledRef.current
         ? "▶️ 操作: 全部加入队列下载，逐个开始"
-        : `▶️ 操作: 全部加入并发下载（并发上限 ${settingsRef.current.maxConcurrentTasks || 3}）`,
+        : `▶️ 操作: 全部加入并发下载（并发上限 ${limitLabel}）`,
       "INFO",
     );
     setTimeout(() => startNextRef.current(), 100);
-  }, [addLog]);
+  }, [addLog, resolveConcurrencyLimit]);
 
   const handlePauseAll = useCallback(() => {
     // 关闭队列下载，停掉后端所有进程，活动任务与排队任务一并暂停

@@ -1,16 +1,30 @@
-import React, { useRef, useState } from "react";
-import { Trash2, Wrench } from "lucide-react";
+import React, { useRef, useState, memo } from "react";
+import { Trash2, Wrench, Heart } from "lucide-react";
 import type { VideoItem } from "../../pages/player/types";
 import { CoverImage } from "../CoverImage";
 
-export const LocalVideoCard: React.FC<{
+interface LocalVideoCardProps {
   video: VideoItem;
   isActive: boolean;
-  onPlay: () => void;
-  onDelete: () => void;
-  onRepair?: () => void;
+  // 稳定的回调签名：在父组件中用 useCallback 包装一次即可，避免每次滚动新建闭包导致 memo 失效
+  onPlay: (video: VideoItem, index: number) => void;
+  onDelete: (video: VideoItem) => void;
+  onRepair?: (video: VideoItem) => void;
+  isFavorite?: boolean;
+  onToggleFavorite?: (video: VideoItem) => void;
   index: number;
-}> = ({ video, isActive, onPlay, onDelete, onRepair, index }) => {
+}
+
+const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
+  video,
+  isActive,
+  onPlay,
+  onDelete,
+  onRepair,
+  isFavorite,
+  onToggleFavorite,
+  index,
+}) => {
   const [hovered, setHovered] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewRef = useRef<HTMLVideoElement | null>(null);
@@ -32,7 +46,7 @@ export const LocalVideoCard: React.FC<{
 
   return (
     <div
-      onClick={onPlay}
+      onClick={() => onPlay(video, index)}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
       className={`rounded-lg border overflow-hidden cursor-pointer transition-all duration-200 group ${
@@ -42,7 +56,10 @@ export const LocalVideoCard: React.FC<{
       }`}
     >
       {/* THUMBNAIL / PREVIEW CONTAINER */}
-      <div className="relative aspect-video bg-slate-900 overflow-hidden">
+      <div
+        className="relative aspect-video bg-slate-900 overflow-hidden"
+        style={{ transform: "translateZ(0)" }}
+      >
         {/* 序号角标 */}
         <span className="absolute top-1.5 right-1.5 z-10 text-[10px] bg-slate-800/80 text-white px-1.5 py-0.5 font-mono rounded backdrop-blur-sm font-bold">
           #{index + 1}
@@ -62,6 +79,16 @@ export const LocalVideoCard: React.FC<{
             onLoadedData={handlePreviewReady}
             className="absolute inset-0 w-full h-full object-cover bg-black animate-[fadeIn_0.3s_ease]"
           />
+        )}
+
+        {/* 收藏标记（已收藏时常驻显示在缩略图左上角） */}
+        {isFavorite && !isActive && (
+          <span
+            className="absolute top-1.5 left-1.5 z-10 inline-flex items-center justify-center w-5 h-5 rounded-full bg-rose-500/90 text-white backdrop-blur-sm shadow"
+            title="已加入心爱"
+          >
+            <Heart className="w-3 h-3 fill-current" />
+          </span>
         )}
 
         {/* 正在播放标记 */}
@@ -85,14 +112,32 @@ export const LocalVideoCard: React.FC<{
           <div className="flex items-center gap-2 text-[9px] font-mono text-slate-400">
             {video.size && <span>{video.size}</span>}
           </div>
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+          <div className="flex items-center gap-1 transition">
+            {onToggleFavorite && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleFavorite(video);
+                }}
+                className={`p-0.5 transition cursor-pointer ${
+                  isFavorite
+                    ? "text-rose-500 hover:text-rose-600"
+                    : "text-slate-300 hover:text-rose-400 opacity-0 group-hover:opacity-100"
+                }`}
+                title={isFavorite ? "取消心爱" : "加入心爱"}
+              >
+                <Heart
+                  className={`w-3 h-3 ${isFavorite ? "fill-current" : ""}`}
+                />
+              </button>
+            )}
             {onRepair && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onRepair();
+                  onRepair(video);
                 }}
-                className="p-0.5 text-slate-300 hover:text-amber-500 transition cursor-pointer"
+                className="p-0.5 text-slate-300 hover:text-amber-500 transition cursor-pointer opacity-0 group-hover:opacity-100"
                 title="修复此视频（封面/预览/字幕/刻度图）"
               >
                 <Wrench className="w-3 h-3" />
@@ -101,9 +146,9 @@ export const LocalVideoCard: React.FC<{
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onDelete();
+                onDelete(video);
               }}
-              className="p-0.5 text-slate-300 hover:text-red-400 transition cursor-pointer"
+              className="p-0.5 text-slate-300 hover:text-red-400 transition cursor-pointer opacity-0 group-hover:opacity-100"
               title="删除视频"
             >
               <Trash2 className="w-3 h-3" />
@@ -114,3 +159,6 @@ export const LocalVideoCard: React.FC<{
     </div>
   );
 };
+
+// 用 memo 包一层：滚动时父组件高频重渲染，未变化的卡片直接 skip，避免 CoverImage 等子树反复 reconcile
+export const LocalVideoCard = memo(LocalVideoCardImpl);

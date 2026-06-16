@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { TitleBar } from "./components/TitleBar";
 import { GlobalConsole } from "./components/GlobalConsole";
 import { ThumbnailQueueWidget } from "./components/ThumbnailQueueWidget";
+import { SettingsPanel } from "./components/download/SettingsPanel";
 import { thumbnailQueue } from "./lib/thumbnailQueue";
 import { DownloadPage } from "./pages/DownloadPage";
 import { PlayerPage } from "./pages/PlayerPage";
@@ -17,8 +18,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   temp_path: "",
   defaultFormat: "MP4",
   defaultThreads: 16,
-  maxConcurrentTasks: 3,
-  thumbQueueConcurrency: 2,
+  maxConcurrentTasks: Infinity,
+  thumbQueueConcurrency: 4,
   autoMerge: true,
   proxyUrl: "",
   nm3u8dlPath: "N_m3u8DL-RE.exe",
@@ -56,6 +57,7 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>("download");
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [systemLogs, setSystemLogs] = useState<
     Array<{ text: string; level: string; time: string }>
   >([]);
@@ -132,6 +134,8 @@ export default function App() {
         const merged: AppSettings = {
           ...DEFAULT_SETTINGS,
           ...savedPartial,
+          // 并发上限：不限制（若老配置仍有数值，覆盖成 Infinity）
+          maxConcurrentTasks: Infinity,
         };
         if (!merged.video_path?.trim()) merged.video_path = defaults.video_path;
         if (!merged.temp_path?.trim()) merged.temp_path = defaults.temp_path;
@@ -153,7 +157,7 @@ export default function App() {
 
   // 同步并发数到刻度图队列
   useEffect(() => {
-    thumbnailQueue.setConcurrency(settings.thumbQueueConcurrency ?? 2);
+    thumbnailQueue.setConcurrency(settings.thumbQueueConcurrency ?? 4);
   }, [settings.thumbQueueConcurrency]);
 
   // 私密计时：实时秒数 + 切换逻辑
@@ -180,8 +184,8 @@ export default function App() {
       setArousalActive(false);
       setArousalElapsed(0);
       if (durationSec >= 1) {
-        const mm = String(Math.floor(durationSec / 60)).padStart(2, "0");
-        const ss = String(durationSec % 60).padStart(2, "0");
+        const mm = String(Math.floor(durationSec / 60)).padStart(2, "00");
+        const ss = String(durationSec % 60).padStart(2, "00");
         addLog(`💗 私密计时结束：本次 ${mm}:${ss}`, "SUCCESS");
         void trpc.stats.recordArousal
           .mutate({
@@ -255,6 +259,7 @@ export default function App() {
         arousalActive={arousalActive}
         arousalElapsed={arousalElapsed}
         onToggleArousal={handleToggleArousal}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       {/* 页面内容区 */}
@@ -307,6 +312,36 @@ export default function App() {
           }
           onClose={() => setSettings((s) => ({ ...s, consoleOpen: false }))}
         />
+      )}
+
+      {/* 全局设置面板（从 TitleBar 设置按钮打开） */}
+      {settingsOpen && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center anim-fade-in"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setSettingsOpen(false);
+          }}
+        >
+          <div className="anim-pop-in" style={{ width: "100%", maxWidth: 680 }}>
+            <SettingsPanel
+              settings={settings}
+              onSaveSettings={(next) => {
+                // 保存时保证 maxConcurrentTasks 保持无上限（若用户手动设了值，也尊重；0 / 空 / 负数 → Infinity）
+                const merged: AppSettings = {
+                  ...next,
+                  maxConcurrentTasks:
+                    next.maxConcurrentTasks && next.maxConcurrentTasks > 0
+                      ? next.maxConcurrentTasks
+                      : Infinity,
+                };
+                setSettings(merged);
+                setSettingsOpen(false);
+              }}
+              onAddSystemLog={addLog}
+              onClose={() => setSettingsOpen(false)}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

@@ -1,5 +1,19 @@
 import React, { useRef, useState, memo } from "react";
-import { Trash2, Wrench, Heart } from "lucide-react";
+import {
+  Trash2,
+  Wrench,
+  Heart,
+  Edit3,
+  Globe,
+  Star,
+  Calendar,
+  Clock,
+  Building2,
+  User2,
+  Film,
+  Tag,
+  Play,
+} from "lucide-react";
 import type { VideoItem } from "../../pages/player/types";
 import { CoverImage } from "../CoverImage";
 
@@ -32,7 +46,7 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
   const handleEnter = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     // 延迟挂载，避免快速划过时频繁加载预览
-    hoverTimer.current = setTimeout(() => setHovered(true), 250);
+    hoverTimer.current = setTimeout(() => setHovered(true), 150);
   };
 
   const handleLeave = () => {
@@ -49,25 +63,19 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
       onClick={() => onPlay(video, index)}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
-      className={`rounded-lg border overflow-hidden cursor-pointer transition-all duration-200 group ${
+      className={`relative rounded-xl overflow-hidden cursor-pointer transition-all duration-300 group bg-white border ${
         isActive
-          ? "border-amber-400 bg-amber-50/50 shadow-sm ring-1 ring-amber-400/30"
-          : "border-slate-200 bg-white hover:border-amber-300 hover:shadow-md hover:-translate-y-0.5"
+          ? "border-amber-400 shadow-[0_0_0_2px_rgba(251,191,36,0.15),0_10px_30px_-12px_rgba(245,158,11,0.35)]"
+          : "border-slate-200 hover:border-slate-300 hover:shadow-[0_10px_30px_-14px_rgba(15,23,42,0.35)] hover:-translate-y-0.5"
       }`}
     >
-      {/* THUMBNAIL / PREVIEW CONTAINER */}
+      {/* ===== 封面（承担主要视觉信息） ===== */}
       <div
         className="relative aspect-video bg-slate-900 overflow-hidden"
         style={{ transform: "translateZ(0)" }}
       >
-        {/* 序号角标 */}
-        <span className="absolute top-1.5 right-1.5 z-10 text-[10px] bg-slate-800/80 text-white px-1.5 py-0.5 font-mono rounded backdrop-blur-sm font-bold">
-          #{index + 1}
-        </span>
-
         <CoverImage src={video.coverUrl} alt={video.name} logoSize={48} />
 
-        {/* HOVER PREVIEW OVERLAY */}
         {hovered && video.previewUrl && (
           <video
             ref={previewRef}
@@ -81,80 +89,315 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
           />
         )}
 
-        {/* 收藏标记（已收藏时常驻显示在缩略图左上角） */}
-        {isFavorite && !isActive && (
-          <span
-            className="absolute top-1.5 left-1.5 z-10 inline-flex items-center justify-center w-5 h-5 rounded-full bg-rose-500/90 text-white backdrop-blur-sm shadow"
-            title="已加入心爱"
-          >
-            <Heart className="w-3 h-3 fill-current" />
-          </span>
+        {/* 顶部渐变 */}
+        <div className="absolute top-0 left-0 right-0 h-14 bg-gradient-to-b from-black/55 to-transparent pointer-events-none z-0" />
+
+        {/* —— 顶部行：左 状态/番号 / 右 评分+序号 —— */}
+        <div className="absolute top-2 left-2 right-2 z-10 flex items-start justify-between gap-1 pointer-events-none">
+          <div className="flex items-center gap-1 min-w-0">
+            {isActive ? (
+              <span className="inline-flex items-center gap-1 text-[9px] bg-amber-400/95 text-slate-900 px-2 py-0.5 rounded-full font-bold backdrop-blur-md shadow-md shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-pulse"></span>
+                正在播放
+              </span>
+            ) : isFavorite ? (
+              <span
+                className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-white/90 text-amber-500 backdrop-blur-md shadow shrink-0"
+                title="已加入心爱"
+              >
+                <Heart className="w-3 h-3 fill-current" />
+              </span>
+            ) : null}
+            {video.code && (
+              <span className="text-[10.5px] bg-white/15 text-white px-2 py-0.5 font-mono rounded backdrop-blur-md font-bold tracking-wider ring-1 ring-white/20 truncate">
+                {video.code}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {typeof video.rating === "number" && video.rating > 0 && (
+              <span className="inline-flex items-center gap-0.5 text-[11px] bg-amber-400/95 text-slate-900 px-1.5 py-0.5 rounded backdrop-blur-md font-extrabold shadow">
+                <Star className="w-2.5 h-2.5 fill-current" />
+                {video.rating.toFixed(1)}
+              </span>
+            )}
+            <span className="text-[9px] text-white/70 px-1 font-mono">
+              #{index + 1}
+            </span>
+          </div>
+        </div>
+
+        {/* —— 底部信息条 (图片内仅保留发行商和大小，时间移至最下方) —— */}
+        {(video.studio || video.size) && (
+          <>
+            <div className="absolute bottom-0 left-0 right-0 h-14 bg-gradient-to-t from-black/70 to-transparent pointer-events-none" />
+            <div className="absolute bottom-2 left-2 right-2 z-10 flex items-end justify-between gap-2 text-white/95 text-[10px] pointer-events-none">
+              <div className="flex items-center gap-2 min-w-0">
+                {video.studio && (
+                  <span
+                    className="inline-flex items-center gap-0.5 truncate opacity-80"
+                    title={video.studio}
+                  >
+                    <Building2 className="w-2.5 h-2.5 shrink-0" />
+                    <span className="truncate">{video.studio}</span>
+                  </span>
+                )}
+              </div>
+              {video.size && (
+                <span className="font-mono opacity-70 shrink-0">
+                  {video.size}
+                </span>
+              )}
+            </div>
+          </>
         )}
 
-        {/* 正在播放标记 */}
-        {isActive && (
-          <span className="absolute top-1.5 left-1.5 z-10 inline-flex items-center gap-1 text-[9px] bg-amber-500/90 text-white px-1.5 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-900 animate-pulse"></span>
-            播放中
-          </span>
+        {/* 中央播放按钮（hover 渐显） */}
+        {!hovered && !isActive && (
+          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-[5]">
+            <div className="w-11 h-11 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center ring-1 ring-white/30">
+              <Play className="w-4 h-4 text-white fill-white ml-0.5" />
+            </div>
+          </div>
         )}
       </div>
 
-      {/* INFO */}
-      <div className="p-2.5">
-        <span
-          className={`font-bold block truncate text-[11px] ${isActive ? "text-amber-700" : "text-slate-800"}`}
-          title={video.name}
+      {/* ===== 信息区（克制配色：冷灰主色 + 单一暖金强调） ===== */}
+      <div className="px-3 pt-2.5 pb-3 space-y-1.5">
+        {/* 标题 */}
+        <div
+          className={`font-semibold text-xs leading-snug line-clamp-2 tracking-tight truncate ${
+            isActive ? "text-amber-700" : "text-slate-900"
+          }`}
+          title={video.title || video.name}
         >
-          {video.name}
-        </span>
-        <div className="flex items-center justify-between mt-1">
-          <div className="flex items-center gap-2 text-[9px] font-mono text-slate-400">
-            {video.size && <span>{video.size}</span>}
+          {video.title || video.name}
+        </div>
+
+        {/* 演员（克制：单色） */}
+        {video.actors && video.actors.length > 0 && (
+          <div className="flex items-center gap-1.5 pt-0.5">
+            <User2 className="w-3 h-3 text-slate-400 shrink-0" />
+            <div
+              className="text-[10.5px] text-slate-700 truncate"
+              title={video.actors.join(" / ")}
+            >
+              {video.actors.join(" · ")}
+            </div>
           </div>
-          <div className="flex items-center gap-1 transition">
+        )}
+
+        {/* 分类：单行 + hover 时自动滚动；可手动滑 */}
+        {video.genres && video.genres.length > 0 && (
+          <GenreMarquee genres={video.genres} hovered={hovered} />
+        )}
+
+        {/* 底栏：时间 + 操作按钮 */}
+        <div className="pt-1.5 mt-0.5 border-t border-slate-100 flex items-center justify-between gap-2 text-[9.5px] text-slate-500">
+          <span className="flex items-center gap-0.5 shrink-0">
+            {video.duration ? (
+              <>
+                <Clock className="w-2.5 h-2.5 -mt-0.25" />
+                <span className="text-[10px] font-mono text-slate-400" title={video.duration}>
+                  {((): string => {
+                    const m = parseInt(
+                      (video.duration || "").replace(/[^\d]/g, ""),
+                      10,
+                    );
+                    if (!Number.isFinite(m) || m <= 0) return "—";
+                    const hours = Math.floor(m / 60);
+                    const mins = m % 60;
+                    if (hours > 0) {
+                      return `${hours}小时${mins}分钟`;
+                    }
+                    return `${m}分钟`;
+                  })()}
+                </span>
+              </>
+            ) : (
+              <span className="text-slate-300">—</span>
+            )}
+          </span>
+          <div className="flex items-center gap-0.5 shrink-0">
             {onToggleFavorite && (
-              <button
+              <CardIconBtn
                 onClick={(e) => {
                   e.stopPropagation();
                   onToggleFavorite(video);
                 }}
-                className={`p-0.5 transition cursor-pointer ${
-                  isFavorite
-                    ? "text-rose-500 hover:text-rose-600"
-                    : "text-slate-300 hover:text-rose-400 opacity-0 group-hover:opacity-100"
-                }`}
                 title={isFavorite ? "取消心爱" : "加入心爱"}
               >
                 <Heart
-                  className={`w-3 h-3 ${isFavorite ? "fill-current" : ""}`}
+                  className={`w-3.5 h-3.5 ${isFavorite ? "fill-amber-500 text-amber-500" : ""}`}
                 />
-              </button>
+              </CardIconBtn>
             )}
             {onRepair && (
-              <button
+              <CardIconBtn
                 onClick={(e) => {
                   e.stopPropagation();
                   onRepair(video);
                 }}
-                className="p-0.5 text-slate-300 hover:text-amber-500 transition cursor-pointer opacity-0 group-hover:opacity-100"
-                title="修复此视频（封面/预览/字幕/刻度图）"
+                title="修复（联网刮削/重命名/封面/字幕在此）"
               >
-                <Wrench className="w-3 h-3" />
-              </button>
+                <Wrench className="w-3.5 h-3.5" />
+              </CardIconBtn>
             )}
-            <button
+            <CardIconBtn
               onClick={(e) => {
                 e.stopPropagation();
                 onDelete(video);
               }}
-              className="p-0.5 text-slate-300 hover:text-red-400 transition cursor-pointer opacity-0 group-hover:opacity-100"
-              title="删除视频"
+              title="删除"
             >
-              <Trash2 className="w-3 h-3" />
-            </button>
+              <Trash2 className="w-3.5 h-3.5" />
+            </CardIconBtn>
           </div>
         </div>
+      </div>
+    </div>
+  );
+};
+
+const CardIconBtn: React.FC<{
+  onClick: (e: React.MouseEvent) => void;
+  title: string;
+  children: React.ReactNode;
+}> = ({ onClick, title, children }) => (
+  <button
+    onClick={onClick}
+    title={title}
+    className="p-1.5 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+  >
+    {children}
+  </button>
+);
+
+/**
+ * 分类标签单行展示。
+ * - 内容超出容器时可横向手动滑动（隐藏滚动条）
+ * - 鼠标进入卡片后，自动 rAF 滚到末尾；离开回到起点
+ * - 拖拽滑动时，自动暂停自动滚动
+ */
+const GenreMarquee: React.FC<{ genres: string[]; hovered: boolean }> = ({
+  genres,
+  hovered,
+}) => {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const isDraggingRef = useRef(false);
+  const dragStartX = useRef(0);
+  const dragStartScroll = useRef(0);
+  const [cursor, setCursor] = useState<"default" | "grabbing">("default");
+
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+
+    const max = el.scrollWidth - el.clientWidth;
+    if (max <= 0) return;
+
+    if (hovered && !isDraggingRef.current) {
+      // 先停留 50ms 再滚
+      const startDelay = 50;
+      const speed = 60;
+      const duration = (max / speed) * 1000;
+      const startTs = performance.now() + startDelay;
+
+      const tick = (now: number) => {
+        if (isDraggingRef.current) return;
+        if (now < startTs) {
+          rafRef.current = requestAnimationFrame(tick);
+          return;
+        }
+        const elapsed = now - startTs;
+        const ratio = Math.min(1, elapsed / duration);
+        el.scrollLeft = max * ratio;
+        if (ratio < 1) rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    } else if (!isDraggingRef.current) {
+      // 平滑回到起点
+      const from = el.scrollLeft;
+      const startTs = performance.now();
+      const backDur = 300;
+      const tick = (now: number) => {
+        if (isDraggingRef.current) return;
+        const t = Math.min(1, (now - startTs) / backDur);
+        const eased = 1 - Math.pow(1 - t, 3);
+        el.scrollLeft = from * (1 - eased);
+        if (t < 1) rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    }
+
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [hovered, genres]);
+
+  const onMouseDown = (e: React.MouseEvent) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    isDraggingRef.current = true;
+    dragStartX.current = e.clientX;
+    dragStartScroll.current = el.scrollLeft;
+    setCursor("grabbing");
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  };
+
+  React.useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const el = scrollRef.current;
+      if (!el) return;
+      const dx = e.clientX - dragStartX.current;
+      el.scrollLeft = dragStartScroll.current - dx;
+    };
+    const onUp = () => {
+      isDraggingRef.current = false;
+      setCursor("default");
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  return (
+    <div
+      ref={scrollRef}
+      className="overflow-x-auto scrollbar-hide whitespace-nowrap select-none px-1"
+      style={{
+        cursor: cursor === "grabbing" ? "grabbing" : "grab",
+        maskImage:
+          "linear-gradient(to right, transparent 0, black 8px, black calc(100% - 16px), transparent 100%)",
+        WebkitMaskImage:
+          "linear-gradient(to right, transparent 0, black 8px, black calc(100% - 16px), transparent 100%)",
+      }}
+      onMouseDown={onMouseDown}
+      onWheel={(e) => {
+        // 让滚轮可以横向滚（按 shift 自动横向；裸滚轮拦截后转横向）
+        if (e.deltaY !== 0 && scrollRef.current) {
+          scrollRef.current.scrollLeft += e.deltaY;
+        }
+      }}
+    >
+      <div className="inline-flex items-center gap-1.5">
+        {genres.map((g) => (
+          <span
+            key={g}
+            className="inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] bg-slate-100 text-slate-700 border border-slate-200 font-medium shrink-0"
+          >
+            {g}
+          </span>
+        ))}
       </div>
     </div>
   );

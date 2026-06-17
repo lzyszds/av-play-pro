@@ -114,6 +114,6 @@ export const whisperRouter = t.router({
   paths: t.procedure.query(() => ({
     root: whisperPaths.root(),
     whisperBin: whisperPaths.whisperBin(),
-    ffmpegBin: whisperPaths.ffmpegBin(),
+    ffmpegBin: whisperPaths.localFfmpeg(),
   })),
 });

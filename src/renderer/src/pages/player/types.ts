@@ -8,6 +8,20 @@ export interface VideoItem {
   previewUrl?: string;
   size?: string;
   createdAt?: number;
+  // 来自 meta.json 的丰富字段（可选；存在即在卡片展示）
+  code?: string;
+  title?: string;
+  actors?: string[];
+  releaseDate?: string;
+  duration?: string;
+  studio?: string;
+  label?: string;
+  studioSeries?: string;
+  director?: string;
+  genres?: string[];
+  rating?: number;
+  plot?: string;
+  sourceSite?: string;
 }
 
 export interface PlayerPageProps {

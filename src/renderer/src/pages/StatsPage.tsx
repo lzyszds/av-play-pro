@@ -21,6 +21,8 @@ import {
   EyeOff,
   Maximize2,
   Minimize2,
+  AlertTriangle,
+  Users,
 } from "lucide-react";
 import {
   Area,
@@ -40,6 +42,12 @@ interface ActivityBucket {
   watchSec: number;
   downloads: number;
   downloadBytes: number;
+}
+
+interface DiskPrediction {
+  daysRemaining: number | null;
+  predictedFullAt: string | null;
+  avgDailyGrowth: number;
 }
 
 interface VideoEntry {
@@ -1292,6 +1300,13 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [libraryVideos, setLibraryVideos] = useState<LibraryVideo[]>([]);
   const [isSnapshotting, setIsSnapshotting] = useState(false);
+  const [rankings, setRankings] = useState<{ series: any[]; actors: any[] }>({
+    series: [],
+    actors: [],
+  });
+  const [diskPrediction, setDiskPrediction] = useState<DiskPrediction | null>(
+    null,
+  );
   const [panelState, setPanelState] = useState<
     Record<PanelKey, PanelStateValue>
   >({
@@ -1317,14 +1332,18 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
 
   const refresh = async () => {
     try {
-      const [statsData, videos] = await Promise.all([
+      const [statsData, videos, rankData, predictData] = await Promise.all([
         trpc.stats.get.query(),
         videoPath
           ? trpc.videos.list.query({ path: videoPath }).catch(() => [])
           : Promise.resolve([]),
+        trpc.stats.getRankings.query().catch(() => ({ series: [], actors: [] })),
+        trpc.stats.getDiskPrediction.query().catch(() => null),
       ]);
       setStats(statsData as StatsData);
       setLibraryVideos(videos as LibraryVideo[]);
+      setRankings(rankData);
+      setDiskPrediction(predictData);
     } catch (err: any) {
       onAddSystemLog(`统计加载失败: ${err?.message || err}`, "ERROR");
     }
@@ -1716,6 +1735,60 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
         onToggleHidden={() => togglePanelHidden("disk")}
         onToggleExpanded={() => togglePanelExpanded("disk")}
       />
+
+      {diskPrediction && diskPrediction.daysRemaining !== null && (
+        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/30 rounded-lg p-4 flex items-center gap-4 anim-pop-in">
+          <div className="p-3 rounded-full bg-amber-500 text-white shadow-lg shadow-amber-500/20">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <div className="flex-1">
+            <h4 className="text-sm font-bold text-amber-900 dark:text-amber-200">
+              磁盘存储空间预警
+            </h4>
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+              按照近期的下载增长速度（{formatBytes(diskPrediction.avgDailyGrowth)}/天），
+              你的磁盘预计将在 <span className="font-bold text-amber-600 dark:text-amber-300">{diskPrediction.daysRemaining} 天</span>后（{diskPrediction.predictedFullAt?.slice(0, 10)}）存满。
+            </p>
+          </div>
+          <button 
+            onClick={() => onAddSystemLog("建议清理不常用的旧资源以腾出空间", "INFO")}
+            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition"
+          >
+            立即清理
+          </button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <TopList
+          title="最爱演员排行榜 (Top 20)"
+          icon={Users}
+          hidden={panelState.ranking.hidden}
+          expanded={panelState.ranking.expanded}
+          onToggleHidden={() => togglePanelHidden("ranking")}
+          onToggleExpanded={() => togglePanelExpanded("ranking")}
+          items={rankings.actors.map((item: any) => ({
+            label: item.name,
+            sub: `${item.count} 次播放`,
+            value: formatDuration(item.watchSec),
+            right: `评分 ${Math.round(item.score)}`,
+          }))}
+        />
+        <TopList
+          title="系列深度分析 (Top 20)"
+          icon={BarChart3}
+          hidden={panelState.ranking.hidden}
+          expanded={panelState.ranking.expanded}
+          onToggleHidden={() => togglePanelHidden("ranking")}
+          onToggleExpanded={() => togglePanelExpanded("ranking")}
+          items={rankings.series.map((item: any) => ({
+            label: item.name,
+            sub: `${item.count} 次播放`,
+            value: formatDuration(item.watchSec),
+            right: `评分 ${Math.round(item.score)}`,
+          }))}
+        />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <BarBlock

@@ -27,11 +27,13 @@ export function setupLocalMediaProtocol(): void {
         filePath = filePath.replace(/\//g, "\\");
       }
 
-      if (!filePath || !fs.existsSync(filePath)) {
-        return new Response("File not found", { status: 404 });
+      try {
+        await fs.promises.access(filePath, fs.constants.R_OK);
+      } catch {
+        return new Response("File not found or no access", { status: 404 });
       }
 
-      const stat = fs.statSync(filePath);
+      const stat = await fs.promises.stat(filePath);
       const total = stat.size;
       const contentType = guessMime(filePath);
       const rangeHeader = request.headers.get("range");

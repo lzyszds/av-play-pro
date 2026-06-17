@@ -12,6 +12,20 @@ export interface VideoItem {
   previewUrl?: string;
   size?: string;
   createdAt?: number;
+  // 从 meta.json 拼上的丰富字段
+  code?: string;
+  title?: string;
+  actors?: string[];
+  releaseDate?: string;
+  duration?: string;
+  studio?: string;
+  label?: string;
+  studioSeries?: string;
+  director?: string;
+  genres?: string[];
+  rating?: number;
+  plot?: string;
+  sourceSite?: string;
 }
 
 function formatSize(bytes: number): string {
@@ -105,6 +119,30 @@ export const videosRouter = t.router({
               }
             }
 
+            // 读取 meta.json 拼上更多字段（容错：解析失败就跳过）
+            let metaExtras: Partial<VideoItem> = {};
+            try {
+              const mPath = path.join(folderPath, "meta.json");
+              if (fs.existsSync(mPath)) {
+                const m = JSON.parse(fs.readFileSync(mPath, "utf8"));
+                metaExtras = {
+                  code: m.code,
+                  title: m.title,
+                  actors: Array.isArray(m.actors) ? m.actors : undefined,
+                  releaseDate: m.releaseDate,
+                  duration: m.duration,
+                  studio: m.studio,
+                  label: m.label,
+                  studioSeries: m.studioSeries,
+                  director: m.director,
+                  genres: Array.isArray(m.genres) ? m.genres : undefined,
+                  rating: typeof m.rating === "number" ? m.rating : undefined,
+                  plot: m.plot,
+                  sourceSite: m.sourceSite,
+                };
+              }
+            } catch {}
+
             videos.push({
               id: folder.name,
               name: folder.name,
@@ -116,6 +154,7 @@ export const videosRouter = t.router({
               size: formatSize(videoSize),
               createdAt:
                 videoMtime || fs.statSync(folderPath).birthtime.getTime(),
+              ...metaExtras,
             });
           }
         } catch {}
@@ -281,5 +320,78 @@ export const videosRouter = t.router({
           console.error(`[删除视频] 失败: ${err.message}`);
           return { success: false, error: err.message };
         }
+      }),
+
+    search: t.procedure
+      .input((input: unknown) => (input as { query: string; rootPath?: string }))
+      .query(({ input }) => {
+        const query = input.query.toLowerCase().trim();
+        const rootPath = input.rootPath || "M:\\video\\videos\\";
+        const results: Array<VideoItem & { meta?: any }> = [];
+        if (!query) return results;
+
+        try {
+          if (!fs.existsSync(rootPath)) return results;
+          const folders = fs.readdirSync(rootPath, { withFileTypes: true });
+          for (const folder of folders) {
+            if (!folder.isDirectory()) continue;
+            const folderPath = path.join(rootPath, folder.name);
+            
+            // 基础名称匹配
+            let match = folder.name.toLowerCase().includes(query);
+            let meta: any = null;
+
+            // 尝试读取 meta.json 进行深度搜索
+            const mPath = path.join(folderPath, "meta.json");
+            if (fs.existsSync(mPath)) {
+              try {
+                meta = JSON.parse(fs.readFileSync(mPath, "utf8"));
+                if (meta.code?.toLowerCase().includes(query)) match = true;
+                if (meta.title?.toLowerCase().includes(query)) match = true;
+                if (meta.actors?.some((a: string) => a.toLowerCase().includes(query))) match = true;
+              } catch {}
+            }
+
+            if (match) {
+              // 复用 list 中的逻辑获取视频信息
+              let videoFile = path.join(folderPath, "video.mp4");
+              if (!fs.existsSync(videoFile)) {
+                const files = fs.readdirSync(folderPath, { withFileTypes: true });
+                const exts = ["mp4", "mkv", "ts", "mov", "avi", "webm", "flv", "m4v"];
+                for (const f of files) {
+                  if (f.isFile()) {
+                    const ext = path.extname(f.name).toLowerCase().slice(1);
+                    if (exts.includes(ext) && f.name.toLowerCase() !== "preview.mp4") {
+                      videoFile = path.join(folderPath, f.name);
+                      break;
+                    }
+                  }
+                }
+              }
+
+              if (fs.existsSync(videoFile)) {
+                let coverFile: string | undefined = undefined;
+                for (const ext of ["jpg", "jpeg", "png", "webp"]) {
+                  const c = path.join(folderPath, `cover.${ext}`);
+                  if (fs.existsSync(c)) {
+                    coverFile = c;
+                    break;
+                  }
+                }
+
+                results.push({
+                  id: folder.name,
+                  name: meta?.title || folder.name,
+                  url: videoFile,
+                  resolution: "local",
+                  encryptionType: "decrypted",
+                  coverUrl: coverFile,
+                  meta,
+                });
+              }
+            }
+          }
+        } catch {}
+        return results;
       }),
   });

@@ -236,7 +236,7 @@ export function setupCdnProxyProtocol(): void {
           console.error(
             `[CDN-https] 上游错误体: ${r.body.toString("utf8").slice(0, 300)}`,
           );
-          return new Response(r.body, {
+          return new Response(new Uint8Array(r.body) as any, {
             status: r.status,
             headers: {
               "Content-Type": r.contentType,
@@ -265,7 +265,7 @@ export function setupCdnProxyProtocol(): void {
             },
           });
         }
-        return new Response(r.body, {
+        return new Response(new Uint8Array(r.body) as any, {
           status: r.status,
           headers: {
             "Content-Type": r.contentType,

@@ -16,6 +16,10 @@ interface DropdownProps<T extends string> {
   /** 触发器最小宽度，默认 84px */
   minWidth?: number;
   className?: string;
+  /** 自定义触发器样式（覆盖默认样式） */
+  customTriggerStyle?: string;
+  /** 触发器按钮上前缀文本（如"演员"） */
+  prefix?: string;
 }
 
 export function Dropdown<T extends string>({
@@ -24,6 +28,8 @@ export function Dropdown<T extends string>({
   onChange,
   minWidth = 84,
   className = "",
+  customTriggerStyle,
+  prefix,
 }: DropdownProps<T>) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<{ top: number; right: number; width: number } | null>(
@@ -46,7 +52,7 @@ export function Dropdown<T extends string>({
     if (open) updateRect();
   }, [open]);
 
-  // 点击外部 / Esc / 滚动 / 尺寸变化 时关闭或重算
+  // 点击外部 / Esc / 尺寸变化 时关闭
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e: MouseEvent) => {
@@ -61,18 +67,18 @@ export function Dropdown<T extends string>({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    const onScroll = () => setOpen(false);
+    const onResize = () => setOpen(false);
     document.addEventListener("mousedown", onDocClick);
     document.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("resize", onScroll);
+    window.addEventListener("resize", onResize);
     return () => {
       document.removeEventListener("mousedown", onDocClick);
       document.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("resize", onResize);
     };
   }, [open]);
+
+  const defaultTriggerClass = "flex items-center justify-between gap-2 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50/40 transition cursor-pointer text-[11px] font-sans";
 
   return (
     <div className={`relative inline-block ${className}`}>
@@ -80,14 +86,24 @@ export function Dropdown<T extends string>({
         ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        style={{ minWidth }}
-        className="flex items-center justify-between gap-2 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50/40 transition cursor-pointer text-[11px] font-sans"
+        style={{ minWidth: customTriggerStyle ? undefined : minWidth }}
+        className={customTriggerStyle || defaultTriggerClass}
       >
         <span className="flex items-center gap-1.5 truncate">
           {selected?.dot && (
             <span className={`w-1.5 h-1.5 rounded-full ${selected.dot}`} />
           )}
-          {selected?.label}
+          {prefix ? (
+            <>
+              <span className="opacity-70">{prefix}</span>
+              {value !== "全部" && <>
+                <span className="opacity-50">:</span>
+                <span className="font-semibold">{selected?.label}</span>
+              </>}
+            </>
+          ) : (
+            selected?.label
+          )}
         </span>
         <ChevronDown
           className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${
@@ -109,7 +125,7 @@ export function Dropdown<T extends string>({
             }}
             className="z-[1000] anim-scale-in origin-top-right"
           >
-            <ul className="py-1 rounded-lg border border-slate-200 bg-white shadow-lg shadow-slate-900/10 overflow-hidden">
+            <ul className="py-1 rounded-lg border border-slate-200 bg-white shadow-lg shadow-slate-900/10 max-h-64 overflow-y-auto drop-scrollbar">
               {options.map((opt) => {
                 const active = opt.value === value;
                 return (

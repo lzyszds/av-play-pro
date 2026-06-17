@@ -37,4 +37,23 @@ export const windowRouter = t.router({
       mainWindowProxy.focus();
       return { success: true };
     }),
+    setPipMode: t.procedure
+      .input((input: unknown) => input as { enabled: boolean; width?: number; height?: number })
+      .mutation(({ input }) => {
+        const window = getMainWindow();
+        if (!window) return { success: false };
+        if (input.enabled) {
+          window.setAlwaysOnTop(true, "floating");
+          window.setAspectRatio((input.width || 16) / (input.height || 9));
+          window.setMinimumSize(320, 180);
+          if (input.width && input.height) {
+            window.setSize(input.width, input.height);
+          }
+        } else {
+          window.setAlwaysOnTop(false);
+          window.setAspectRatio(0);
+          window.setMinimumSize(800, 600);
+        }
+        return { success: true };
+      }),
   });

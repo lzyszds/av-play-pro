@@ -127,6 +127,30 @@
     return m ? m[1] + 'p' : ''
   }
 
+  function extractActors() {
+    try {
+      const actors = [];
+      // 针对常见的页面结构进行查询
+      // 例如：`<a href="/actors/xxx">三上悠亚</a>` 或者包含 "actresses" 的类名
+      const links = document.querySelectorAll('a[href*="/actors/"], a[href*="/actresses/"]');
+      links.forEach((a) => {
+        const text = a.textContent.trim();
+        if (text && text.length < 20 && !actors.includes(text)) {
+          actors.push(text);
+        }
+      });
+      
+      // 如果上述方法没有找到，可以尝试查找特定的包含标签的元素
+      if (actors.length === 0) {
+        // ... (可以添加更多站点的特定选择器)
+      }
+      return actors;
+    } catch (e) {
+      console.warn('[m3u8-sniffer] extractActors error', e);
+      return [];
+    }
+  }
+
   // ============ 数据处理 ============
   function addRecord(url, source = '?') {
     if (!isM3u8Url(url)) return
@@ -140,7 +164,8 @@
           title: (document.title || '')
             .replace('- MissAV | 免费高清', '')
             .replace('[无码破解]', '')
-            .trim()
+            .trim(),
+          actors: extractActors()
         },
         '*'
       )

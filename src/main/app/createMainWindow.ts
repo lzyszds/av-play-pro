@@ -54,8 +54,10 @@ function writeCloseAction(action: "tray" | "quit"): void {
 export function createMainWindow(): void {
   const appIcon = resolveAppIcon();
   const window = new BrowserWindow({
-    width: 1280,
-    height: 760,
+    width: 1760,
+    height: 920,
+    minWidth: 1280,
+    minHeight: 720,
     show: false,
     frame: false,
     titleBarStyle: "hidden",

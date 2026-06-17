@@ -56,12 +56,7 @@ export const HlsVideoPlayer: React.FC<Props> = ({
   const plyrRef = useRef<Plyr | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const subtitleBlobRef = useRef<string | null>(null);
-  console.log("渲染 HlsVideoPlayer", {
-    url,
-    referer,
-    previewVttUrl,
-    subtitleUrl,
-  });
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !url) return;

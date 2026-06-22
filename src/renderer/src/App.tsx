@@ -8,10 +8,14 @@ import { DownloadPage } from "./pages/DownloadPage";
 import { PlayerPage } from "./pages/PlayerPage";
 import { WebPage } from "./pages/WebPage";
 import { StatsPage } from "./pages/StatsPage";
+import { StarMapPage } from "./pages/StarMapPage";
+import { IntelPage } from "./pages/IntelPage";
+import { MosaicPage } from "./pages/MosaicPage";
+import { RssPage } from "./pages/RssPage";
 import { trpc } from "./lib/trpc";
 import type { AppSettings, LogMessage } from "./pages/download/types";
 
-type Page = "download" | "player" | "web" | "stats";
+type Page = "download" | "player" | "web" | "stats" | "starmap" | "intel" | "mosaic" | "rss";
 
 const DEFAULT_SETTINGS: AppSettings = {
   video_path: "",
@@ -231,7 +235,7 @@ export default function App() {
   }, [settings, settingsLoaded]);
 
   return (
-    <div className="h-screen w-screen flex flex-col font-sans bg-[#f4f6f9] text-slate-600 dark:bg-slate-950 dark:text-slate-300 overflow-hidden select-none">
+    <div className="h-screen w-screen flex flex-col bg-[#f4f6f9] text-slate-600 dark:bg-slate-950 dark:text-slate-300 overflow-hidden select-none">
       <TitleBar
         currentPage={currentPage}
         onPageChange={setCurrentPage}
@@ -292,6 +296,30 @@ export default function App() {
         {currentPage === "web" && <WebPage onAddSystemLog={addLog} />}
         {currentPage === "stats" && (
           <StatsPage
+            videoPath={settings.video_path}
+            onAddSystemLog={addLog}
+          />
+        )}
+        {currentPage === "starmap" && (
+          <StarMapPage
+            videoPath={settings.video_path}
+            onAddSystemLog={addLog}
+          />
+        )}
+        {currentPage === "intel" && (
+          <IntelPage
+            videoPath={settings.video_path}
+            onAddSystemLog={addLog}
+          />
+        )}
+        {currentPage === "mosaic" && (
+          <MosaicPage
+            videoPath={settings.video_path}
+            onAddSystemLog={addLog}
+          />
+        )}
+        {currentPage === "rss" && (
+          <RssPage
             videoPath={settings.video_path}
             onAddSystemLog={addLog}
           />

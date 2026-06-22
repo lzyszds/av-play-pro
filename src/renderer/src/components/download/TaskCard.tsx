@@ -23,6 +23,29 @@ export interface TaskCardProps {
   onPlayCompleted?: (task: DownloadTask) => void;
 }
 
+function formatScheduledAt(iso: string): string {
+  const target = new Date(iso).getTime();
+  const now = Date.now();
+  const diff = target - now;
+  if (diff <= 0) return "即将开始";
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) return `${mins} 分钟后`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} 小时后`;
+  const days = Math.floor(hours / 24);
+  return `${days} 天后`;
+}
+
+function useScheduleTick(enabled: boolean) {
+  // 每 60 秒触发一次轻量重渲染，以便定时任务的"X 分钟后"相对时间保持新鲜
+  const [, setTick] = React.useState(0);
+  React.useEffect(() => {
+    if (!enabled) return;
+    const t = window.setInterval(() => setTick((x) => x + 1), 60_000);
+    return () => window.clearInterval(t);
+  }, [enabled]);
+}
+
 function TaskCardImpl({
   task,
   isSelected,
@@ -37,6 +60,7 @@ function TaskCardImpl({
 }: TaskCardProps) {
   const coverUrl =
     toProxiedAssetUrl(task.coverUrl) || getCoverUrlFromName(task.name);
+  useScheduleTick(task.taskTag === "SCHEDULED" && !!task.scheduledAt);
 
   return (
     <div
@@ -61,8 +85,16 @@ function TaskCardImpl({
         />
 
         <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
-        <div className="absolute top-2 left-2 z-10">
+        <div className="absolute top-2 left-2 z-10 flex gap-1">
           {getStatusBadge(task.status)}
+          {task.taskTag === "SCHEDULED" && task.scheduledAt && (
+            <span
+              className="text-[9px] font-bold bg-amber-500 text-white px-1.5 py-0.5 rounded-full shadow-sm border border-amber-400/60 backdrop-blur-sm whitespace-nowrap"
+              title={`定时下载: ${new Date(task.scheduledAt).toLocaleString()}`}
+            >
+              ⏰ {formatScheduledAt(task.scheduledAt)}
+            </span>
+          )}
         </div>
 
         <div className="absolute top-2 right-2 z-10 flex gap-1">
@@ -107,6 +139,11 @@ function TaskCardImpl({
         >
           {task.name}
         </div>
+        {task.taskTag === "SCHEDULED" && task.scheduledAt && (
+          <div className="text-[10px] text-amber-700 dark:text-amber-400 font-mono leading-tight truncate">
+            ⏰ {formatScheduledAt(task.scheduledAt)} · {new Date(task.scheduledAt).toLocaleString()}
+          </div>
+        )}
 
         <div className="flex items-center justify-between mt-1">
           <div className="flex items-center gap-2 text-[10px] text-black font-mono min-w-0">
@@ -205,6 +242,8 @@ export const TaskCard = React.memo(TaskCardImpl, (prev, next) => {
     a.downloadedSegments === b.downloadedSegments &&
     a.totalSegments === b.totalSegments &&
     a.coverUrl === b.coverUrl &&
-    a.previewUrl === b.previewUrl
+    a.previewUrl === b.previewUrl &&
+    a.taskTag === b.taskTag &&
+    a.scheduledAt === b.scheduledAt
   );
 });

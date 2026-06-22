@@ -16,11 +16,15 @@ import {
   Monitor,
   Heart,
   Settings as SettingsIcon,
+  Network,
+  Newspaper,
+  Grid3X3,
+  Rss,
 } from "lucide-react";
 import { trpc } from "../lib/trpc";
 import type { ThemeMode } from "../pages/download/types";
 
-type Page = "download" | "player" | "web" | "stats";
+type Page = "download" | "player" | "web" | "stats" | "starmap" | "intel" | "mosaic" | "rss";
 
 interface TitleBarProps {
   currentPage: Page;
@@ -52,6 +56,10 @@ const pages: Array<{ key: Page; label: string; icon: typeof Download }> = [
   { key: "player", label: "播放器", icon: Play },
   { key: "web", label: "网页", icon: Globe },
   { key: "stats", label: "统计", icon: BarChart3 },
+  { key: "starmap", label: "星图", icon: Network },
+  { key: "intel", label: "情报", icon: Newspaper },
+  { key: "mosaic", label: "马赛克", icon: Grid3X3 },
+  { key: "rss", label: "RSS", icon: Rss },
 ];
 
 const themeMeta: Record<ThemeMode, { icon: typeof Sun; label: string }> = {

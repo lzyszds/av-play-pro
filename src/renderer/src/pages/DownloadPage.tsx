@@ -121,6 +121,7 @@ export function DownloadPage({
     useState<DownloadBackground>(settings.downloadBackground ?? "1");
 
   const tasksRef = useRef(tasks);
+  const startTaskRef = useRef<((id: string) => void) | null>(null);
   tasksRef.current = tasks;
   // 让 IPC 回调访问最新设置（避免 effect 因 settings 变化而重订阅）
   const settingsRef = useRef(settings);
@@ -780,6 +781,21 @@ export function DownloadPage({
         sourcePageUrl: data.sourcePageUrl || data.pageUrl || undefined,
         referer: data.referer || undefined,
         refererSource: data.refererSource || undefined,
+        scheduledAt:
+          data.taskTag === "SCHEDULED" ||
+          (!!data.scheduledAt && data.scheduledEnabled !== false)
+            ? data.scheduledAt
+            : undefined,
+        scheduledEnabled:
+          data.taskTag === "SCHEDULED" ||
+          (!!data.scheduledAt && data.scheduledEnabled !== false)
+            ? true
+            : undefined,
+        taskTag:
+          data.taskTag === "SCHEDULED" ||
+          (!!data.scheduledAt && data.scheduledEnabled !== false)
+            ? "SCHEDULED"
+            : "NORMAL",
         logs: [
           "[\u7cfb\u7edf] \u4efb\u52a1\u5df2\u521b\u5efa\u3002\u76ee\u6807\u5730\u5740: " +
             data.url,
@@ -794,7 +810,8 @@ export function DownloadPage({
       setTasks((prev) => [newTask, ...prev]);
       setSelectedTaskId(newTask.id);
       addLog(
-        "\u5df2\u6dfb\u52a0\u65b0\u4e0b\u8f7d\u4efb\u52a1: " +
+        (newTask.taskTag === "SCHEDULED" ? "\u5df2\u6dfb\u52a0\u5b9a\u65f6\u4efb\u52a1" : "\u5df2\u6dfb\u52a0\u65b0\u4e0b\u8f7d\u4efb\u52a1") +
+          ": " +
           newTask.name +
           " | URL: " +
           newTask.url +
@@ -807,6 +824,9 @@ export function DownloadPage({
               (newTask.refererSource || "unknown") +
               " -> " +
               newTask.referer
+            : "") +
+          (newTask.taskTag === "SCHEDULED" && newTask.scheduledAt
+            ? " | \u23f0 " + new Date(newTask.scheduledAt).toLocaleString()
             : ""),
         "SUCCESS",
       );
@@ -815,6 +835,52 @@ export function DownloadPage({
     },
     [addLog, settings.video_path],
   );
+
+  // ---- 定时任务调度器：每 30 秒检查一次，到期的 PENDING 任务自动启动 ----
+  useEffect(() => {
+    if (!storageLoaded) return;
+    const tick = () => {
+      const now = Date.now();
+      const dueTasks = tasksRef.current.filter(
+        (t) =>
+          t.status === "PENDING" &&
+          t.taskTag === "SCHEDULED" &&
+          t.scheduledEnabled !== false &&
+          t.scheduledAt &&
+          new Date(t.scheduledAt).getTime() <= now,
+      );
+      if (dueTasks.length === 0) return;
+
+      const dueIds = dueTasks.map((t) => t.id);
+      // 先把到期任务的状态改成 SCHEDULED_STARTED（避免下一轮 tick 重复触发）
+      setTasks((prev) =>
+        prev.map((t) =>
+          dueIds.includes(t.id)
+            ? {
+                ...t,
+                scheduledEnabled: false,
+                logs: [
+                  ...t.logs,
+                  `[\u23f0 \u8c03\u5ea6] \u5df2\u5230\u8fbe\u542f\u52a8\u65f6\u95f4 (${new Date().toLocaleString()})\uff0c\u81ea\u52a8\u5f00\u59cb\u4e0b\u8f7d`,
+                ],
+              }
+            : t,
+        ),
+      );
+      setTimeout(() => {
+        dueIds.forEach((id, idx) => {
+          setTimeout(() => {
+            // 通过 ref 拿到最新的 startTask（即使此 useEffect 在 startTask 声明之前写）
+            startTaskRef.current?.(id);
+          }, idx * 800);
+        });
+      }, 120);
+    };
+
+    tick();
+    const timer = window.setInterval(tick, 30_000);
+    return () => window.clearInterval(timer);
+  }, [storageLoaded]);
 
   useEffect(() => {
     if (!storageLoaded) return;
@@ -946,6 +1012,8 @@ export function DownloadPage({
     },
     [addLog, settings.temp_path, settings.globalSpeedLimit],
   );
+  // 把 startTask 存入 ref，供调度器（写在更早的 useEffect 里）使用
+  startTaskRef.current = startTask;
 
   /* ---- 并发上限解析：Infinity = 不限制 ---- */
   const resolveConcurrencyLimit = useCallback((): number => {
@@ -1280,7 +1348,7 @@ export function DownloadPage({
                   placeholder="搜索任务/链接..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-40 sm:w-48 bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:w-56 focus:border-amber-500 transition-all font-sans shadow-sm"
+                  className="w-40 sm:w-48 bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:w-56 focus:border-amber-500 transition-all shadow-sm"
                 />
                 <Search className="w-3.5 h-3.5 text-black absolute left-2.5 top-2.5" />
               </div>

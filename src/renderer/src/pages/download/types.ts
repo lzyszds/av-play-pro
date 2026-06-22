@@ -33,6 +33,12 @@ export interface DownloadTask {
   sourcePageUrl?: string;
   referer?: string;
   refererSource?: string;
+  /** 定时任务：ISO 字符串（到分钟/到秒均可）。空=立即下载。 */
+  scheduledAt?: string;
+  /** 定时任务启用状态（可手动暂停/继续定时）。 */
+  scheduledEnabled?: boolean;
+  /** 任务类型标签（普通 / 定时）。 */
+  taskTag?: "NORMAL" | "SCHEDULED";
 }
 
 export interface LogMessage {

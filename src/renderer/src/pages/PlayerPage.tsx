@@ -130,6 +130,7 @@ export function PlayerPage({
   const [localVideos, setLocalVideos] = useState<VideoItem[]>([]);
   const [videoSearchQuery, setVideoSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [isHlsExpanded, setIsHlsExpanded] = useState(() => {
     try {
       return localStorage.getItem(HLS_EXPANDED_KEY) === "true";
@@ -282,12 +283,7 @@ export function PlayerPage({
           query: q,
           rootPath: videoPath,
         });
-        const videos: VideoItem[] = results.map((v: any) => ({
-          ...v,
-          url: convertLocalPath(v.url),
-          coverUrl: v.coverUrl ? convertLocalPath(v.coverUrl) : undefined,
-          previewUrl: v.previewUrl ? convertLocalPath(v.previewUrl) : undefined,
-        }));
+        const videos: VideoItem[] = convertItems(results as any[]);
         setLocalVideos(videos);
       } catch (err: any) {
         onAddSystemLog(`搜索失败: ${err?.message || err}`, "ERROR");
@@ -317,7 +313,6 @@ export function PlayerPage({
     [onAddSystemLog],
   );
 
-  const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [selectedVideoIndex, setSelectedVideoIndex] = useState<number | null>(
     null,
   );
@@ -473,43 +468,24 @@ export function PlayerPage({
     rowVirtualizer.scrollToIndex(idx, { align: "center" });
   }, [resumePrompt, filteredVideos]);
 
-  const convertLocalPath = (filePath: string): string => {
+  // 批量把 Windows 绝对路径 → local-media:/// 协议。逐段编码（盘符保持原样）
+  function encodeMediaUrl(filePath: string): string {
     if (!filePath || filePath.includes("://")) return filePath;
     const normalized = filePath.replace(/\\/g, "/");
-    const encoded = normalized
-      .split("/")
-      .map((s, i) =>
-        i === 0 && /^[a-zA-Z]:$/.test(s) ? s : encodeURIComponent(s),
-      )
-      .join("/");
-    return `local-media:///${encoded}`;
-  };
+    const segments = normalized.split("/");
+    const encoded = segments.map((s, i) =>
+      i === 0 && /^[a-zA-Z]:$/.test(s) ? s : encodeURIComponent(s),
+    );
+    return `local-media:///${encoded.join("/")}`;
+  }
 
-  const refreshVideoList = async () => {
-    setIsLoadingVideos(true);
-    try {
-      const raw = await trpc.videos.list.query({ path: videoPath });
-      const vids = raw.map((v: any) => ({
-        ...v,
-        url: convertLocalPath(v.url),
-        coverUrl: v.coverUrl ? convertLocalPath(v.coverUrl) : undefined,
-        previewUrl: v.previewUrl ? convertLocalPath(v.previewUrl) : undefined,
-      }));
-      setLocalVideos(vids);
-      if (vids.length > 0 && selectedVideoIndex === null) {
-        setSelectedVideoIndex(0);
-        setActiveStream({
-          name: vids[0].name,
-          url: vids[0].url,
-          resolution: vids[0].resolution,
-          encryptionType: vids[0].encryptionType || "检测中",
-          referer: "",
-        });
-      }
-    } finally {
-      setIsLoadingVideos(false);
-    }
-  };
+  const convertItems = (raw: any[]): VideoItem[] =>
+    raw.map((v) => ({
+      ...v,
+      url: encodeMediaUrl(v.url),
+      coverUrl: v.coverUrl ? encodeMediaUrl(v.coverUrl) : undefined,
+      previewUrl: v.previewUrl ? encodeMediaUrl(v.previewUrl) : undefined,
+    }));
 
   const handleLoadLocalVideo = useCallback(
     (video: VideoItem, index: number) => {
@@ -580,9 +556,85 @@ export function PlayerPage({
     await refreshVideoList();
   };
 
+  const [enrichProgress, setEnrichProgress] = useState(0); // 0=未开始, 1=轻量已就绪, 2=完整已就绪
+
+  // 两阶段加载：先轻量首屏（毫秒级），再后台拉取完整数据（构建缓存后秒回）
   useEffect(() => {
-    refreshVideoList();
-  }, [videoPath]);
+    if (!videoPath) return;
+    let cancelled = false;
+
+    const loadLightweight = async () => {
+      try {
+        const raw: any[] = await trpc.videos.lightweightList.query({ path: videoPath });
+        if (cancelled) return;
+        const vids = convertItems(raw);
+        setLocalVideos(vids);
+        if (vids.length > 0 && selectedVideoIndex === null) {
+          setSelectedVideoIndex(0);
+          setActiveStream({
+            name: vids[0].name,
+            url: vids[0].url,
+            resolution: vids[0].resolution,
+            encryptionType: vids[0].encryptionType || "检测中",
+            referer: "",
+          });
+        }
+        setEnrichProgress(1);
+      } catch {}
+    };
+
+    const loadFull = async () => {
+      try {
+        const raw: any[] = await trpc.videos.list.query({ path: videoPath });
+        if (cancelled) return;
+        const vids = convertItems(raw);
+        if (vids.length > 0) {
+          setLocalVideos(vids);
+          if (selectedVideoIndex === null) {
+            setSelectedVideoIndex(0);
+            setActiveStream({
+              name: vids[0].name,
+              url: vids[0].url,
+              resolution: vids[0].resolution,
+              encryptionType: vids[0].encryptionType || "检测中",
+              referer: "",
+            });
+          }
+        }
+        setEnrichProgress(2);
+      } catch {}
+    };
+
+    setEnrichProgress(0);
+    setIsLoadingVideos(true);
+    void loadLightweight();
+    void loadFull();
+    return () => { cancelled = true; };
+  }, [videoPath]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const refreshVideoList = async () => {
+    if (!videoPath) return;
+    setEnrichProgress(0);
+    setIsLoadingVideos(true);
+    try {
+      const raw: any[] = await trpc.videos.list.query({ path: videoPath });
+      const vids: VideoItem[] = convertItems(raw);
+      setLocalVideos(vids);
+      if (vids.length > 0 && selectedVideoIndex === null) {
+        setSelectedVideoIndex(0);
+        setActiveStream({
+          name: vids[0].name,
+          url: vids[0].url,
+          resolution: vids[0].resolution,
+          encryptionType: vids[0].encryptionType || "检测中",
+          referer: "",
+        });
+      }
+    } finally {
+      setIsLoadingVideos(false);
+      setEnrichProgress(2);
+    }
+  };
 
   return (
     <div className="relative flex-1 flex overflow-hidden bg-[#fdf5f3] h-full font-sans select-none">

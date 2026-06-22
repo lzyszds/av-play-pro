@@ -1,9 +1,33 @@
 import React, { useState } from "react";
 import {
-  Plus, Play, Pause, Trash2, Eye, FileVideo, CheckCircle2, AlertCircle,
-  Copy, Check, Search, Film, Terminal, Code, Settings, Trash2 as TrashIcon,
-  Shield, Download, X, Folder, Save, AlertCircle as AlertWarn, Cpu,
-  ChevronDown, ChevronRight, Globe, Info,
+  Plus,
+  Play,
+  Pause,
+  Trash2,
+  Eye,
+  FileVideo,
+  CheckCircle2,
+  AlertCircle,
+  Copy,
+  Check,
+  Search,
+  Film,
+  Terminal,
+  Code,
+  Settings,
+  Trash2 as TrashIcon,
+  Shield,
+  Download,
+  X,
+  Folder,
+  Save,
+  AlertCircle as AlertWarn,
+  Cpu,
+  ChevronDown,
+  ChevronRight,
+  Globe,
+  Info,
+  Clock,
 } from "lucide-react";
 import { parseHeadersText } from "../../pages/download/utils";
 
@@ -22,6 +46,9 @@ export interface NewTaskModalProps {
     totalSegments?: number;
     coverUrl?: string;
     previewUrl?: string;
+    scheduledAt?: string;
+    scheduledEnabled?: boolean;
+    taskTag?: "NORMAL" | "SCHEDULED";
   }) => boolean | Promise<boolean>;
   defaultSavePath: string;
   defaultFormat: "MP4" | "MKV" | "TS";
@@ -54,6 +81,19 @@ export function NewTaskModal({
   const [errorMsg, setErrorMsg] = useState("");
   const [selectedRefererIndex, setSelectedRefererIndex] = useState<number>(0);
   const [cmdCopied, setCmdCopied] = useState(false);
+  // 定时下载相关状态
+  const [scheduledEnabled, setScheduledEnabled] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState<string>("");
+  const [scheduledTime, setScheduledTime] = useState<string>("");
+  // 预设相对时间（10分钟后 / 1小时后 / 今晚22点 / 明天早上8点）
+  const applyPreset = (preset: () => Date) => {
+    const d = preset();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    setScheduledDate(
+      `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    );
+    setScheduledTime(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
+  };
 
   // 命令预览字符串（供预览区展示与复制共用）
   const safeName = (name || "视频标题").replace(/[\\/:*?"<>|]/g, "_");
@@ -102,6 +142,18 @@ export function NewTaskModal({
     }
     const finalName =
       name.trim() || `视频流_${Date.now().toString().slice(-6)}`;
+
+    // 解析定时时间
+    let scheduledAt: string | undefined;
+    if (scheduledEnabled && scheduledDate && scheduledTime) {
+      const [y, m, d] = scheduledDate.split("-").map(Number);
+      const [hh, mm] = scheduledTime.split(":").map(Number);
+      if (y && m && d && !Number.isNaN(hh) && !Number.isNaN(mm)) {
+        const at = new Date(y, m - 1, d, hh, mm, 0, 0);
+        scheduledAt = at.toISOString();
+      }
+    }
+
     const shouldClose = await onAddTask({
       name: finalName,
       url: url.trim(),
@@ -111,6 +163,9 @@ export function NewTaskModal({
       savePath,
       coverUrl: coverUrl.trim() || undefined,
       previewUrl: previewUrl.trim() || undefined,
+      scheduledAt,
+      scheduledEnabled: scheduledEnabled,
+      taskTag: scheduledEnabled && scheduledAt ? "SCHEDULED" : "NORMAL",
     });
     if (shouldClose !== false) onClose();
   };
@@ -130,7 +185,7 @@ export function NewTaskModal({
               <Plus className="w-4 h-4 text-amber-700" />
             </div>
             <div>
-              <h3 className="text-xs font-bold font-sans text-slate-800 tracking-wider">
+              <h3 className="text-xs font-bold text-slate-800 tracking-wider">
                 新建 M3U8 下载任务
               </h3>
               <p className="text-[10px] text-black">
@@ -154,7 +209,10 @@ export function NewTaskModal({
           {/* Referer Presets */}
           <div>
             <label className="text-black font-semibold block mb-2">
-              快速设置 Referer 源
+              Referer 源{" "}
+              <span className="text-[10px] text-black/30">
+                点击选择 Referer 源，用于绕过防盗链验证
+              </span>
             </label>
             <div className="grid grid-cols-2 gap-2.5">
               {REFERER_PRESETS.map((preset, idx) => (
@@ -207,9 +265,6 @@ export function NewTaskModal({
                 </button>
               ))}
             </div>
-            <p className="text-[10px] text-black mt-1.5">
-              点击选择 Referer 源，用于绕过防盗链验证
-            </p>
           </div>
 
           <div className="h-px bg-slate-200 my-2" />
@@ -244,6 +299,120 @@ export function NewTaskModal({
                 placeholder="不填则使用原始标题命名"
                 className="w-full bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 rounded-lg px-3 py-2.5 text-xs focus:outline-none focus:border-amber-500 transition"
               />
+            </div>
+
+            {/* Scheduled Download */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-black font-semibold flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                  定时下载
+                </label>
+                <label className="flex items-center gap-1.5 text-[10px] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={scheduledEnabled}
+                    onChange={(e) => setScheduledEnabled(e.target.checked)}
+                    className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                  />
+                  启用
+                </label>
+              </div>
+              <div
+                className={`border rounded-xl p-3 space-y-2 transition ${
+                  scheduledEnabled
+                    ? "border-amber-300 bg-amber-50/70"
+                    : "border-slate-200 bg-slate-50/50 opacity-60"
+                }`}
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[10px] text-slate-600 block mb-1 font-semibold">
+                      日期
+                    </span>
+                    <input
+                      type="date"
+                      value={scheduledDate}
+                      onChange={(e) => setScheduledDate(e.target.value)}
+                      disabled={!scheduledEnabled}
+                      className="w-full bg-white border border-slate-200 text-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] font-mono focus:outline-none focus:border-amber-500 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-600 block mb-1 font-semibold">
+                      时间
+                    </span>
+                    <input
+                      type="time"
+                      value={scheduledTime}
+                      onChange={(e) => setScheduledTime(e.target.value)}
+                      disabled={!scheduledEnabled}
+                      className="w-full bg-white border border-slate-200 text-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] font-mono focus:outline-none focus:border-amber-500 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    {
+                      label: "10 分钟后",
+                      fn: () => {
+                        const d = new Date();
+                        d.setMinutes(d.getMinutes() + 10);
+                        return d;
+                      },
+                    },
+                    {
+                      label: "1 小时后",
+                      fn: () => {
+                        const d = new Date();
+                        d.setHours(d.getHours() + 1);
+                        return d;
+                      },
+                    },
+                    {
+                      label: "今晚 22:00",
+                      fn: () => {
+                        const d = new Date();
+                        d.setHours(22, 0, 0, 0);
+                        if (d.getTime() < Date.now())
+                          d.setDate(d.getDate() + 1);
+                        return d;
+                      },
+                    },
+                    {
+                      label: "明早 08:00",
+                      fn: () => {
+                        const d = new Date();
+                        d.setDate(d.getDate() + 1);
+                        d.setHours(8, 0, 0, 0);
+                        return d;
+                      },
+                    },
+                  ].map(({ label, fn }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      disabled={!scheduledEnabled}
+                      onClick={() => {
+                        if (!scheduledEnabled) setScheduledEnabled(true);
+                        applyPreset(fn);
+                      }}
+                      className="text-[9.5px] font-semibold px-2 py-1 rounded-md bg-white border border-slate-200 hover:border-amber-400 hover:text-amber-600 hover:bg-amber-50/60 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-slate-700"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {scheduledEnabled && scheduledDate && scheduledTime && (
+                  <div className="text-[10px] text-amber-700 font-mono pt-0.5 border-t border-amber-200/60">
+                    ⏰ 将于{" "}
+                    {new Date(
+                      `${scheduledDate}T${scheduledTime}`,
+                    ).toLocaleString()}{" "}
+                    启动下载
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Advanced Toggle */}

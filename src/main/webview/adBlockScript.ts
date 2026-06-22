@@ -37,7 +37,12 @@ const AD_HOST_KEYWORDS = [
   "adxxx",
 ];
 
-const ALLOWED_FRAME_HOST_KEYWORDS = ["missav", "fourhoi", "localhost"];
+const ALLOWED_FRAME_HOST_KEYWORDS = [
+  "missav",
+  "fourhoi",
+  "cloudflare",
+  "localhost",
+];
 
 export function getAdBlockScript(): string {
   return `
@@ -166,8 +171,11 @@ export function getAdBlockScript(): string {
       var text = ((node.id || '') + ' ' + (node.className || '')).toLowerCase();
       var looksLikeAd = /ad|ads|advert|banner|sponsor|popup|modal|overlay|float/.test(text);
       var blocksScreen = viewport > 0 && area / viewport > 0.18 && zIndex >= 10;
+      var hasAdFrameOrLink = Boolean(node.querySelector && node.querySelector(
+        'iframe[src*="ads"],iframe[src*="adserver"],iframe[src*="doubleclick"],iframe[src*="exoclick"],iframe[src*="exosrv"],iframe[src*="juicyads"],iframe[src*="magsrv"],iframe[src*="tsyndicate"],a[href*="ads"],a[href*="adserver"],a[href*="doubleclick"],a[href*="exoclick"],a[href*="exosrv"],a[href*="juicyads"],a[href*="magsrv"],a[href*="tsyndicate"]'
+      ));
 
-      if (looksLikeAd || blocksScreen) removeNode(node);
+      if (looksLikeAd || (blocksScreen && hasAdFrameOrLink)) removeNode(node);
     });
   }
 
@@ -194,7 +202,7 @@ export function getAdBlockScript(): string {
   }, true);
 
   var style = document.createElement('style');
-  style.textContent = SELECTORS.join(',') + ',iframe:not([src*="missav"]):not([src*="fourhoi"]):not([src*="localhost"]){display:none!important;visibility:hidden!important;pointer-events:none!important;}';
+  style.textContent = SELECTORS.join(',') + ',iframe:not([src*="missav"]):not([src*="fourhoi"]):not([src*="cloudflare"]):not([src*="localhost"]){display:none!important;visibility:hidden!important;pointer-events:none!important;}';
   (document.head || document.documentElement).appendChild(style);
 
   clean();

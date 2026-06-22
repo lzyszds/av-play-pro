@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { TitleBar } from "./components/TitleBar";
+import { TitleBar, type Page } from "./components/TitleBar";
 import { GlobalConsole } from "./components/GlobalConsole";
 import { ThumbnailQueueWidget } from "./components/ThumbnailQueueWidget";
 import { SettingsPanel } from "./components/download/SettingsPanel";
@@ -8,14 +8,14 @@ import { DownloadPage } from "./pages/DownloadPage";
 import { PlayerPage } from "./pages/PlayerPage";
 import { WebPage } from "./pages/WebPage";
 import { StatsPage } from "./pages/StatsPage";
-import { StarMapPage } from "./pages/StarMapPage";
+import { CommandCenterPage } from "./pages/CommandCenterPage";
 import { IntelPage } from "./pages/IntelPage";
+import { StarMapPage } from "./pages/StarMapPage";
 import { MosaicPage } from "./pages/MosaicPage";
 import { RssPage } from "./pages/RssPage";
+import { ActorsPage } from "./pages/ActorsPage";
 import { trpc } from "./lib/trpc";
 import type { AppSettings, LogMessage } from "./pages/download/types";
-
-type Page = "download" | "player" | "web" | "stats" | "starmap" | "intel" | "mosaic" | "rss";
 
 const DEFAULT_SETTINGS: AppSettings = {
   video_path: "",
@@ -69,6 +69,8 @@ export default function App() {
   const [logs, setLogs] = useState<LogMessage[]>([]);
   // 「立即查看」目标
   const [pendingPlayName, setPendingPlayName] = useState<string | null>(null);
+  // 演员详情页打开目标（从卡片演员点击触发）
+  const [pendingActor, setPendingActor] = useState<string | null>(null);
   // 私密计时器
   const [arousalActive, setArousalActive] = useState(false);
   const [arousalElapsed, setArousalElapsed] = useState(0);
@@ -100,7 +102,11 @@ export default function App() {
 
   // 全局错误捕获 → 转发到主进程 electron-log
   useEffect(() => {
-    const forward = (level: "error" | "warn", scope: string, message: string) => {
+    const forward = (
+      level: "error" | "warn",
+      scope: string,
+      message: string,
+    ) => {
       void trpc.logger.write.mutate({ level, scope, message }).catch(() => {});
     };
     const onError = (e: ErrorEvent) => {
@@ -238,7 +244,7 @@ export default function App() {
     <div className="h-screen w-screen flex flex-col bg-[#f4f6f9] text-slate-600 dark:bg-slate-950 dark:text-slate-300 overflow-hidden select-none">
       <TitleBar
         currentPage={currentPage}
-        onPageChange={setCurrentPage}
+        onPageChange={(page) => setCurrentPage(page)}
         systemLogs={systemLogs}
         notifySound={settings.notifySound}
         onToggleSound={() =>
@@ -291,37 +297,42 @@ export default function App() {
             onActiveVideoChange={(name) => {
               currentPlayingFolderRef.current = name;
             }}
+            onOpenActor={(name) => {
+              setPendingActor(name);
+              setCurrentPage("actors");
+            }}
           />
         )}
         {currentPage === "web" && <WebPage onAddSystemLog={addLog} />}
         {currentPage === "stats" && (
-          <StatsPage
-            videoPath={settings.video_path}
-            onAddSystemLog={addLog}
-          />
+          <StatsPage videoPath={settings.video_path} onAddSystemLog={addLog} />
+        )}
+        {currentPage === "command" && (
+          <CommandCenterPage videoPath={settings.video_path} onAddSystemLog={addLog} />
+        )}
+
+        {currentPage === "intel" && (
+          <IntelPage videoPath={settings.video_path} onAddSystemLog={addLog} />
         )}
         {currentPage === "starmap" && (
-          <StarMapPage
-            videoPath={settings.video_path}
-            onAddSystemLog={addLog}
-          />
-        )}
-        {currentPage === "intel" && (
-          <IntelPage
-            videoPath={settings.video_path}
-            onAddSystemLog={addLog}
-          />
+          <StarMapPage videoPath={settings.video_path} onAddSystemLog={addLog} />
         )}
         {currentPage === "mosaic" && (
-          <MosaicPage
-            videoPath={settings.video_path}
-            onAddSystemLog={addLog}
-          />
+          <MosaicPage videoPath={settings.video_path} onAddSystemLog={addLog} />
         )}
         {currentPage === "rss" && (
-          <RssPage
+          <RssPage videoPath={settings.video_path} onAddSystemLog={addLog} />
+        )}
+        {currentPage === "actors" && (
+          <ActorsPage
             videoPath={settings.video_path}
             onAddSystemLog={addLog}
+            onPlayVideo={(name) => {
+              setPendingPlayName(name);
+              setCurrentPage("player");
+            }}
+            initialActorName={pendingActor}
+            onConsumeInitialActor={() => setPendingActor(null)}
           />
         )}
       </div>

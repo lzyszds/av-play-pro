@@ -13,6 +13,14 @@ import React, {
 } from "react";
 import { trpc } from "../lib/trpc";
 import { LocalVideoCard } from "../components/player/LocalVideoCard";
+import { TonightPanel } from "../components/player/TonightPanel";
+import {
+  buildProfileFromStats,
+  generateTonightPicks,
+  loadCachedPicks,
+  saveCachedPicks,
+  clearCachedPicks,
+} from "../lib/tonightRecommend";
 import { LuckyDraw } from "../components/player/LuckyDraw";
 import { HlsVideoPlayer } from "../components/player/HlsVideoPlayer";
 import { WhisperPanel } from "../components/whisper/WhisperPanel";
@@ -54,6 +62,15 @@ interface LastPlayedRecord {
   currentTime: number;
   savedAt: number;
 }
+interface TimelineBookmark {
+  id: string;
+  videoName: string;
+  videoUrl: string;
+  currentTime: number;
+  duration?: number;
+  note?: string;
+  createdAt: string;
+}
 import {
   Play,
   FileVideo,
@@ -68,6 +85,9 @@ import {
   ChevronDown,
   Captions,
   Filter,
+  BookmarkPlus,
+  ListChecks,
+  XCircle,
 } from "lucide-react";
 import {
   deriveFolderFromUrl,
@@ -91,6 +111,7 @@ export function PlayerPage({
   pendingPlayName,
   onConsumePendingPlay,
   onActiveVideoChange,
+  onOpenActor,
 }: PlayerPageProps) {
   // 当前激活的 <video> 元素（由 HlsVideoPlayer 通过 onVideoEl 回调暴露给统计逻辑）
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
@@ -128,6 +149,14 @@ export function PlayerPage({
 
   // 本地视频列表
   const [localVideos, setLocalVideos] = useState<VideoItem[]>([]);
+  // 封面变形虫：每个 folder 的热度（"hot" / "cold" / "normal"）
+  const [heatByFolder, setHeatByFolder] = useState<Record<string, "hot" | "cold" | "normal">>({});
+  // 每个 folder 的播放次数（供推荐打分使用）
+  const [playCountByFolder, setPlayCountByFolder] = useState<Record<string, number>>({});
+  // stats 原始 videos 表（用于今晚推荐的偏好画像）
+  const [statsVideos, setStatsVideos] = useState<Record<string, any>>({});
+  // 今晚推荐重摇标记
+  const [tonightReshuffleTick, setTonightReshuffleTick] = useState(0);
   const [videoSearchQuery, setVideoSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
@@ -215,6 +244,9 @@ export function PlayerPage({
 
   // 右侧筛选器
   const [filterHasSubtitle, setFilterHasSubtitle] = useState(false);
+  const [subtitleFolderSet, setSubtitleFolderSet] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [filterActor, setFilterActor] = useState<string>("全部");
   const [filterStudio, setFilterStudio] = useState<string>("全部");
   const [filterGenre, setFilterGenre] = useState<string>("全部");
@@ -230,7 +262,10 @@ export function PlayerPage({
     if (filterGenre !== "全部")
       list = list.filter((v) => v.genres?.includes(filterGenre));
     if (filterHasSubtitle)
-      list = list.filter((v) => (v as any).hasSubtitle === true);
+      list = list.filter((v) => {
+        const folder = deriveFolderFromUrl(v.url);
+        return !!folder && subtitleFolderSet.has(folder);
+      });
     return list;
   }, [
     localVideos,
@@ -240,7 +275,64 @@ export function PlayerPage({
     filterStudio,
     filterGenre,
     filterHasSubtitle,
+    subtitleFolderSet,
   ]);
+
+  // 拉取播放统计，计算每个视频的热度（按 folder 路径索引）
+  useEffect(() => {
+    let cancelled = false;
+    trpc.stats.get
+      .query()
+      .then((s: any) => {
+        if (cancelled || !s?.videos) return;
+        const now = Date.now();
+        const D = 24 * 60 * 60 * 1000;
+        const map: Record<string, "hot" | "cold" | "normal"> = {};
+        const counts: Record<string, number> = {};
+        for (const folder of Object.keys(s.videos)) {
+          const v = s.videos[folder];
+          counts[folder] = v.playCount || 0;
+          const last = v.lastPlayedAt ? new Date(v.lastPlayedAt).getTime() : 0;
+          const ageDays = last ? (now - last) / D : Infinity;
+          if (ageDays <= 30 && (v.playCount || 0) >= 3) map[folder] = "hot";
+          else if (ageDays > 60) map[folder] = "cold";
+          else map[folder] = "normal";
+        }
+        setHeatByFolder(map);
+        setPlayCountByFolder(counts);
+        setStatsVideos(s.videos);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [localVideos.length]);
+
+  // 列表变化时批量刷新字幕索引
+  useEffect(() => {
+    if (localVideos.length === 0) {
+      setSubtitleFolderSet(new Set());
+      return;
+    }
+    const folders = Array.from(
+      new Set(
+        localVideos
+          .map((v) => deriveFolderFromUrl(v.url))
+          .filter((f): f is string => !!f),
+      ),
+    );
+    if (folders.length === 0) return;
+    let cancelled = false;
+    trpc.whisper.hasSubtitleBatch
+      .query({ folders })
+      .then((r) => {
+        if (!cancelled) setSubtitleFolderSet(new Set(r.folders));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [localVideos]);
 
   // 筛选器候选项（去重 + 频次倒序）
   const facets = useMemo(() => {
@@ -325,6 +417,57 @@ export function PlayerPage({
     [filteredVideos, selectedVideoIndex],
   );
 
+  // 今晚推荐：基于偏好画像生成 10 部（按日期 seed，同一天稳定）
+  const tonightPicks = useMemo(() => {
+    if (localVideos.length === 0) return [] as VideoItem[];
+    // 构建 folder -> meta 索引（让 buildProfile 拿到演员/片商/分类）
+    const metaIndex = new Map<string, any>();
+    for (const v of localVideos) {
+      const folder = deriveFolderFromUrl(v.url);
+      if (folder) {
+        metaIndex.set(folder, {
+          actors: v.actors,
+          studio: v.studio,
+          genres: v.genres,
+        });
+      }
+    }
+    const profile = buildProfileFromStats(statsVideos, metaIndex);
+    // 缓存：同一天如果已缓存，按 id 顺序还原
+    if (tonightReshuffleTick === 0) {
+      const cached = loadCachedPicks();
+      if (cached) {
+        const map = new Map(localVideos.map((v) => [v.id, v]));
+        const restored = cached.ids
+          .map((id) => map.get(id))
+          .filter((v): v is VideoItem => !!v);
+        if (restored.length > 0) return restored;
+      }
+    }
+    const picks = generateTonightPicks(
+      localVideos,
+      {
+        profile,
+        playCountByFolder,
+        heatByFolder,
+        favorites,
+        folderResolver: (v) => deriveFolderFromUrl(v.url),
+      },
+      10,
+    );
+    if (picks.length > 0)
+      saveCachedPicks(picks.map((v) => v.id));
+    return picks;
+  }, [
+    localVideos,
+    statsVideos,
+    playCountByFolder,
+    heatByFolder,
+    favorites,
+    tonightReshuffleTick,
+  ]);
+
+
   const currentVideoPath = useMemo(() => {
     if (selectedVideoIndex == null) return null;
     const v = filteredVideos[selectedVideoIndex];
@@ -360,10 +503,13 @@ export function PlayerPage({
     null,
   );
   const pendingResumeSeekRef = useRef<number | null>(null);
+  const pendingTimelineSeekRef = useRef<number | null>(null);
   const resumeChecked = useRef(false);
   const statsPlayedUrlRef = useRef("");
   const pendingWatchSecRef = useRef(0);
   const handledSubtitleJobIdsRef = useRef<Set<string>>(new Set());
+  const [timelineBookmarks, setTimelineBookmarks] = useState<TimelineBookmark[]>([]);
+  const [timelineOpen, setTimelineOpen] = useState(false);
 
   const recordPlayStats = useCallback((folder: string, url: string) => {
     if (!folder || !url || statsPlayedUrlRef.current === url) return;
@@ -448,6 +594,67 @@ export function PlayerPage({
     };
   }, [videoEl, activeStream]);
 
+  const loadTimelineBookmarks = useCallback(async () => {
+    if (!activeStream.url && !activeStream.name) {
+      setTimelineBookmarks([]);
+      return;
+    }
+    try {
+      const rows = await trpc.library.timeline.query({
+        videoName: activeStream.name,
+        videoUrl: activeStream.url,
+      });
+      setTimelineBookmarks(rows as TimelineBookmark[]);
+    } catch {
+      setTimelineBookmarks([]);
+    }
+  }, [activeStream.name, activeStream.url]);
+
+  useEffect(() => {
+    void loadTimelineBookmarks();
+  }, [loadTimelineBookmarks]);
+
+  const seekToTimelineBookmark = useCallback(
+    (bookmark: TimelineBookmark) => {
+      if (activeStream.url === bookmark.videoUrl && videoEl) {
+        videoEl.currentTime = bookmark.currentTime;
+        void videoEl.play().catch(() => {});
+        return;
+      }
+
+      const idx = filteredVideos.findIndex(
+        (v) => v.url === bookmark.videoUrl || v.name === bookmark.videoName,
+      );
+      if (idx < 0) return;
+      const video = filteredVideos[idx];
+      pendingTimelineSeekRef.current = bookmark.currentTime;
+      setSelectedVideoIndex(idx);
+      setUserInitiated(true);
+      recordPlayStats(video.name, video.url);
+      setActiveStream({
+        name: video.name,
+        url: video.url,
+        resolution: video.resolution,
+        encryptionType: video.encryptionType || "检测中",
+        referer: "",
+      });
+    },
+    [activeStream.url, videoEl, filteredVideos, recordPlayStats],
+  );
+
+  useEffect(() => {
+    if (!videoEl || pendingTimelineSeekRef.current == null) return;
+    const target = pendingTimelineSeekRef.current;
+    const jump = () => {
+      videoEl.currentTime = target;
+      pendingTimelineSeekRef.current = null;
+      void videoEl.play().catch(() => {});
+    };
+    if (videoEl.readyState >= 1) jump();
+    else videoEl.addEventListener("loadedmetadata", jump, { once: true });
+    return () => videoEl.removeEventListener("loadedmetadata", jump);
+  }, [videoEl, activeStream.url]);
+
   const handleResume = useCallback(() => {
     if (!resumePrompt) return;
     const idx = filteredVideos.findIndex(
@@ -504,6 +711,23 @@ export function PlayerPage({
     [filteredVideos, recordPlayStats],
   );
 
+  // 来自外部跳转的「立即播放某部本地视频」：等本地列表加载完后按名字匹配并播放
+  useEffect(() => {
+    if (!pendingPlayName) return;
+    if (localVideos.length === 0) return;
+    const target =
+      localVideos.find((v) => v.name === pendingPlayName) ||
+      localVideos.find((v) => v.id === pendingPlayName);
+    if (!target) {
+      onAddSystemLog(`未在本地库找到 ${pendingPlayName}`, "WARNING");
+      onConsumePendingPlay?.();
+      return;
+    }
+    const idx = localVideos.findIndex((v) => v.id === target.id);
+    handleLoadLocalVideo(target, idx);
+    onConsumePendingPlay?.();
+  }, [pendingPlayName, localVideos, handleLoadLocalVideo, onConsumePendingPlay, onAddSystemLog]);
+
   const handleParseM3u8List = async (e?: React.FormEvent) => {
     e?.preventDefault();
     const url = videoSearchQuery.trim();
@@ -554,6 +778,50 @@ export function PlayerPage({
     setDeleteTarget(null);
     setIsDeleting(false);
     await refreshVideoList();
+  };
+
+  const handleAddTimelineBookmark = async () => {
+    if (!videoEl || !activeStream.url || !activeStream.name) return;
+    try {
+      await trpc.library.addTimelineBookmark.mutate({
+        videoName: activeStream.name,
+        videoUrl: activeStream.url,
+        currentTime: videoEl.currentTime,
+        duration: videoEl.duration,
+      });
+      onAddSystemLog(
+        `时间轴书签已保存: ${activeStream.name} @ ${Math.floor(videoEl.currentTime)}s`,
+        "SUCCESS",
+      );
+      await loadTimelineBookmarks();
+      setTimelineOpen(true);
+    } catch (err: any) {
+      onAddSystemLog(`时间轴书签保存失败: ${err?.message || err}`, "ERROR");
+    }
+  };
+
+  const handleDeleteTimelineBookmark = async (
+    bookmark: TimelineBookmark,
+    e?: React.MouseEvent,
+  ) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    try {
+      const res = await trpc.library.deleteTimelineBookmark.mutate({
+        id: bookmark.id,
+      });
+      if (res.success) {
+        setTimelineBookmarks((prev) => prev.filter((item) => item.id !== bookmark.id));
+        onAddSystemLog(
+          `时间轴书签已删除: ${bookmark.videoName} @ ${Math.floor(bookmark.currentTime)}s`,
+          "SUCCESS",
+        );
+      } else {
+        onAddSystemLog("时间轴书签删除失败: 未找到该书签", "WARNING");
+      }
+    } catch (err: any) {
+      onAddSystemLog(`时间轴书签删除失败: ${err?.message || err}`, "ERROR");
+    }
   };
 
   const [enrichProgress, setEnrichProgress] = useState(0); // 0=未开始, 1=轻量已就绪, 2=完整已就绪
@@ -660,6 +928,26 @@ export function PlayerPage({
             {activeStream.name}
           </h3>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleAddTimelineBookmark}
+              disabled={!videoEl || !activeStream.url}
+              className="h-7 px-3 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-slate-600 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer"
+              title="保存当前播放时间点"
+            >
+              <BookmarkPlus className="w-3.5 h-3.5 inline mr-1" />
+              加时间点
+            </button>
+            <button
+              type="button"
+              onClick={() => setTimelineOpen((v) => !v)}
+              disabled={!activeStream.url}
+              className="h-7 px-3 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-slate-600 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer"
+              title="查看并跳转时间轴书签"
+            >
+              <ListChecks className="w-3.5 h-3.5 inline mr-1" />
+              跳转书签 {timelineBookmarks.length}
+            </button>
             <span className="text-[11px] bg-slate-900 text-white px-3 py-1 rounded-full font-mono font-bold shadow-sm ring-1 ring-white/10">
               {activeStream.resolution}
             </span>
@@ -690,11 +978,77 @@ export function PlayerPage({
               <p className="text-sm font-medium italic">请从右侧列表选择视频</p>
             </div>
           )}
+          {timelineOpen && (
+            <div className="absolute right-3 top-3 z-20 w-72 max-h-[70%] overflow-y-auto rounded-lg border border-slate-700 bg-slate-950/90 backdrop-blur p-2 shadow-xl">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[11px] font-bold text-slate-100">时间轴书签</div>
+                <button
+                  type="button"
+                  onClick={() => void loadTimelineBookmarks()}
+                  className="text-[10px] text-slate-400 hover:text-amber-400 cursor-pointer"
+                >
+                  刷新
+                </button>
+              </div>
+              {timelineBookmarks.length === 0 ? (
+                <div className="py-6 text-center text-[11px] text-slate-500">当前视频暂无书签</div>
+              ) : (
+                <div className="space-y-1">
+                  {timelineBookmarks.map((item) => {
+                    const mm = String(Math.floor(item.currentTime / 60)).padStart(2, "0");
+                    const ss = String(item.currentTime % 60).padStart(2, "0");
+                    return (
+                      <div
+                        key={item.id}
+                        className="group flex items-start gap-2 rounded-md bg-white/5 hover:bg-amber-500/20 px-2 py-1.5 transition"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => seekToTimelineBookmark(item)}
+                          className="min-w-0 flex-1 text-left cursor-pointer"
+                          title="跳到这个时间点"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-mono text-amber-300">{mm}:{ss}</span>
+                            <span className="text-[9px] text-slate-500">{item.createdAt?.slice(0, 10)}</span>
+                          </div>
+                          <div className="text-[10px] text-slate-300 truncate">{item.videoName}</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteTimelineBookmark(item, e)}
+                          className="mt-0.5 rounded p-1 text-slate-500 opacity-60 hover:opacity-100 hover:text-rose-300 hover:bg-rose-500/10 transition cursor-pointer"
+                          title="删除这个书签"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
       {/* SIDEBAR: PRO DASHBOARD */}
       <div className="w-[340px]  bg-[#fdf5f3] border-l border-slate-200/80 flex flex-col shrink-0 h-full overflow-hidden z-20 relative">
+        {tonightPicks.length > 0 && selectedVideoIndex == null && (
+          <div className="px-2 pt-2">
+            <TonightPanel
+              items={tonightPicks}
+              onPlay={(v) => {
+                const idx = filteredVideos.findIndex((x) => x.id === v.id);
+                if (idx >= 0) handleLoadLocalVideo(v, idx);
+              }}
+              onReshuffle={() => {
+                clearCachedPicks();
+                setTonightReshuffleTick((n) => n + 1);
+              }}
+            />
+          </div>
+        )}
         {/* Pro Control Card */}
         <div className="p-3 bg-[#fdf5f3] relative">
           <div className="space-y-2.5">
@@ -909,7 +1263,7 @@ export function PlayerPage({
         {/* Video List */}
         <div
           ref={listScrollRef}
-          className="flex-1 overflow-y-auto px-4 py-3 video-list-scroll"
+          className="flex-1 overflow-y-scroll px-4 py-3 video-list-scroll"
         >
           {filteredVideos.length > 0 ? (
             <div
@@ -942,6 +1296,12 @@ export function PlayerPage({
                     isFavorite={favorites.has(filteredVideos[v.index].id)}
                     onToggleFavorite={toggleFavorite}
                     index={v.index}
+                    heat={(() => {
+                      const folder = deriveFolderFromUrl(filteredVideos[v.index].url);
+                      if (!folder) return "normal";
+                      return heatByFolder[folder] || "normal";
+                    })()}
+                    onOpenActor={onOpenActor}
                   />
                 </div>
               ))}

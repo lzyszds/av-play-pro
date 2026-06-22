@@ -35,4 +35,6 @@ export interface PlayerPageProps {
   onConsumePendingPlay?: () => void;
   /** 通知 App 当前选中/播放的视频名（用于私密计时记录关联） */
   onActiveVideoChange?: (name: string | null) => void;
+  /** 点击演员名跳转到「演员」页详情 */
+  onOpenActor?: (name: string) => void;
 }

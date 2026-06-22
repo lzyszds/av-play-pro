@@ -920,4 +920,72 @@ export const metaRouter = t.router({
         return { ...result, error: err?.message };
       }
     }),
+
+  // ========== 演员头像抓取 ==========
+  fetchActorImage: t.procedure
+    .input((input: unknown) => input as { name: string })
+    .query(async ({ input }) => {
+      const { name } = input;
+      const cacheKey = `actor_img:${name}`;
+      // 尝试从 MissAV 抓取演员头像
+      const sources = [
+        {
+          site: "MissAV",
+          url: `https://missav.com/actresses/${encodeURIComponent(name)}`,
+          headers: {},
+          selector: ".actress-avatar img, .avatar img, img.actress-image, .thumbnail img",
+          timeout: 8000,
+        },
+        {
+          site: "JavBus",
+          url: `https://www.javbus.com/searchstar/${encodeURIComponent(name)}`,
+          headers: { Cookie: "existmag=all; age=verified" },
+          selector: ".avatar-box img, #waterfall .item img.avatar, .star-img img",
+          timeout: 8000,
+        },
+      ];
+
+      for (const src of sources) {
+        let started = 0;
+        try {
+          started = Date.now();
+          const res = await axios.get(src.url, {
+            headers: {
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              ...src.headers,
+            },
+            timeout: src.timeout,
+            responseType: "text",
+            maxRedirects: 5,
+          });
+          const $ = cheerio.load(res.data);
+          const imgEl = $(src.selector).first();
+          if (imgEl.length > 0) {
+            let imgUrl = imgEl.attr("src") || imgEl.attr("data-src") || "";
+            if (imgUrl && !imgUrl.startsWith("http")) {
+              const base = new URL(src.url);
+              imgUrl = `${base.protocol}//${base.host}${imgUrl.startsWith("/") ? "" : "/"}${imgUrl}`;
+            }
+            if (imgUrl) {
+              log.info(
+                `[meta] fetchActorImage "${name}" → ${src.site} (${Date.now() - started}ms)`,
+              );
+              return { url: imgUrl, source: src.site };
+            }
+          }
+          log.info(
+            `[meta] fetchActorImage "${name}" → ${src.site}: no match (${Date.now() - started}ms)`,
+          );
+        } catch (e: any) {
+          const ms = Date.now() - started;
+          const status = e?.response?.status;
+          const code = e?.code;
+          log.info(
+            `[meta] fetchActorImage "${name}" → ${src.site}: ${status || code || "failed"} (${ms}ms)`,
+          );
+        }
+      }
+      return { url: null, source: null };
+    }),
 });

@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Play, Pause, Trash2, Copy, Check } from "lucide-react";
+import { Play, Pause, Trash2, Copy, Check, RotateCcw } from "lucide-react";
 import { CoverImage } from "../CoverImage";
 import type { DownloadTask } from "../../pages/download/types";
 import {
@@ -67,22 +67,17 @@ function TaskCardImpl({
       id={`task-card-${task.id}`}
       onClick={() => onSelectTask(task.id)}
       style={{ ["--i" as string]: Math.min(index, 12) }}
-      className={`anim-fade-stagger group relative flex flex-col bg-white rounded-xl border overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${
+      className={`anim-fade-stagger group relative flex flex-col bg-white rounded-xl border overflow-hidden cursor-pointer transition-transform duration-150 hover:-translate-y-0.5 will-change-transform ${
         isFlashing
-          ? "border-amber-500 ring-4 ring-amber-400/60 shadow-xl shadow-amber-500/30 animate-pulse"
+          ? "border-amber-500 ring-4 ring-amber-400/60 shadow-xl shadow-amber-500/30"
           : isSelected
-            ? "border-amber-500 ring-2 ring-amber-500/30"
+            ? "border-amber-500 ring-2 ring-amber-500/30 shadow-sm"
             : "border-slate-200 shadow-sm"
       }`}
     >
       {/* Cover / Preview */}
       <div className="relative aspect-video w-full overflow-hidden bg-slate-900">
-        <CoverImage
-          src={coverUrl}
-          alt={task.name}
-          logoSize={56}
-          className="transition-transform duration-300 group-hover:scale-105"
-        />
+        <CoverImage src={coverUrl} alt={task.name} logoSize={56} />
 
         <div className="absolute top-0 left-0 right-0 h-12 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
         <div className="absolute top-2 left-2 z-10 flex gap-1">
@@ -183,6 +178,14 @@ function TaskCardImpl({
               >
                 <Play className="w-3.5 h-3.5 fill-current" />
               </button>
+            ) : task.status === "FAILED" ? (
+              <button
+                onClick={() => onTriggerPauseResume(task.id)}
+                className="p-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 transition cursor-pointer"
+                title="重试下载（清零进度后重新入队）"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
             ) : (
               <button
                 onClick={() => onTriggerPauseResume(task.id)}
@@ -192,7 +195,6 @@ function TaskCardImpl({
                     : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
                 }`}
                 title={task.status === "DOWNLOADING" ? "暂停下载" : "继续下载"}
-                disabled={task.status === "FAILED"}
               >
                 {task.status === "DOWNLOADING" ? (
                   <Pause className="w-3.5 h-3.5" />

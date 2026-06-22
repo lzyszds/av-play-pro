@@ -8,6 +8,10 @@ import {
   Settings as SettingsIcon,
   Download,
   Info,
+  Activity,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
 } from "lucide-react";
 import { trpc } from "../../lib/trpc";
 import type {
@@ -19,7 +23,7 @@ import type {
 } from "../../pages/download/types";
 import { CoverLoader } from "../CoverLoader";
 
-type TabKey = "storage" | "network" | "appearance";
+type TabKey = "storage" | "network" | "appearance" | "health";
 const DOWNLOAD_BACKGROUNDS: DownloadBackground[] = [
   "1",
   "2",
@@ -107,6 +111,35 @@ export function SettingsPanel({
   const [thumbQueueConcurrency, setThumbQueueConcurrency] = useState(
     settings.thumbQueueConcurrency ?? 2,
   );
+  const [health, setHealth] = useState<any | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+
+  const loadHealth = async () => {
+    setHealthLoading(true);
+    try {
+      const data = await trpc.library.health.query({
+        rootPath: videoPath,
+        tempPath,
+      });
+      setHealth(data);
+    } catch (err: any) {
+      onAddSystemLog(`健康状态读取失败: ${err?.message || err}`, "ERROR");
+    } finally {
+      setHealthLoading(false);
+    }
+  };
+
+  const openHealthPath = async (targetPath: string) => {
+    if (!targetPath || targetPath.includes("不存在") || targetPath.includes("无法读取")) return;
+    try {
+      const res = await trpc.system.openPath.mutate({ path: targetPath });
+      if (!res.success) {
+        onAddSystemLog(`打开路径失败: ${res.error || targetPath}`, "ERROR");
+      }
+    } catch (err: any) {
+      onAddSystemLog(`打开路径异常: ${err?.message || err}`, "ERROR");
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,6 +215,7 @@ export function SettingsPanel({
     { key: "storage", label: "存储路径", icon: Folder },
     { key: "network", label: "网络与插件", icon: Globe },
     { key: "appearance", label: "个性化与通知", icon: SettingsIcon },
+    { key: "health", label: "健康状态", icon: Activity },
   ];
 
   const tabBtnClass = (active: boolean) =>
@@ -705,6 +739,71 @@ export function SettingsPanel({
                     onToggle={() => setNotifySound(!notifySound)}
                   />
                 </div>
+              </div>
+            )}
+
+            {activeTab === "health" && (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+                  <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 tracking-wide uppercase">
+                    健康状态页
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={loadHealth}
+                    disabled={healthLoading}
+                    className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-[11px] font-bold disabled:opacity-50 cursor-pointer"
+                  >
+                    {healthLoading ? "检查中..." : "立即检查"}
+                  </button>
+                </div>
+
+                {!health && (
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4 text-[12px] text-slate-500 dark:text-slate-400">
+                    点击“立即检查”读取视频目录、临时目录、用户数据、统计文件和磁盘空间状态。
+                  </div>
+                )}
+
+                {health && (
+                  <div className="space-y-2">
+                    {health.checks.map((check: any) => {
+                      const Icon =
+                        check.status === "ok"
+                          ? CheckCircle2
+                          : check.status === "warn"
+                            ? AlertTriangle
+                            : XCircle;
+                      const color =
+                        check.status === "ok"
+                          ? "text-emerald-500"
+                          : check.status === "warn"
+                            ? "text-amber-500"
+                            : "text-rose-500";
+                      return (
+                        <button
+                          type="button"
+                          key={check.label}
+                          onClick={() => openHealthPath(check.detail)}
+                          className="w-full text-left flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2.5 hover:border-amber-300 dark:hover:border-amber-700 hover:bg-amber-50/40 dark:hover:bg-amber-500/5 transition cursor-pointer"
+                          title="打开此路径"
+                        >
+                          <Icon className={`w-4 h-4 mt-0.5 ${color}`} />
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                              {check.label}
+                            </div>
+                            <div className="text-[10px] text-slate-400 break-all">
+                              {check.detail}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                    <div className="pt-2 text-[10px] text-slate-400">
+                      App {health.appVersion} · UserData: {health.userData}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

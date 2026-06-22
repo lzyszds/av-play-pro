@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as fsPromises from "fs/promises";
 import * as path from "path";
 import { t } from "../trpc";
+import { smartMatch } from "../lib/searchMatch";
 
 export interface VideoItem {
   id: string;
@@ -698,26 +699,22 @@ export const videosRouter = t.router({
           },
       )
       .query(async ({ input }) => {
-        const query = (input.query || "").toLowerCase().trim();
+        const query = (input.query || "").trim();
         const rootPath = input.rootPath || "M:\\video\\videos\\";
         if (!query) return [] as VideoItem[];
 
         const all = await listVideos(rootPath);
         return all.filter((v) => {
-          let hit = v.name.toLowerCase().includes(query);
-          if (!hit && (v.code as string | undefined))
-            hit = String(v.code).toLowerCase().includes(query);
-          if (!hit && (v.title as string | undefined))
-            hit = String(v.title).toLowerCase().includes(query);
-          if (!hit && Array.isArray(v.actors))
-            hit = v.actors.some((a) => String(a).toLowerCase().includes(query));
-          if (!hit && (v.studio as string | undefined))
-            hit = String(v.studio).toLowerCase().includes(query);
-          if (!hit && Array.isArray(v.genres))
-            hit = v.genres.some((g) => String(g).toLowerCase().includes(query));
-          if (!hit && (v.director as string | undefined))
-            hit = String(v.director).toLowerCase().includes(query);
-          return hit;
+          const fields: (string | undefined | null)[] = [
+            v.name,
+            v.code as any,
+            v.title as any,
+            v.studio as any,
+            v.director as any,
+            ...(Array.isArray(v.actors) ? v.actors : []),
+            ...(Array.isArray(v.genres) ? v.genres : []),
+          ];
+          return smartMatch(fields, query);
         });
       }),
   });

@@ -52,7 +52,14 @@ const AD_HOST_KEYWORDS = [
   "adnami.io",
 ];
 
-const ALLOWED_FRAME_HOST_KEYWORDS = ["missav", "fourhoi", "localhost"];
+const ALLOWED_FRAME_HOST_KEYWORDS = [
+  "missav",
+  "fourhoi",
+  "cloudflare",
+  "localhost",
+];
+
+const CHALLENGE_HOST_KEYWORDS = ["cloudflare.com", "challenges.cloudflare.com"];
 
 const AD_URL_PATTERNS = [
   /(^|[./_-])adserver([./_-]|$)/i,
@@ -68,6 +75,7 @@ const AD_URL_PATTERNS = [
 let configured = false;
 let blockedAdRequests = 0;
 let snifferSourceCache: string | null = null;
+let activeMissavContents: WebContents | null = null;
 
 function isMediaUrl(url: string): boolean {
   return /\.(m3u8|mp4|m4v|webm|ts|m4s)(\?|#|$)/i.test(url);
@@ -80,6 +88,10 @@ function shouldBlockAdRequest(url: string, resourceType = ""): boolean {
     const parsed = new URL(url);
     const hostname = parsed.hostname.toLowerCase();
     const path = `${parsed.pathname}${parsed.search}`;
+
+    if (CHALLENGE_HOST_KEYWORDS.some((keyword) => hostname.includes(keyword))) {
+      return false;
+    }
 
     if (AD_HOST_KEYWORDS.some((keyword) => hostname.includes(keyword))) {
       return true;
@@ -122,6 +134,11 @@ function setupAdBlocker(webSession: Session): void {
 function setupPopupBlocker(webSession: Session): void {
   app.on("web-contents-created", (_event, contents: WebContents) => {
     if (contents.session !== webSession) return;
+
+    activeMissavContents = contents;
+    contents.once("destroyed", () => {
+      if (activeMissavContents === contents) activeMissavContents = null;
+    });
 
     contents.setWindowOpenHandler((details) => {
       console.log(`[MissAV Web] Blocked popup: ${details.url}`);
@@ -219,4 +236,9 @@ export async function setupMissavWebSession(): Promise<void> {
   } catch (error) {
     console.warn("[MissAV Web] Failed to load extension:", error);
   }
+}
+
+export function getActiveMissavWebContents(): WebContents | null {
+  if (!activeMissavContents || activeMissavContents.isDestroyed()) return null;
+  return activeMissavContents;
 }

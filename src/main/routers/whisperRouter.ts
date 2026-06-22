@@ -44,6 +44,23 @@ export const whisperRouter = t.router({
       return { exists: false as const, srtPath: null };
     }),
 
+  // 批量检查多个文件夹是否含字幕，返回拥有字幕的 folder 列表
+  hasSubtitleBatch: t.procedure
+    .input(z.object({ folders: z.array(z.string()) }))
+    .query(({ input }) => {
+      const suffixes = ["video.srt", "video.vtt", "video.ja.srt", "video.zh.srt"];
+      const withSub: string[] = [];
+      for (const folder of input.folders) {
+        for (const s of suffixes) {
+          if (fs.existsSync(path.join(folder, s))) {
+            withSub.push(folder);
+            break;
+          }
+        }
+      }
+      return { folders: withSub };
+    }),
+
   downloadModel: t.procedure
     .input(z.object({ model: z.enum(MODELS as unknown as [WhisperModel, ...WhisperModel[]]) }))
     .mutation(async ({ input }) => {

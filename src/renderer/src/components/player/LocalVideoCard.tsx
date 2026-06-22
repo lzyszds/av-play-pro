@@ -1,4 +1,5 @@
 import React, { useRef, useState, memo } from "react";
+import { createPortal } from "react-dom";
 import {
   Trash2,
   Wrench,
@@ -13,6 +14,7 @@ import {
   Film,
   Tag,
   Play,
+  MoreHorizontal,
 } from "lucide-react";
 import type { VideoItem } from "../../pages/player/types";
 import { CoverImage } from "../CoverImage";
@@ -27,6 +29,10 @@ interface LocalVideoCardProps {
   isFavorite?: boolean;
   onToggleFavorite?: (video: VideoItem) => void;
   index: number;
+  /** 封面变形虫：hot=发光（近 30 天 ≥3 次）/ cold=褪色（>60 天未看或从未） */
+  heat?: "hot" | "cold" | "normal";
+  /** 点击演员名跳转到「演员」页详情 */
+  onOpenActor?: (name: string) => void;
 }
 
 const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
@@ -38,10 +44,17 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
   isFavorite,
   onToggleFavorite,
   index,
+  heat = "normal",
+  onOpenActor,
 }) => {
   const [hovered, setHovered] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewRef = useRef<HTMLVideoElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuTokenRef = useRef(
+    `${video.id || video.name}-${Math.random().toString(36).slice(2)}`,
+  );
 
   const handleEnter = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
@@ -58,20 +71,69 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
     previewRef.current?.play().catch(() => {});
   };
 
+  React.useEffect(() => {
+    if (!menu) return;
+    const close = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      if (menuRef.current?.contains(event.target as Node)) return;
+      setMenu(null);
+    };
+    const closeFromOtherCard = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      if (detail !== menuTokenRef.current) setMenu(null);
+    };
+    window.addEventListener("local-video-card-menu-open", closeFromOtherCard);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("mousedown", close);
+    window.dispatchEvent(
+      new CustomEvent("local-video-card-menu-open", {
+        detail: menuTokenRef.current,
+      }),
+    );
+    return () => {
+      window.removeEventListener("local-video-card-menu-open", closeFromOtherCard);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("mousedown", close);
+    };
+  }, [menu]);
+
+  const copyText = (text: string) => {
+    void navigator.clipboard?.writeText(text).catch(() => {});
+    setMenu(null);
+  };
+
+  const openMenu = (x: number, y: number) => {
+    setMenu({
+      x: Math.max(8, Math.min(x, window.innerWidth - 176)),
+      y: Math.max(8, Math.min(y, window.innerHeight - 220)),
+    });
+  };
+
+  const handleContextMenu = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openMenu(e.clientX, e.clientY);
+  };
+
   return (
     <div
-      onClick={() => onPlay(video, index)}
+      onClick={() => {
+        if (menu) return;
+        onPlay(video, index);
+      }}
+      onContextMenuCapture={handleContextMenu}
+      onContextMenu={handleContextMenu}
       onMouseEnter={handleEnter}
       onMouseLeave={handleLeave}
       className={`relative rounded-xl overflow-hidden cursor-pointer transition-all duration-300 group bg-white border ${
         isActive
           ? "border-amber-400 shadow-[0_0_0_2px_rgba(251,191,36,0.15),0_10px_30px_-12px_rgba(245,158,11,0.35)]"
           : "border-slate-200 hover:border-slate-300 hover:shadow-[0_10px_30px_-14px_rgba(15,23,42,0.35)] hover:-translate-y-0.5"
-      }`}
+      } ${heat === "hot" && !isActive ? "cover-hot" : ""} ${heat === "cold" ? "cover-cold" : ""}`}
     >
       {/* ===== 封面（承担主要视觉信息） ===== */}
       <div
-        className="relative aspect-video bg-slate-900 overflow-hidden"
+        className="relative aspect-video bg-slate-900 overflow-hidden cover-media cover-media-hover"
         style={{ transform: "translateZ(0)" }}
       >
         <CoverImage src={video.coverUrl} alt={video.name} logoSize={48} />
@@ -176,13 +238,31 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
 
         {/* 演员（克制：单色） */}
         {video.actors && video.actors.length > 0 && (
-          <div className="flex items-center gap-1.5 pt-0.5">
+          <div className="flex items-center gap-1.5 pt-0.5 min-w-0">
             <User2 className="w-3 h-3 text-slate-400 shrink-0" />
             <div
-              className="text-[10.5px] text-slate-700 truncate"
+              className="text-[10.5px] text-slate-700 truncate flex items-center gap-1"
               title={video.actors.join(" / ")}
             >
-              {video.actors.join(" · ")}
+              {video.actors.map((a, i) => (
+                <React.Fragment key={a}>
+                  {i > 0 && <span className="text-slate-300">·</span>}
+                  <span
+                    onClick={(e) => {
+                      if (!onOpenActor) return;
+                      e.stopPropagation();
+                      onOpenActor(a);
+                    }}
+                    className={
+                      onOpenActor
+                        ? "cursor-pointer hover:text-amber-600 hover:underline"
+                        : ""
+                    }
+                  >
+                    {a}
+                  </span>
+                </React.Fragment>
+              ))}
             </div>
           </div>
         )}
@@ -252,12 +332,72 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
             >
               <Trash2 className="w-3.5 h-3.5" />
             </CardIconBtn>
+            <CardIconBtn
+              onClick={(e) => {
+                e.stopPropagation();
+                const rect = e.currentTarget.getBoundingClientRect();
+                openMenu(rect.right - 4, rect.bottom + 6);
+              }}
+              title="更多操作"
+            >
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </CardIconBtn>
           </div>
         </div>
       </div>
+      {menu &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-[9999] w-40 rounded-lg border border-slate-200 bg-white shadow-xl shadow-slate-900/15 py-1 text-[11px] text-slate-600"
+            style={{ left: menu.x, top: menu.y }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ContextItem label="播放" onClick={() => { setMenu(null); onPlay(video, index); }} />
+            {onToggleFavorite && (
+              <ContextItem label={isFavorite ? "取消心爱" : "加入心爱"} onClick={() => { setMenu(null); onToggleFavorite(video); }} />
+            )}
+            {onRepair && <ContextItem label="修复/补资料" onClick={() => { setMenu(null); onRepair(video); }} />}
+            <ContextItem label="复制名称" onClick={() => copyText(video.name)} />
+            {video.code && <ContextItem label="复制番号" onClick={() => copyText(video.code!)} />}
+            <div className="my-1 h-px bg-slate-100" />
+            <ContextItem label="删除" danger onClick={() => { setMenu(null); onDelete(video); }} />
+          </div>,
+          document.body,
+        )}
     </div>
   );
 };
+
+const ContextItem: React.FC<{
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}> = ({ label, onClick, danger }) => (
+  <button
+    type="button"
+    onMouseDown={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onClick();
+    }}
+    onClick={(e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    }}
+    className={`w-full text-left px-3 py-1.5 hover:bg-slate-50 transition cursor-pointer ${
+      danger ? "text-rose-500 hover:bg-rose-50" : ""
+    }`}
+  >
+    {label}
+  </button>
+);
 
 const CardIconBtn: React.FC<{
   onClick: (e: React.MouseEvent) => void;

@@ -6,7 +6,8 @@ import * as http from "http";
 import { spawn, exec, ChildProcess } from "child_process";
 import { app } from "electron";
 import { t } from "../trpc";
-import { getMainWindow } from "../windowState";
+import { getMainWindow, getDownloadWidgetWindow } from "../windowState";
+import { enqueue as enqueuePostProcess } from "../postprocess/queue";
 
 export interface DownloadPayload {
   taskId?: string;
@@ -117,6 +118,10 @@ function killProcessTree(pid: number): void {
 function sendProgress(payload: ProgressPayload): void {
   progressCallbacks.forEach((cb) => cb(payload));
   getMainWindow()?.webContents.send("download-progress", payload);
+  const widget = getDownloadWidgetWindow();
+  if (widget && !widget.isDestroyed()) {
+    widget.webContents.send("download-progress", payload);
+  }
 }
 
 function sendTaskProgress(taskId: string | undefined, payload: Omit<ProgressPayload, "taskId">): void {
@@ -413,6 +418,15 @@ export const downloadRouter = t.router({
                 done: true,
                 success: true,
               });
+              // 自动入队后处理：整理目录 → 刮削 → 通知
+              try {
+                enqueuePostProcess({
+                  saveDir: input.saveDir,
+                  saveName: sanitizeName(input.saveName),
+                });
+              } catch (e: any) {
+                console.warn(`[postprocess] enqueue failed: ${e?.message}`);
+              }
             } else {
               sendTaskProgress(taskId, {
                 line: `[系统] 下载进程异常退出 (code: ${code})`,

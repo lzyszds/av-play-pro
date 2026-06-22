@@ -11,6 +11,12 @@ import { systemRouter } from "./routers/systemRouter";
 import { metaRouter } from "./routers/metaRouter";
 import { statsRouter } from "./routers/statsRouter";
 import { whisperRouter } from "./routers/whisperRouter";
+import { rssRouter } from "./routers/rssRouter";
+import { libraryRouter } from "./routers/libraryRouter";
+import { postprocessRouter } from "./routers/postprocessRouter";
+import { actorRouter } from "./routers/actorRouter";
+import { scenesRouter } from "./routers/scenesRouter";
+import { intelRouter } from "./routers/intelRouter";
 
 export const appRouter = t.router({
   download: downloadRouter,
@@ -25,6 +31,12 @@ export const appRouter = t.router({
   meta: metaRouter,
   stats: statsRouter,
   whisper: whisperRouter,
+  rss: rssRouter,
+  library: libraryRouter,
+  postprocess: postprocessRouter,
+  actor: actorRouter,
+  scenes: scenesRouter,
+  intel: intelRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -20,11 +20,23 @@ import {
   Newspaper,
   Grid3X3,
   Rss,
+  Gauge,
+  Users,
 } from "lucide-react";
 import { trpc } from "../lib/trpc";
 import type { ThemeMode } from "../pages/download/types";
 
-type Page = "download" | "player" | "web" | "stats" | "starmap" | "intel" | "mosaic" | "rss";
+export type Page =
+  | "download"
+  | "player"
+  | "web"
+  | "stats"
+  | "command"
+  | "starmap"
+  | "intel"
+  | "mosaic"
+  | "rss"
+  | "actors";
 
 interface TitleBarProps {
   currentPage: Page;
@@ -54,12 +66,11 @@ const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
 const pages: Array<{ key: Page; label: string; icon: typeof Download }> = [
   { key: "download", label: "下载管理", icon: Download },
   { key: "player", label: "播放器", icon: Play },
+  { key: "actors", label: "演员", icon: Users },
   { key: "web", label: "网页", icon: Globe },
+  { key: "command", label: "指挥", icon: Gauge },
   { key: "stats", label: "统计", icon: BarChart3 },
-  { key: "starmap", label: "星图", icon: Network },
   { key: "intel", label: "情报", icon: Newspaper },
-  { key: "mosaic", label: "马赛克", icon: Grid3X3 },
-  { key: "rss", label: "RSS", icon: Rss },
 ];
 
 const themeMeta: Record<ThemeMode, { icon: typeof Sun; label: string }> = {
@@ -172,7 +183,9 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         <button
           type="button"
           onClick={onToggleSound}
-          title={notifySound ? "提示音已开启 (点击关闭)" : "提示音已关闭 (点击开启)"}
+          title={
+            notifySound ? "提示音已开启 (点击关闭)" : "提示音已关闭 (点击开启)"
+          }
           className="w-9 h-full flex items-center justify-center text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition cursor-pointer"
         >
           {notifySound ? (

@@ -52,6 +52,44 @@
     const m = bg.match(/url\((['"]?)(.*?)\1\)/i)
     return m ? m[2] : ''
   }
+  function extractFullTitle() {
+    const clean = (s) =>
+      (s || '')
+        .replace(/\s*-\s*MissAV[^|]*\|[^$]*$/i, '')
+        .replace('- MissAV | 免费高清', '')
+        .replace('[无码破解]', '')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+    // 1) og:title 通常是完整名（不像 <title> 会被截断）
+    const og = document.querySelector(
+      'meta[property="og:title"], meta[name="og:title"]'
+    )
+    if (og && og.content) {
+      const t = clean(og.content)
+      if (t) return t
+    }
+
+    // 2) twitter:title 备用
+    const tw = document.querySelector(
+      'meta[name="twitter:title"], meta[property="twitter:title"]'
+    )
+    if (tw && tw.content) {
+      const t = clean(tw.content)
+      if (t) return t
+    }
+
+    // 3) 页面 h1
+    const h1 = document.querySelector('h1')
+    if (h1 && h1.textContent) {
+      const t = clean(h1.textContent)
+      if (t) return t
+    }
+
+    // 4) 兜底：document.title（可能被截断）
+    return clean(document.title)
+  }
+
   function extractCover() {
     try {
       // 1. 尝试 Plyr 播放器封面
@@ -161,10 +199,7 @@
           type: MSG_NAME,
           url: abs,
           source: source,
-          title: (document.title || '')
-            .replace('- MissAV | 免费高清', '')
-            .replace('[无码破解]', '')
-            .trim(),
+          title: extractFullTitle(),
           actors: extractActors()
         },
         '*'
@@ -181,7 +216,7 @@
     const record = {
       url: abs,
       name:
-        (document.title || '').replace('- MissAV | 免费高清', '').trim() ||
+        extractFullTitle() ||
         iframeTitle ||
         '未知视频',
       cover: cover,
@@ -388,26 +423,33 @@
       pageHost: location.hostname,
       pageTitle: document.title || record.name || ''
     })
-    const consoleFallback = () => {
-      try {
-        console.log('__AVPLAY_EXTENSION_PUSH__' + JSON.stringify(payload))
-      } catch (e) {}
-    }
+    // 主路径：postMessage → content.js (isolated world) → background service worker → fetch localhost
+    // 这样请求在扩展 origin 下发出，绕开 page context 的 Local Network Access 拦截
+    const reqId = 'avp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
 
-    origFetch(CONFIG.pushApi, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error('HTTP ' + res.status)
-        return res.json().catch(() => ({}))
-      })
-      .then(() => showToast('已推送到任务列表'))
-      .catch(() => {
-        consoleFallback()
+    const onResp = (event) => {
+      if (event.source !== window) return
+      const d = event.data
+      if (!d || d.type !== 'AVPLAY_PUSH_RESPONSE' || d.reqId !== reqId) return
+      window.removeEventListener('message', onResp)
+      if (d.ok) {
+        showToast('已推送到任务列表')
+      } else {
+        // 兜底：console 通道（Electron 内嵌 webview 才有效）
+        try {
+          console.log('__AVPLAY_EXTENSION_PUSH__' + JSON.stringify(payload))
+        } catch (e) {}
         showToast('已尝试备用推送')
-      })
+      }
+    }
+    window.addEventListener('message', onResp)
+    window.postMessage(
+      { type: 'AVPLAY_PUSH_REQUEST', reqId, url: CONFIG.pushApi, payload },
+      '*'
+    )
+
+    // 8 秒超时清理监听
+    setTimeout(() => window.removeEventListener('message', onResp), 8000)
   }
   function showToast(msg) {
     const el = document.createElement('div')

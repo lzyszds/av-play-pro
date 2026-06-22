@@ -190,6 +190,45 @@ button {
     opacity: 1;
   }
 }
+
+/* 封面变形虫：呼吸 / 褪色 / 发光 */
+@keyframes blob-breathe {
+  0%, 100% { transform: scale(1) translateZ(0); filter: brightness(1); }
+  50% { transform: scale(1.035) translateZ(0); filter: brightness(1.05); }
+}
+.cover-hot {
+  box-shadow:
+    0 0 0 1px rgba(251, 191, 36, 0.35),
+    0 0 18px 2px rgba(251, 191, 36, 0.28),
+    0 10px 30px -14px rgba(245, 158, 11, 0.45);
+  animation: cover-hot-glow 2.8s ease-in-out infinite;
+}
+@keyframes cover-hot-glow {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px rgba(251, 191, 36, 0.35),
+      0 0 18px 2px rgba(251, 191, 36, 0.28),
+      0 10px 30px -14px rgba(245, 158, 11, 0.45);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(251, 191, 36, 0.55),
+      0 0 26px 4px rgba(251, 191, 36, 0.42),
+      0 12px 36px -14px rgba(245, 158, 11, 0.6);
+  }
+}
+.cover-cold > .cover-media {
+  filter: grayscale(0.85) brightness(0.85);
+  opacity: 0.55;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+.cover-cold:hover > .cover-media {
+  filter: grayscale(0) brightness(1);
+  opacity: 1;
+}
+.cover-media-hover:hover {
+  animation: blob-breathe 1.8s ease-in-out infinite;
+}
 @keyframes fadeInUp {
   from {
     opacity: 0;

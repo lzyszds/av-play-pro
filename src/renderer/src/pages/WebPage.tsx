@@ -1,9 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Globe, Home, RefreshCw } from "lucide-react";
+import {
+  Bug,
+  ChevronLeft,
+  ChevronRight,
+  Globe,
+  Home,
+  RefreshCw,
+  ShieldOff,
+} from "lucide-react";
 import { PageLoader } from "../components/PageLoader";
 
-const DEFAULT_WEB_URL = "https://missav.ai/dm816/cn/uncensored-leak";
+const DEFAULT_WEB_URL = "https://missav.ai/dm816/cn/uncensored-leak?page=1";
 const WEBVIEW_PARTITION = "persist:missav-web";
+const RAW_WEBVIEW_PARTITION = "persist:missav-web-raw";
 
 interface WebPageProps {
   onAddSystemLog: (
@@ -20,14 +29,32 @@ type ElectronWebview = HTMLElement & {
   getURL: () => string;
   canGoBack: () => boolean;
   canGoForward: () => boolean;
+  openDevTools: () => void;
+};
+
+type WebviewEvent = Event & {
+  url?: string;
+  errorCode?: number;
+  errorDescription?: string;
+  isMainFrame?: boolean;
+  title?: string;
+  level?: number;
+  message?: string;
+  sourceId?: string;
+  line?: number;
+  reason?: string;
+  exitCode?: number;
 };
 
 export function WebPage({ onAddSystemLog }: WebPageProps) {
   const webviewRef = useRef<ElectronWebview | null>(null);
   const [currentUrl, setCurrentUrl] = useState(DEFAULT_WEB_URL);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
+  const [isRawMode, setIsRawMode] = useState(false);
+  const [webviewKey, setWebviewKey] = useState(0);
 
   const syncNavState = useCallback(() => {
     const webview = webviewRef.current;
@@ -44,19 +71,59 @@ export function WebPage({ onAddSystemLog }: WebPageProps) {
     const webview = webviewRef.current;
     if (!webview) return;
 
-    const handleStart = () => setIsLoading(true);
+    const handleStart = () => {
+      setLoadError(null);
+      setIsLoading(true);
+    };
     const handleStop = () => {
       setIsLoading(false);
       syncNavState();
     };
     const handleNavigate = (event: Event) => {
-      const url = (event as Event & { url?: string }).url;
+      const url = (event as WebviewEvent).url;
       if (url) setCurrentUrl(url);
       syncNavState();
     };
     const handleTitle = (event: Event) => {
-      const title = (event as Event & { title?: string }).title;
+      const title = (event as WebviewEvent).title;
       if (title) onAddSystemLog(`网页标题已更新: ${title}`, "INFO");
+    };
+    const handleFailLoad = (event: Event) => {
+      const { errorCode, errorDescription, isMainFrame, url } =
+        event as WebviewEvent;
+
+      if (errorCode === -3) return;
+
+      const message = `${errorDescription || "Unknown load error"} (${errorCode ?? "n/a"})`;
+      if (isMainFrame) {
+        setIsLoading(false);
+        setLoadError(message);
+      }
+      onAddSystemLog(
+        `Webview load failed: ${message}${url ? ` - ${url}` : ""}`,
+        "ERROR",
+      );
+    };
+    const handleConsole = (event: Event) => {
+      const { level, message, sourceId, line } = event as WebviewEvent;
+      if ((level ?? 0) < 2 || !message) return;
+
+      const source = sourceId ? ` (${sourceId}${line ? `:${line}` : ""})` : "";
+      onAddSystemLog(
+        `Webview console: ${message}${source}`,
+        level === 2 ? "WARNING" : "ERROR",
+      );
+    };
+    const handleProcessGone = (event: Event) => {
+      const { reason, exitCode } = event as WebviewEvent;
+      setIsLoading(false);
+      setLoadError(
+        `Renderer process gone: ${reason || "unknown"} (${exitCode ?? "n/a"})`,
+      );
+      onAddSystemLog(
+        `Webview renderer gone: ${reason || "unknown"} (${exitCode ?? "n/a"})`,
+        "ERROR",
+      );
     };
 
     webview.addEventListener("did-start-loading", handleStart);
@@ -64,6 +131,9 @@ export function WebPage({ onAddSystemLog }: WebPageProps) {
     webview.addEventListener("did-navigate", handleNavigate);
     webview.addEventListener("did-navigate-in-page", handleNavigate);
     webview.addEventListener("page-title-updated", handleTitle);
+    webview.addEventListener("did-fail-load", handleFailLoad);
+    webview.addEventListener("console-message", handleConsole);
+    webview.addEventListener("render-process-gone", handleProcessGone);
 
     syncNavState();
     onAddSystemLog("第三方网页已打开", "INFO");
@@ -74,12 +144,59 @@ export function WebPage({ onAddSystemLog }: WebPageProps) {
       webview.removeEventListener("did-navigate", handleNavigate);
       webview.removeEventListener("did-navigate-in-page", handleNavigate);
       webview.removeEventListener("page-title-updated", handleTitle);
+      webview.removeEventListener("did-fail-load", handleFailLoad);
+      webview.removeEventListener("console-message", handleConsole);
+      webview.removeEventListener("render-process-gone", handleProcessGone);
     };
-  }, [onAddSystemLog, syncNavState]);
+  }, [isRawMode, onAddSystemLog, syncNavState, webviewKey]);
 
   const goHome = useCallback(() => {
     webviewRef.current?.loadURL(DEFAULT_WEB_URL);
   }, []);
+
+  const toggleRawMode = useCallback(() => {
+    const webview = webviewRef.current;
+    const nextRawMode = !isRawMode;
+
+    try {
+      setCurrentUrl(webview?.getURL() || currentUrl || DEFAULT_WEB_URL);
+    } catch {
+      setCurrentUrl(currentUrl || DEFAULT_WEB_URL);
+    }
+
+    setLoadError(null);
+    setIsLoading(true);
+    setCanGoBack(false);
+    setCanGoForward(false);
+    setIsRawMode(nextRawMode);
+    setWebviewKey((key) => key + 1);
+    onAddSystemLog(
+      nextRawMode
+        ? "Raw webview mode enabled"
+        : "Managed webview mode enabled",
+      "INFO",
+    );
+  }, [currentUrl, isRawMode, onAddSystemLog]);
+
+  const openWebviewDevTools = useCallback(() => {
+    const webview = webviewRef.current;
+    if (!webview) {
+      onAddSystemLog("Webview is not ready yet", "WARNING");
+      return;
+    }
+
+    try {
+      webview.openDevTools();
+      onAddSystemLog("Webview DevTools opened", "INFO");
+    } catch (error) {
+      onAddSystemLog(
+        `Failed to open Webview DevTools: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        "ERROR",
+      );
+    }
+  }, [onAddSystemLog]);
 
   const controls = useMemo(
     () => [
@@ -107,8 +224,27 @@ export function WebPage({ onAddSystemLog }: WebPageProps) {
         disabled: false,
         onClick: goHome,
       },
+      {
+        label: "Webview DevTools",
+        icon: Bug,
+        disabled: false,
+        onClick: openWebviewDevTools,
+      },
+      {
+        label: isRawMode ? "Managed mode" : "Raw mode",
+        icon: ShieldOff,
+        disabled: false,
+        onClick: toggleRawMode,
+      },
     ],
-    [canGoBack, canGoForward, goHome],
+    [
+      canGoBack,
+      canGoForward,
+      goHome,
+      isRawMode,
+      openWebviewDevTools,
+      toggleRawMode,
+    ],
   );
 
   return (
@@ -147,18 +283,28 @@ export function WebPage({ onAddSystemLog }: WebPageProps) {
 
       <div className="relative flex-1 min-h-0">
         <webview
+          key={webviewKey}
           ref={(element) => {
             webviewRef.current = element as unknown as ElectronWebview | null;
           }}
-          src={DEFAULT_WEB_URL}
-          partition={WEBVIEW_PARTITION}
-          allowpopups={false}
+          src={currentUrl || DEFAULT_WEB_URL}
+          partition={isRawMode ? RAW_WEBVIEW_PARTITION : WEBVIEW_PARTITION}
           className="absolute inset-0 w-full h-full bg-black"
         />
         {isLoading && (
           <div className="absolute top-3 right-3 z-10 rounded-md bg-slate-950/80 border border-slate-700 px-3 py-1.5 text-[10px] text-slate-200 flex items-center gap-2 shadow-lg">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
             页面载入中
+          </div>
+        )}
+        {loadError && (
+          <div className="absolute left-1/2 top-1/2 z-10 w-[min(520px,calc(100%-32px))] -translate-x-1/2 -translate-y-1/2 rounded-md border border-red-500/40 bg-slate-950/90 p-4 text-sm text-slate-100 shadow-2xl">
+            <div className="mb-1 font-semibold text-red-300">
+              Webview load failed
+            </div>
+            <div className="break-words text-xs text-slate-300">
+              {loadError}
+            </div>
           </div>
         )}
       </div>

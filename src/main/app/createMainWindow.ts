@@ -4,6 +4,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { createIPCHandler } from "electron-trpc-experimental/main";
 import { appRouter } from "../router";
 import { setMainWindow } from "../windowState";
+import { setScrapeImpl } from "../postprocess/queue";
 import { setupTray, getIsQuitting, markQuitting } from "../tray";
 import { log } from "../logger";
 
@@ -75,6 +76,17 @@ export function createMainWindow(): void {
   setMainWindow(window);
 
   createIPCHandler({ router: appRouter, windows: [window] });
+
+  // 注入刮削实现，供下载后处理队列调用（通过 trpc createCaller 复用 metaRouter 逻辑）
+  setScrapeImpl(async (folderPath: string) => {
+    try {
+      const caller = appRouter.createCaller({});
+      const r = await caller.meta.scrapeMetadata({ folderPath });
+      return r as { success: boolean; error?: string };
+    } catch (e: any) {
+      return { success: false, error: e?.message || String(e) };
+    }
+  });
 
   setupTray(window);
 

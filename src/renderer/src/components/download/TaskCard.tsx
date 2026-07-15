@@ -21,6 +21,7 @@ export interface TaskCardProps {
   onDeleteTask: (id: string) => void;
   onCopyCommand: (e: React.MouseEvent, task: DownloadTask) => void;
   onPlayCompleted?: (task: DownloadTask) => void;
+  onRedownload?: (id: string) => void;
 }
 
 function formatScheduledAt(iso: string): string {
@@ -57,6 +58,7 @@ function TaskCardImpl({
   onDeleteTask,
   onCopyCommand,
   onPlayCompleted,
+  onRedownload,
 }: TaskCardProps) {
   const coverUrl =
     toProxiedAssetUrl(task.coverUrl) || getCoverUrlFromName(task.name);
@@ -171,13 +173,22 @@ function TaskCardImpl({
             </button>
 
             {task.status === "COMPLETED" ? (
-              <button
-                onClick={() => onPlayCompleted?.(task)}
-                className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-600 hover:bg-emerald-100 transition cursor-pointer"
-                title="立即查看"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-              </button>
+              <>
+                <button
+                  onClick={() => onRedownload?.(task.id)}
+                  className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 hover:text-amber-700 hover:bg-amber-50 transition cursor-pointer"
+                  title="重新下载（覆盖已下载文件）"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => onPlayCompleted?.(task)}
+                  className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-600 hover:bg-emerald-100 transition cursor-pointer"
+                  title="立即查看"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                </button>
+              </>
             ) : task.status === "FAILED" ? (
               <button
                 onClick={() => onTriggerPauseResume(task.id)}
@@ -230,6 +241,7 @@ export const TaskCard = React.memo(TaskCardImpl, (prev, next) => {
   if (prev.onDeleteTask !== next.onDeleteTask) return false;
   if (prev.onCopyCommand !== next.onCopyCommand) return false;
   if (prev.onPlayCompleted !== next.onPlayCompleted) return false;
+  if (prev.onRedownload !== next.onRedownload) return false;
   const a = prev.task;
   const b = next.task;
   if (a === b) return true;

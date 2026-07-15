@@ -322,30 +322,41 @@ async function buildCacheIncremental(
     currentSet.add(n);
   }
 
-  const entries: Record<string, CacheEntry> = { ...prev.entries };
   const toRefresh: string[] = [];
   const toRemove: string[] = [];
 
-  for (const id of currentSet) {
-    const prevEntry = entries[id];
-    if (!prevEntry) {
-      toRefresh.push(id);
-      continue;
-    }
-    const folderPath = path.join(videoDir, id);
-    const folderStat = await safeStat(folderPath);
-    if (!folderStat || !folderStat.isDirectory()) {
-      toRemove.push(id);
-      continue;
-    }
-    // 粗粒度：文件夹 mtime 未变 → 复用
-    if (Math.abs(folderStat.mtimeMs - prevEntry.folderMtime) < 1) continue;
-    toRefresh.push(id);
+  // 并发批量 stat 检测变化（原来逐个 await，上千目录会串行变慢）
+  const STAT_CONCURRENCY = 64;
+  const currentIds = [...currentSet];
+  for (let i = 0; i < currentIds.length; i += STAT_CONCURRENCY) {
+    const slice = currentIds.slice(i, i + STAT_CONCURRENCY);
+    await Promise.all(
+      slice.map(async (id) => {
+        const prevEntry = prev.entries[id];
+        if (!prevEntry) {
+          toRefresh.push(id);
+          return;
+        }
+        const folderStat = await safeStat(path.join(videoDir, id));
+        if (!folderStat || !folderStat.isDirectory()) {
+          toRemove.push(id);
+          return;
+        }
+        // 粗粒度：文件夹 mtime 未变 → 复用
+        if (Math.abs(folderStat.mtimeMs - prevEntry.folderMtime) >= 1) {
+          toRefresh.push(id);
+        }
+      }),
+    );
   }
-  for (const id of Object.keys(entries)) {
+  for (const id of Object.keys(prev.entries)) {
     if (!currentSet.has(id)) toRemove.push(id);
   }
 
+  // 无任何变化 → 复用旧缓存并返回同一引用（供上层跳过写盘/重排序）
+  if (toRefresh.length === 0 && toRemove.length === 0) return prev;
+
+  const entries: Record<string, CacheEntry> = { ...prev.entries };
   for (const id of toRemove) delete entries[id];
 
   const CONCURRENCY = 64;
@@ -377,11 +388,11 @@ async function getCacheFile(videoDir: string): Promise<CacheFile> {
   if (!diskCacheLock[videoDir]) {
     diskCacheLock[videoDir] = (async () => {
       const cached = await loadDiskCache(videoDir);
-      const rootStat = await safeStat(videoDir);
-      const rootMtime = rootStat?.mtimeMs ?? 0;
-      if (cached && Math.abs(rootMtime - cached.rootMtime) < 1) {
+      // 有缓存就走增量：它已能正确处理新增/删除/修改，比全量重建便宜得多。
+      // buildCacheIncremental 无变化时会原样返回 cached（同一引用），据此跳过写盘。
+      if (cached) {
         const inc = await buildCacheIncremental(videoDir, cached);
-        void saveDiskCache(videoDir, inc);
+        if (inc !== cached) void saveDiskCache(videoDir, inc);
         return inc;
       }
       const fresh = await buildCacheFromScratch(videoDir);

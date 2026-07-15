@@ -1173,6 +1173,39 @@ export function DownloadPage({
     [addLog, startTask],
   );
 
+  /* ---- 重新下载：已完成任务 → 清零进度后重新入队（会覆盖已下载文件） ---- */
+  const handleRedownload = useCallback(
+    (id: string) => {
+      const t = tasksRef.current.find((x) => x.id === id);
+      if (!t) return;
+      if (t.status === "DOWNLOADING" || t.status === "PENDING") return;
+      if (
+        !window.confirm(
+          `重新下载会覆盖已完成的文件，确定要重新下载吗？\n\n${t.name}`,
+        )
+      )
+        return;
+      setTasks((prev) =>
+        prev.map((x) =>
+          x.id === id
+            ? {
+                ...x,
+                status: "PENDING",
+                progress: 0,
+                speed: 0,
+                downloadedSize: 0,
+                downloadedSegments: 0,
+                logs: [...x.logs, "[操作] 已重新下载，重新入队。"],
+              }
+            : x,
+        ),
+      );
+      addLog(`🔁 重新下载：${t.name}`, "INFO");
+      setTimeout(() => startNextRef.current(), 100);
+    },
+    [addLog],
+  );
+
   /* ---- delete task ---- */
   const handleDeleteTask = useCallback(
     (id: string) => {
@@ -1184,6 +1217,7 @@ export function DownloadPage({
       // 清理 temp 临时文件
       if (task) {
         trpc.download.cleanupTemp.mutate({
+          taskId: task.id,
           saveDir: task.savePath,
           saveName: task.name,
           tmpDir: settings.temp_path,
@@ -1558,6 +1592,7 @@ export function DownloadPage({
                   onDeleteTask={handleDeleteTask}
                   onCopyCommand={handleCopyCommand}
                   onPlayCompleted={handlePlayCompleted}
+                  onRedownload={handleRedownload}
                 />
               );
             })}

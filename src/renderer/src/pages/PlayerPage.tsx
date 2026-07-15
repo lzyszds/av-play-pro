@@ -830,11 +830,14 @@ export function PlayerPage({
   useEffect(() => {
     if (!videoPath) return;
     let cancelled = false;
+    // 完整数据（含封面）一旦到达，就不再让轻量数据（无封面）覆盖它。
+    // 否则 list 比 lightweightList 先返回时，轻量结果会把封面刷没。
+    let fullLoaded = false;
 
     const loadLightweight = async () => {
       try {
         const raw: any[] = await trpc.videos.lightweightList.query({ path: videoPath });
-        if (cancelled) return;
+        if (cancelled || fullLoaded) return;
         const vids = convertItems(raw);
         setLocalVideos(vids);
         if (vids.length > 0 && selectedVideoIndex === null) {
@@ -857,6 +860,7 @@ export function PlayerPage({
         if (cancelled) return;
         const vids = convertItems(raw);
         if (vids.length > 0) {
+          fullLoaded = true;
           setLocalVideos(vids);
           if (selectedVideoIndex === null) {
             setSelectedVideoIndex(0);

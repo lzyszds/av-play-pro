@@ -196,8 +196,11 @@ export function setupCdnProxyProtocol(): void {
     const path = parsedUrl.pathname.toLowerCase();
     const isM3u8Path = path.endsWith(".m3u8");
     const m3u8CacheKey = `${parsedUrl.href}::${refererCandidates[0] || ""}`;
+    // 预览短视频（preview.mp4）体积小，走 Node https 小文件通道更稳（net.request 流式分支在部分环境会 502）
+    const isPreview = /\/preview\.mp4$/i.test(path);
     const isVideoSegment =
-      /\.(ts|m4s|mp4|aac)$/.test(path) || /\/\d+p\/.*\.jpeg$/i.test(path);
+      !isPreview &&
+      (/\.(ts|m4s|mp4|aac)$/.test(path) || /\/\d+p\/.*\.jpeg$/i.test(path));
 
     // m3u8 命中缓存（VOD manifest 不变）
     if (isM3u8Path && !rangeHeader) {
@@ -217,10 +220,12 @@ export function setupCdnProxyProtocol(): void {
     // —— 小文件（封面/密钥）可直接用 Node https。m3u8 走 Electron net 复用 WebView 的 CF cookie。 ——
     if (!isVideoSegment && !isM3u8Path) {
       try {
+        // 预览视频整段拉取（不转发 Range，避免 206 缺 Content-Range 被 <video> 拒绝）
+        const effectiveRange = isPreview ? undefined : rangeHeader;
         let r: Awaited<ReturnType<typeof fetchWithNode>> | null = null;
         let usedReferer = refererCandidates[0];
         for (const candidate of refererCandidates) {
-          const attempt = await fetchWithNode(parsedUrl, candidate, rangeHeader);
+          const attempt = await fetchWithNode(parsedUrl, candidate, effectiveRange);
           r = attempt;
           usedReferer = candidate;
           if (attempt.status !== 403) break;

@@ -4,10 +4,94 @@ import * as path from "path";
 import * as https from "https";
 import * as http from "http";
 import { spawn, exec, ChildProcess } from "child_process";
-import { app } from "electron";
+import { app, session } from "electron";
 import { t } from "../trpc";
 import { getMainWindow, getDownloadWidgetWindow } from "../windowState";
 import { enqueue as enqueuePostProcess } from "../postprocess/queue";
+import { MISSAV_WEB_PARTITION } from "../webview/missavWebSession";
+import { isCdnUrl, toLocalProxyUrl } from "../protocols/localMediaProxy";
+
+/** 从 headers JSON 里取出 Referer（不区分大小写） */
+function getRefererFromHeaders(headers?: string): string {
+  if (!headers) return "";
+  try {
+    const map = JSON.parse(headers) as Record<string, string>;
+    const key = Object.keys(map).find((k) => k.toLowerCase() === "referer");
+    return key ? map[key] : "";
+  } catch {
+    return "";
+  }
+}
+
+/** 与 cdnProxyProtocol 保持一致的完整 UA，截断的 UA 会被 Cloudflare 判定为机器人导致 403 */
+const FULL_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
+
+/**
+ * 构造传给 N_m3u8DL-RE 的 -H 头：
+ * 在用户/推送提供的头基础上，补全 UA、补 Origin、并注入 WebView 会话里
+ * 目标域名（surrit.com 等，挂在 Cloudflare 后）的 cf_clearance 等 Cookie，
+ * 否则会拿到 403 (Forbidden)。
+ */
+async function buildHeaderArgs(input: DownloadPayload): Promise<string[]> {
+  const map: Record<string, string> = {};
+  if (input.headers) {
+    try {
+      const parsed = JSON.parse(input.headers) as Record<string, string>;
+      for (const [k, v] of Object.entries(parsed)) {
+        if (v) map[k] = v;
+      }
+    } catch {}
+  }
+
+  const findKey = (name: string): string | undefined =>
+    Object.keys(map).find((k) => k.toLowerCase() === name.toLowerCase());
+
+  // 1) UA：缺失或被截断（不含 Chrome/）时替换为完整 UA
+  const uaKey = findKey("user-agent");
+  const ua = uaKey ? map[uaKey] : "";
+  if (!ua || !/chrome\//i.test(ua)) {
+    if (uaKey) delete map[uaKey];
+    map["User-Agent"] = FULL_UA;
+  }
+
+  // 2) Origin：从 Referer 推导
+  const refKey = findKey("referer");
+  const referer = refKey ? map[refKey] : "";
+  if (!findKey("origin") && referer) {
+    try {
+      map["Origin"] = new URL(referer).origin;
+    } catch {}
+  }
+
+  // 3) 注入 WebView 会话里目标域名的 Cookie（关键：Cloudflare cf_clearance）
+  try {
+    const cdnSession = session.fromPartition(MISSAV_WEB_PARTITION);
+    const cookies = await cdnSession.cookies.get({ url: input.url });
+    if (cookies.length) {
+      const cookieKey = findKey("cookie");
+      const existing = (cookieKey ? map[cookieKey] : "") || "";
+      const existingNames = new Set(
+        existing
+          .split(";")
+          .map((c) => c.split("=")[0].trim().toLowerCase())
+          .filter(Boolean),
+      );
+      const merged = cookies
+        .filter((c) => !existingNames.has(c.name.toLowerCase()))
+        .map((c) => `${c.name}=${c.value}`);
+      const all = [existing.trim(), ...merged].filter(Boolean).join("; ");
+      if (cookieKey) delete map[cookieKey];
+      if (all) map["Cookie"] = all;
+    }
+  } catch {}
+
+  const args: string[] = [];
+  for (const [k, v] of Object.entries(map)) {
+    if (v) args.push("-H", `${k}: ${v}`);
+  }
+  return args;
+}
 
 export interface DownloadPayload {
   taskId?: string;
@@ -86,6 +170,12 @@ function resolveToolPath(customPath?: string): string | null {
 
 function sanitizeName(name: string): string {
   return name.replace(/[\\/:*?"<>|]/g, "_");
+}
+
+/** 从标题里提取番号（如 "MIDA-405 [七沢みあ]…" → "MIDA-405"），取不到返回空串 */
+function extractCode(name: string): string {
+  const m = name.match(/^([A-Za-z]+-?\d+)/);
+  return m ? m[1].toUpperCase() : "";
 }
 
 function parsePercent(line: string): number | null {
@@ -214,9 +304,31 @@ export const downloadRouter = t.router({
           activeDownloads.delete(taskId);
         }
 
-        const tmpDir = input.tmpDir || path.join(input.saveDir, "temp");
+        // 每个任务的临时目录按番号隔离，避免并发任务都挤在 {temp}\video\ 里互相串。
+        // 番号取不到时退回 taskId（短且唯一），再退回任务文件夹名。
+        const baseTmp = input.tmpDir || path.join(input.saveDir, "temp");
+        const folderName = path.basename(input.saveDir.replace(/[\\/]+$/, ""));
+        const taskKey = sanitizeName(
+          extractCode(folderName) || input.taskId || folderName,
+        );
+        const tmpDir = path.join(baseTmp, taskKey);
+
+        // CDN（surrit 等）走本地代理，绕过 Cloudflare 对 N_m3u8DL-RE 的指纹拦截
+        let effectiveUrl = input.url;
+        if (isCdnUrl(input.url)) {
+          const referer =
+            getRefererFromHeaders(input.headers) || "https://missav.ai/";
+          effectiveUrl = toLocalProxyUrl(input.url, referer);
+          sendProgress({
+            line: `[SYSTEM] CDN detected, routing via local proxy to bypass Cloudflare`,
+            percent: 0,
+            done: false,
+            success: false,
+          });
+        }
+
         const args: string[] = [
-          input.url,
+          effectiveUrl,
           "--save-name",
           sanitizeName(input.saveName),
           "--save-dir",
@@ -244,17 +356,9 @@ export const downloadRouter = t.router({
           args.push("--max-speed", input.maxSpeed.trim());
         }
 
-        if (input.headers) {
-          try {
-            const headersMap = JSON.parse(input.headers) as Record<
-              string,
-              string
-            >;
-            for (const [key, value] of Object.entries(headersMap)) {
-              if (value) args.push("-H", `${key}: ${value}`);
-            }
-          } catch {}
-        }
+        // 补全 UA / Origin / 注入 Cloudflare Cookie，避免 surrit.com 等 CDN 返回 403
+        const headerArgs = await buildHeaderArgs(input);
+        args.push(...headerArgs);
 
         if (!fs.existsSync(input.saveDir)) {
           fs.mkdirSync(input.saveDir, { recursive: true });
@@ -317,9 +421,13 @@ export const downloadRouter = t.router({
           done: false,
           success: false,
         });
-        if (input.headers) {
+        if (headerArgs.length) {
+          // 仅展示头部名，避免把 cf_clearance/Cookie 明文打到日志
+          const headerNames = headerArgs
+            .filter((_, i) => i % 2 === 1)
+            .map((h) => h.split(":")[0]);
           sendProgress({
-            line: `[SYSTEM] Custom headers: ${input.headers}`,
+            line: `[SYSTEM] Request headers: ${headerNames.join(", ")}`,
             percent: 0,
             done: false,
             success: false,
@@ -419,10 +527,14 @@ export const downloadRouter = t.router({
                 success: true,
               });
               // 自动入队后处理：整理目录 → 刮削 → 通知
+              // input.saveDir 已是 {videos}\{番号标题} 目录，产物 video.mp4 就在其中。
+              // organizeFolder 按 saveDir/saveName 拼最终目录，这里拆成 父目录 + 目录名，
+              // 让最终目录正好等于 input.saveDir 本身，避免多套一层 video\。
               try {
+                const cleanSaveDir = input.saveDir.replace(/[\\/]+$/, "");
                 enqueuePostProcess({
-                  saveDir: input.saveDir,
-                  saveName: sanitizeName(input.saveName),
+                  saveDir: path.dirname(cleanSaveDir),
+                  saveName: path.basename(cleanSaveDir),
                 });
               } catch (e: any) {
                 console.warn(`[postprocess] enqueue failed: ${e?.message}`);
@@ -510,11 +622,41 @@ export const downloadRouter = t.router({
     cleanupTemp: t.procedure
       .input(
         (input: unknown) =>
-          input as { saveDir: string; saveName: string; tmpDir?: string },
+          input as {
+            taskId?: string;
+            saveDir: string;
+            saveName: string;
+            tmpDir?: string;
+          },
       )
       .mutation(({ input }) => {
         const tmpDir = input.tmpDir || path.join(input.saveDir, "temp");
         const sanitized = sanitizeName(input.saveName);
+
+        // 与 download.start 一致的番号临时目录：{tmpDir}\{番号|taskId|文件夹名}
+        const taskKey = sanitizeName(
+          extractCode(sanitized) || input.taskId || sanitized,
+        );
+        const taskTmpFolder = path.join(tmpDir, taskKey);
+        if (fs.existsSync(taskTmpFolder)) {
+          try {
+            fs.rmSync(taskTmpFolder, { recursive: true, force: true });
+            sendProgress({
+              line: `[SYSTEM] Removed temp folder: ${taskTmpFolder}`,
+              percent: null,
+              done: false,
+              success: false,
+            });
+          } catch (e: any) {
+            sendProgress({
+              line: `[SYSTEM] Failed to remove temp folder: ${e?.message}`,
+              percent: null,
+              done: false,
+              success: false,
+            });
+          }
+        }
+
         sendProgress({
           line: `[SYSTEM] Cleaning temp files: ${sanitized}*`,
           percent: null,

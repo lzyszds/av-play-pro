@@ -14,6 +14,8 @@ import { StarMapPage } from "./pages/StarMapPage";
 import { MosaicPage } from "./pages/MosaicPage";
 import { RssPage } from "./pages/RssPage";
 import { ActorsPage } from "./pages/ActorsPage";
+import { DiscoverPage } from "./pages/DiscoverPage";
+import { ScraperWebview } from "./components/ScraperWebview";
 import { trpc } from "./lib/trpc";
 import type { AppSettings, LogMessage } from "./pages/download/types";
 
@@ -42,7 +44,23 @@ const DEFAULT_SETTINGS: AppSettings = {
   privacyScreenBlur: 8,
   privacyScreenImageOpacity: 42,
   privacyScreenChangeSeconds: 10,
+  lastPage: "player",
 };
+
+// 合法的页面 key，用于校验持久化的 lastPage
+const VALID_PAGES: Page[] = [
+  "download",
+  "discover",
+  "player",
+  "web",
+  "stats",
+  "command",
+  "starmap",
+  "intel",
+  "mosaic",
+  "rss",
+  "actors",
+];
 
 function applyLoaderStyle(style: AppSettings["loaderStyle"]): void {
   document.documentElement.dataset.loader = style;
@@ -58,7 +76,7 @@ function applyTheme(mode: AppSettings["theme"]): void {
 }
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<Page>("download");
+  const [currentPage, setCurrentPage] = useState<Page>("player");
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -150,6 +168,13 @@ export default function App() {
         if (!merged.video_path?.trim()) merged.video_path = defaults.video_path;
         if (!merged.temp_path?.trim()) merged.temp_path = defaults.temp_path;
         setSettings(merged);
+        // 恢复上次所在页面（校验合法后）
+        if (
+          merged.lastPage &&
+          VALID_PAGES.includes(merged.lastPage as Page)
+        ) {
+          setCurrentPage(merged.lastPage as Page);
+        }
       })
       .finally(() => {
         if (!disposed) setSettingsLoaded(true);
@@ -159,6 +184,12 @@ export default function App() {
       disposed = true;
     };
   }, []);
+
+  // 记录当前页面 → 持久化（重启后恢复）。走既有的防抖落盘逻辑。
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    setSettings((s) => (s.lastPage === currentPage ? s : { ...s, lastPage: currentPage }));
+  }, [currentPage, settingsLoaded]);
 
   // 把 addLog 注入刻度图队列
   useEffect(() => {
@@ -303,6 +334,9 @@ export default function App() {
             }}
           />
         )}
+        {currentPage === "discover" && (
+          <DiscoverPage onAddSystemLog={addLog} />
+        )}
         {currentPage === "web" && <WebPage onAddSystemLog={addLog} />}
         {currentPage === "stats" && (
           <StatsPage videoPath={settings.video_path} onAddSystemLog={addLog} />
@@ -336,6 +370,9 @@ export default function App() {
           />
         )}
       </div>
+
+      {/* 常驻隐藏抓取 webview（用于过盾抓取 missav 列表） */}
+      <ScraperWebview />
 
       {/* 刻度图后台队列浮窗 */}
       <ThumbnailQueueWidget />

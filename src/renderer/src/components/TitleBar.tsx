@@ -22,6 +22,7 @@ import {
   Rss,
   Gauge,
   Users,
+  Compass,
 } from "lucide-react";
 import { trpc } from "../lib/trpc";
 import type { ThemeMode } from "../pages/download/types";
@@ -36,7 +37,8 @@ export type Page =
   | "intel"
   | "mosaic"
   | "rss"
-  | "actors";
+  | "actors"
+  | "discover";
 
 interface TitleBarProps {
   currentPage: Page;
@@ -64,8 +66,9 @@ const noDrag = { WebkitAppRegion: "no-drag" } as React.CSSProperties;
 const drag = { WebkitAppRegion: "drag" } as React.CSSProperties;
 
 const pages: Array<{ key: Page; label: string; icon: typeof Download }> = [
-  { key: "download", label: "下载管理", icon: Download },
   { key: "player", label: "播放器", icon: Play },
+  { key: "download", label: "下载管理", icon: Download },
+  { key: "discover", label: "发现", icon: Compass },
   { key: "actors", label: "演员", icon: Users },
   { key: "web", label: "网页", icon: Globe },
   { key: "command", label: "指挥", icon: Gauge },

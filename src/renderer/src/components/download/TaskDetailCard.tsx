@@ -185,7 +185,7 @@ export function TaskDetailCard({
 
         {/* 标题落在封面底部 */}
         <div className="absolute bottom-2 left-3 right-20 z-10">
-          <div className="text-[13px] font-bold text-white truncate drop-shadow" title={task.name}>
+          <div className="text-[13px] font-bold text-white truncate drop-shadow select-text" title={task.name}>
             {task.name}
           </div>
           <div className="text-[10px] text-white/70 font-mono mt-0.5">

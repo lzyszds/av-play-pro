@@ -97,6 +97,8 @@ export interface AppSettings {
   privacyScreenImageOpacity: number;
   /** 隐私屏保切换图片间隔秒数 */
   privacyScreenChangeSeconds: number;
+  /** 上次所在的页面（重启后恢复） */
+  lastPage?: string;
 }
 
 export interface DownloadPageProps {

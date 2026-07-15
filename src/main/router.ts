@@ -17,6 +17,7 @@ import { postprocessRouter } from "./routers/postprocessRouter";
 import { actorRouter } from "./routers/actorRouter";
 import { scenesRouter } from "./routers/scenesRouter";
 import { intelRouter } from "./routers/intelRouter";
+import { scrapeRouter } from "./routers/scrapeRouter";
 
 export const appRouter = t.router({
   download: downloadRouter,
@@ -37,6 +38,7 @@ export const appRouter = t.router({
   actor: actorRouter,
   scenes: scenesRouter,
   intel: intelRouter,
+  scrape: scrapeRouter,
 });
 
 export type AppRouter = typeof appRouter;

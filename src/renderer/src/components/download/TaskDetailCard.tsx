@@ -17,8 +17,7 @@ import {
   formatBytes,
   formatSpeed,
   generateN3u8DLCommand,
-  getCoverUrlFromName,
-  toProxiedAssetUrl,
+  resolveTaskCoverUrl,
 } from "../../pages/download/utils";
 import { getStatusBadge } from "./StatusBadge";
 
@@ -75,8 +74,7 @@ export function TaskDetailCard({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  const coverUrl =
-    toProxiedAssetUrl(task.coverUrl) || getCoverUrlFromName(task.name);
+  const coverUrl = resolveTaskCoverUrl(task, { allowRemote: true });
 
   const sizeText =
     task.totalSize > 0

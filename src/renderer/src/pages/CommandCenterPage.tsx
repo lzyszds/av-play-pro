@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Trash2,
   Workflow,
   UserRound,
   Users,
@@ -27,6 +28,7 @@ import { CoverImage } from "../components/CoverImage";
 
 interface Props {
   videoPath: string;
+  tempPath?: string;
   onAddSystemLog: (text: string, level: "INFO" | "WARNING" | "SUCCESS" | "ERROR") => void;
 }
 
@@ -62,6 +64,26 @@ interface TimelineBookmark {
   createdAt: string;
 }
 
+interface CleanupItem {
+  id: string;
+  path: string;
+  name: string;
+  kind: "empty" | "no_video" | "tiny_video" | "temp" | "loose_file";
+  reason: string;
+  sizeBytes: number;
+  sizeLabel: string;
+  fileCount: number;
+  selectedByDefault: boolean;
+}
+
+const KIND_LABEL: Record<CleanupItem["kind"], string> = {
+  empty: "空目录",
+  no_video: "删除残留",
+  tiny_video: "不完整",
+  temp: "临时文件",
+  loose_file: "散落文件",
+};
+
 function encodeMediaUrl(filePath?: string): string | undefined {
   if (!filePath || filePath.includes("://")) return filePath;
   const normalized = filePath.replace(/\\/g, "/");
@@ -74,6 +96,17 @@ function encodeMediaUrl(filePath?: string): string | undefined {
 
 function convertVideo(video: VideoItem): VideoItem {
   return { ...video, coverUrl: encodeMediaUrl(video.coverUrl) };
+}
+
+function formatBytesClient(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let i = 0;
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024;
+    i += 1;
+  }
+  return `${value.toFixed(value >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
 function StatTile({
@@ -164,7 +197,7 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export function CommandCenterPage({ videoPath, onAddSystemLog }: Props) {
+export function CommandCenterPage({ videoPath, tempPath, onAddSystemLog }: Props) {
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<any>(null);
   const [query, setQuery] = useState("");
@@ -173,6 +206,11 @@ export function CommandCenterPage({ videoPath, onAddSystemLog }: Props) {
   const [ingestPlan, setIngestPlan] = useState<{ total: number; steps: IngestStep[] } | null>(null);
   const [timelineRows, setTimelineRows] = useState<TimelineBookmark[]>([]);
   const [runningIngest, setRunningIngest] = useState(false);
+  const [cleanupItems, setCleanupItems] = useState<CleanupItem[]>([]);
+  const [cleanupSelected, setCleanupSelected] = useState<Set<string>>(new Set());
+  const [cleanupTotalLabel, setCleanupTotalLabel] = useState("0 B");
+  const [cleanupScanning, setCleanupScanning] = useState(false);
+  const [cleanupRunning, setCleanupRunning] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!videoPath) return;
@@ -243,6 +281,94 @@ export function CommandCenterPage({ videoPath, onAddSystemLog }: Props) {
     window.open(encodeMediaUrl(video.url), "_blank");
   };
 
+  const scanCleanup = async () => {
+    if (!videoPath) {
+      onAddSystemLog("未配置视频路径，无法扫描残留", "ERROR");
+      return;
+    }
+    setCleanupScanning(true);
+    try {
+      const data = await trpc.library.scanCleanupTargets.query({
+        rootPath: videoPath,
+        tempPath: tempPath || undefined,
+      });
+      setCleanupItems(data.items as CleanupItem[]);
+      setCleanupTotalLabel(data.totalLabel);
+      setCleanupSelected(
+        new Set(
+          (data.items as CleanupItem[])
+            .filter((item) => item.selectedByDefault)
+            .map((item) => item.path),
+        ),
+      );
+      onAddSystemLog(
+        `磁盘清理扫描完成: ${data.items.length} 项可清理（${data.totalLabel}）`,
+        data.items.length > 0 ? "WARNING" : "SUCCESS",
+      );
+    } catch (err: any) {
+      onAddSystemLog(`磁盘清理扫描失败: ${err?.message || err}`, "ERROR");
+    } finally {
+      setCleanupScanning(false);
+    }
+  };
+
+  const toggleCleanupItem = (itemPath: string) => {
+    setCleanupSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemPath)) next.delete(itemPath);
+      else next.add(itemPath);
+      return next;
+    });
+  };
+
+  const selectCleanupDefaults = () => {
+    setCleanupSelected(
+      new Set(cleanupItems.filter((item) => item.selectedByDefault).map((item) => item.path)),
+    );
+  };
+
+  const selectAllCleanup = () => {
+    setCleanupSelected(new Set(cleanupItems.map((item) => item.path)));
+  };
+
+  const clearCleanupSelection = () => setCleanupSelected(new Set());
+
+  const runCleanup = async () => {
+    if (cleanupSelected.size === 0 || cleanupRunning) return;
+    const ok = window.confirm(
+      `确认删除选中的 ${cleanupSelected.size} 项？此操作不可恢复。`,
+    );
+    if (!ok) return;
+    setCleanupRunning(true);
+    try {
+      const res = await trpc.library.cleanCleanupTargets.mutate({
+        rootPath: videoPath,
+        tempPath: tempPath || undefined,
+        paths: [...cleanupSelected],
+      });
+      onAddSystemLog(res.message, res.success ? "SUCCESS" : "WARNING");
+      if (res.failed?.length) {
+        for (const fail of res.failed.slice(0, 5)) {
+          onAddSystemLog(`清理失败: ${fail}`, "ERROR");
+        }
+      }
+      await scanCleanup();
+      await refresh();
+    } catch (err: any) {
+      onAddSystemLog(`清理执行失败: ${err?.message || err}`, "ERROR");
+    } finally {
+      setCleanupRunning(false);
+    }
+  };
+
+  const selectedCleanupBytes = useMemo(
+    () =>
+      cleanupItems
+        .filter((item) => cleanupSelected.has(item.path))
+        .reduce((sum, item) => sum + item.sizeBytes, 0),
+    [cleanupItems, cleanupSelected],
+  );
+
   const totals = overview?.totals;
 
   return (
@@ -298,6 +424,105 @@ export function CommandCenterPage({ videoPath, onAddSystemLog }: Props) {
           <StatTile icon={HardDrive} label="体积" value={totals.totalSize} sub="本地片库" />
         </div>
       )}
+
+      <section className="rounded-lg border border-rose-200 dark:border-rose-900/40 bg-white dark:bg-slate-900 p-4">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <Trash2 className="w-4 h-4 text-rose-500" />
+              磁盘清理工具
+            </h3>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              扫描删除失败残留、空目录、根目录散落文件与临时目录垃圾。若正片还在且播放器里仍能看到，请在播放器里重新删除。
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={scanCleanup}
+              disabled={cleanupScanning || !videoPath}
+              className="h-8 px-3 rounded-md bg-slate-900 text-white text-[11px] font-bold disabled:opacity-50 cursor-pointer"
+            >
+              {cleanupScanning ? "扫描中..." : "扫描残留"}
+            </button>
+            <button
+              type="button"
+              onClick={runCleanup}
+              disabled={cleanupRunning || cleanupSelected.size === 0}
+              className="h-8 px-3 rounded-md bg-rose-500 text-white text-[11px] font-bold disabled:opacity-50 cursor-pointer"
+            >
+              {cleanupRunning ? "清理中..." : `删除所选 (${cleanupSelected.size})`}
+            </button>
+          </div>
+        </div>
+
+        {cleanupItems.length === 0 ? (
+          <div className="rounded-md bg-slate-50 dark:bg-slate-800 px-3 py-6 text-center text-[12px] text-slate-400">
+            {cleanupScanning
+              ? "正在扫描磁盘..."
+              : "点击「扫描残留」开始检查。若历史删除只清了信息、文件还在，这里会列出来。"}
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between gap-3 mb-2 text-[11px]">
+              <div className="text-slate-500">
+                共 {cleanupItems.length} 项 · 合计 {cleanupTotalLabel} · 已选{" "}
+                {formatBytesClient(selectedCleanupBytes)}
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={selectCleanupDefaults} className="text-slate-500 hover:text-amber-500 cursor-pointer">
+                  默认勾选
+                </button>
+                <button type="button" onClick={selectAllCleanup} className="text-slate-500 hover:text-amber-500 cursor-pointer">
+                  全选
+                </button>
+                <button type="button" onClick={clearCleanupSelection} className="text-slate-500 hover:text-amber-500 cursor-pointer">
+                  清空
+                </button>
+              </div>
+            </div>
+            <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
+              {cleanupItems.map((item) => {
+                const checked = cleanupSelected.has(item.path);
+                return (
+                  <label
+                    key={item.id}
+                    className={`flex items-start gap-3 rounded-md px-3 py-2 cursor-pointer transition ${
+                      checked
+                        ? "bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40"
+                        : "bg-slate-50 dark:bg-slate-800 border border-transparent"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={checked}
+                      onChange={() => toggleCleanupItem(item.path)}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 text-rose-500">
+                          {KIND_LABEL[item.kind]}
+                        </span>
+                        <span className="text-[12px] font-bold text-slate-700 dark:text-slate-200 truncate">
+                          {item.name}
+                        </span>
+                        <span className="ml-auto text-[10px] font-mono text-slate-400 shrink-0">
+                          {item.sizeLabel} · {item.fileCount} 文件
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-[10px] text-slate-400 truncate">{item.reason}</div>
+                      <div className="text-[9px] font-mono text-slate-300 dark:text-slate-600 truncate">
+                        {item.path}
+                      </div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </section>
 
       <div className="grid grid-cols-[1fr_1fr] gap-4">
         <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">

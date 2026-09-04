@@ -180,6 +180,9 @@ export const HlsVideoPlayer: React.FC<Props> = ({
       video.removeEventListener("loadedmetadata", onLoadedMeta);
       try {
         video.pause();
+        // 显式卸掉 src，否则 Windows 上 local-media 文件句柄可能一直占着，导致删不掉
+        video.removeAttribute("src");
+        video.load();
       } catch {
         /* ignore */
       }

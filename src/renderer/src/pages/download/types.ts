@@ -109,6 +109,8 @@ export interface DownloadPageProps {
     level: "INFO" | "WARNING" | "SUCCESS" | "ERROR",
   ) => void;
   onPlayCompletedTask: (task: DownloadTask) => void;
+  /** 页面是否可见；隐藏时不拉 CDN 封面，避免拖慢本地播放 */
+  active?: boolean;
   /** 全局日志（由 App 持有），DownloadPage 读取/写入 */
   logs: LogMessage[];
   setLogs: React.Dispatch<React.SetStateAction<LogMessage[]>>;

@@ -9,6 +9,8 @@ export function setupCdnProxyProtocol(): void {
   const REFERER_PARAM = "__avp_referer";
   const m3u8Cache = new Map<string, { body: string; type: string; t: number }>();
   const cdnSession = session.fromPartition(MISSAV_WEB_PARTITION);
+  const FULL_UA =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
 
   const httpsAgent = new https.Agent({
     keepAlive: true,
@@ -17,25 +19,106 @@ export function setupCdnProxyProtocol(): void {
     maxFreeSockets: 16,
   });
 
-  // 用 Node https 拿全量 Buffer（适合封面/m3u8/密钥这些小文件）
-  const fetchWithNode = (
-    target: URL,
-    referer: string,
-    rangeHeader?: string,
-  ): Promise<{
+  type UpstreamResult = {
     status: number;
     contentType: string;
     body: Buffer;
     headers: Record<string, string | string[] | undefined>;
-  }> =>
+  };
+
+  const getOriginFromReferer = (referer: string): string | null => {
+    try {
+      return new URL(referer).origin;
+    } catch {
+      return null;
+    }
+  };
+
+  // Electron net + WebView 会话：Chromium TLS 指纹 + cf_clearance，封面/小文件主力通道
+  const fetchWithSession = (
+    target: URL,
+    referer: string,
+    rangeHeader?: string,
+  ): Promise<UpstreamResult> =>
+    new Promise((resolve, reject) => {
+      const origin = getOriginFromReferer(referer);
+      const upstream = net.request({
+        method: "GET",
+        url: target.href,
+        redirect: "follow",
+        session: cdnSession,
+        useSessionCookies: true,
+      });
+      upstream.setHeader("User-Agent", FULL_UA);
+      upstream.setHeader("Referer", referer);
+      if (origin) upstream.setHeader("Origin", origin);
+      upstream.setHeader(
+        "Accept",
+        "image/avif,image/webp,image/apng,image/svg+xml,image/*,video/*,application/vnd.apple.mpegurl,application/x-mpegURL,*/*;q=0.8",
+      );
+      upstream.setHeader("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
+      upstream.setHeader("Sec-Fetch-Site", "cross-site");
+      upstream.setHeader("Sec-Fetch-Mode", "cors");
+      upstream.setHeader(
+        "Sec-Fetch-Dest",
+        /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?|$)/i.test(target.pathname)
+          ? "image"
+          : "empty",
+      );
+      if (rangeHeader) upstream.setHeader("Range", rangeHeader);
+
+      const timer = setTimeout(() => {
+        try {
+          upstream.abort();
+        } catch {
+          /* ignore */
+        }
+        reject(new Error("timeout"));
+      }, UPSTREAM_TIMEOUT);
+
+      upstream.on("response", (res) => {
+        clearTimeout(timer);
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () =>
+          resolve({
+            status: res.statusCode || 200,
+            contentType:
+              (res.headers["content-type"] as string) ||
+              "application/octet-stream",
+            body: Buffer.concat(chunks),
+            headers: res.headers as Record<
+              string,
+              string | string[] | undefined
+            >,
+          }),
+        );
+        res.on("error", reject);
+      });
+      upstream.on("error", (err: Error) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+      upstream.on("abort", () => {
+        clearTimeout(timer);
+        reject(new Error("aborted"));
+      });
+      upstream.end();
+    });
+
+  // Node https 兜底（无 CF 会话时偶发仍可用；主力已改为 fetchWithSession）
+  const fetchWithNode = (
+    target: URL,
+    referer: string,
+    rangeHeader?: string,
+  ): Promise<UpstreamResult> =>
     new Promise((resolve, reject) => {
       const origin = getOriginFromReferer(referer);
       const headers: Record<string, string> = {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+        "User-Agent": FULL_UA,
         Referer: referer,
         Accept:
-          "application/vnd.apple.mpegurl,application/x-mpegURL,video/*,image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+          "image/avif,image/webp,image/apng,image/svg+xml,image/*,video/*,application/vnd.apple.mpegurl,application/x-mpegURL,*/*;q=0.8",
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         "Sec-Fetch-Site": "cross-site",
       };
@@ -52,7 +135,6 @@ export function setupCdnProxyProtocol(): void {
           agent: httpsAgent,
         },
         (res) => {
-          // 跟随重定向
           if (
             res.statusCode &&
             res.statusCode >= 300 &&
@@ -84,14 +166,6 @@ export function setupCdnProxyProtocol(): void {
       req.end();
     });
 
-  const getOriginFromReferer = (referer: string): string | null => {
-    try {
-      return new URL(referer).origin;
-    } catch {
-      return null;
-    }
-  };
-
   const unique = (items: string[]): string[] => Array.from(new Set(items));
 
   const getRefererCandidates = (
@@ -107,16 +181,22 @@ export function setupCdnProxyProtocol(): void {
       "https://missav.ws/",
       "https://missav.com/",
     ];
-    if (hostname.includes("fourhoi")) {
+    if (hostname.includes("fourhoi") || hostname.includes("surrit")) {
+      // /miab-678-uncensored-leak/cover-t.jpg → code=miab-678, full=miab-678-uncensored-leak
       const match = pathname.match(
-        /\/([a-z0-9]+-\d+(?:-uncensored-leak)?)\//i,
+        /\/([a-z0-9]+-\d+)(?:-([a-z0-9-]+))?\//i,
       );
       if (match) {
+        const code = match[1];
+        const full = match[2] ? `${code}-${match[2]}` : code;
         return unique([
           ...(explicit ? [explicit] : []),
-          `https://missav.ai/cn/${match[1]}`,
-          `https://missav.ws/cn/${match[1]}`,
-          `https://missav.com/cn/${match[1]}`,
+          `https://missav.ai/cn/${code}`,
+          `https://missav.ai/cn/${full}`,
+          `https://missav.ws/cn/${code}`,
+          `https://missav.ws/cn/${full}`,
+          `https://missav.com/cn/${code}`,
+          `https://missav.com/cn/${full}`,
           ...roots,
         ]);
       }
@@ -169,6 +249,58 @@ export function setupCdnProxyProtocol(): void {
       .join("\n");
   };
 
+  /** 小文件：先 Electron 会话，再 Node 兜底；403/502 时轮换 Referer */
+  const fetchSmallAsset = async (
+    target: URL,
+    refererCandidates: string[],
+    rangeHeader?: string,
+  ): Promise<{ result: UpstreamResult; usedReferer: string }> => {
+    let lastErr: unknown = null;
+    for (const candidate of refererCandidates) {
+      try {
+        const viaSession = await fetchWithSession(
+          target,
+          candidate,
+          rangeHeader,
+        );
+        if (viaSession.status === 403 || viaSession.status === 502) {
+          console.warn(
+            `[CDN-session] ${viaSession.status}，切换 Referer: ${new URL(candidate).host}`,
+          );
+          lastErr = new Error(`upstream ${viaSession.status}`);
+          continue;
+        }
+        return { result: viaSession, usedReferer: candidate };
+      } catch (err) {
+        lastErr = err;
+        console.warn(
+          `[CDN-session] 失败(${new URL(candidate).host}): ${(err as Error)?.message || err}`,
+        );
+      }
+    }
+
+    // Node 兜底（通常会被 CF 拦，但部分镜像仍可用）
+    for (const candidate of refererCandidates) {
+      try {
+        const viaNode = await fetchWithNode(target, candidate, rangeHeader);
+        if (viaNode.status === 403 || viaNode.status === 502) {
+          console.warn(
+            `[CDN-https] ${viaNode.status}，切换 Referer: ${new URL(candidate).host}`,
+          );
+          lastErr = new Error(`upstream ${viaNode.status}`);
+          continue;
+        }
+        return { result: viaNode, usedReferer: candidate };
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+
+    throw lastErr instanceof Error
+      ? lastErr
+      : new Error(String(lastErr || "No upstream response"));
+  };
+
   protocol.handle("cdn", async (request) => {
     const cdnUrl = request.url.replace("cdn://", "https://");
     let parsedUrl: URL;
@@ -196,10 +328,14 @@ export function setupCdnProxyProtocol(): void {
     const path = parsedUrl.pathname.toLowerCase();
     const isM3u8Path = path.endsWith(".m3u8");
     const m3u8CacheKey = `${parsedUrl.href}::${refererCandidates[0] || ""}`;
-    // 预览短视频（preview.mp4）体积小，走 Node https 小文件通道更稳（net.request 流式分支在部分环境会 502）
+    // 预览短视频体积小，走缓冲通道；分段大文件走下面的流式 net
     const isPreview = /\/preview\.mp4$/i.test(path);
+    const isImage =
+      /\.(jpe?g|png|webp|gif|avif|bmp|svg)$/i.test(path) ||
+      /\/cover[-_]?[a-z]?\.(jpe?g|png|webp)$/i.test(path);
     const isVideoSegment =
       !isPreview &&
+      !isImage &&
       (/\.(ts|m4s|mp4|aac)$/.test(path) || /\/\d+p\/.*\.jpeg$/i.test(path));
 
     // m3u8 命中缓存（VOD manifest 不变）
@@ -217,53 +353,24 @@ export function setupCdnProxyProtocol(): void {
       }
     }
 
-    // —— 小文件（封面/密钥）可直接用 Node https。m3u8 走 Electron net 复用 WebView 的 CF cookie。 ——
+    // —— 封面 / 预览 / 密钥等小文件：Electron 会话优先（绕过 CF 对 Node TLS 指纹的 502）——
     if (!isVideoSegment && !isM3u8Path) {
       try {
-        // 预览视频整段拉取（不转发 Range，避免 206 缺 Content-Range 被 <video> 拒绝）
         const effectiveRange = isPreview ? undefined : rangeHeader;
-        let r: Awaited<ReturnType<typeof fetchWithNode>> | null = null;
-        let usedReferer = refererCandidates[0];
-        for (const candidate of refererCandidates) {
-          const attempt = await fetchWithNode(parsedUrl, candidate, effectiveRange);
-          r = attempt;
-          usedReferer = candidate;
-          if (attempt.status !== 403) break;
-          console.warn(
-            `[CDN-https] 403，尝试切换 Referer: ${new URL(candidate).host}`,
-          );
-        }
-        if (!r) throw new Error("No upstream response");
+        const { result: r, usedReferer } = await fetchSmallAsset(
+          parsedUrl,
+          refererCandidates,
+          effectiveRange,
+        );
         console.log(
-          `[CDN-https] ${r.status} ${parsedUrl.pathname} (${Date.now() - t0}ms, ${r.contentType}, referer=${new URL(usedReferer).host})`,
+          `[CDN-small] ${r.status} ${parsedUrl.pathname} (${Date.now() - t0}ms, ${r.contentType}, referer=${new URL(usedReferer).host}, ${r.body.length}B)`,
         );
         if (r.status >= 400) {
           console.error(
-            `[CDN-https] 上游错误体: ${r.body.toString("utf8").slice(0, 300)}`,
+            `[CDN-small] 上游错误体: ${r.body.toString("utf8").slice(0, 300)}`,
           );
           return new Response(new Uint8Array(r.body) as any, {
             status: r.status,
-            headers: {
-              "Content-Type": r.contentType,
-              "Access-Control-Allow-Origin": "*",
-            },
-          });
-        }
-        if (isM3u8Path) {
-          const text = rewriteM3u8Body(
-            r.body.toString("utf8"),
-            parsedUrl,
-            usedReferer,
-          );
-          if (r.status === 200) {
-            m3u8Cache.set(`${parsedUrl.href}::${usedReferer}`, {
-              body: text,
-              type: r.contentType,
-              t: Date.now(),
-            });
-          }
-          return new Response(text, {
-            status: 200,
             headers: {
               "Content-Type": r.contentType,
               "Access-Control-Allow-Origin": "*",
@@ -280,7 +387,7 @@ export function setupCdnProxyProtocol(): void {
         });
       } catch (err: any) {
         console.error(
-          `[CDN-https] 失败 ${parsedUrl.href}: ${err?.message || err}`,
+          `[CDN-small] 失败 ${parsedUrl.href}: ${err?.message || err}`,
         );
         return new Response(`Upstream error: ${err?.message || err}`, {
           status: 502,
@@ -300,10 +407,7 @@ export function setupCdnProxyProtocol(): void {
         useSessionCookies: true,
       });
 
-      upstream.setHeader(
-        "User-Agent",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
-      );
+      upstream.setHeader("User-Agent", FULL_UA);
       upstream.setHeader("Referer", referer);
       const origin = getOriginFromReferer(referer);
       if (origin) upstream.setHeader("Origin", origin);
@@ -343,9 +447,12 @@ export function setupCdnProxyProtocol(): void {
           res.on("end", () => {
             const body = Buffer.concat(chunks).toString("utf8").slice(0, 300);
             console.error(`[CDN] 上游错误体: ${body}`);
-            if (status === 403 && refererIndex + 1 < refererCandidates.length) {
+            if (
+              (status === 403 || status === 502) &&
+              refererIndex + 1 < refererCandidates.length
+            ) {
               console.warn(
-                `[CDN] 403，尝试切换 Referer: ${new URL(refererCandidates[refererIndex + 1]).host}`,
+                `[CDN] ${status}，尝试切换 Referer: ${new URL(refererCandidates[refererIndex + 1]).host}`,
               );
               openUpstream(refererIndex + 1);
               return;
@@ -461,5 +568,5 @@ export function setupCdnProxyProtocol(): void {
     });
   });
 
-  console.log("[CDN代理] 已启用 cdn:// 协议 (Electron net)");
+  console.log("[CDN代理] 已启用 cdn:// 协议 (Electron net + session)");
 }

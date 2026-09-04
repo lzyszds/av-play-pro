@@ -75,6 +75,28 @@ interface CacheFile {
 const memoryCache: Record<string, { data: VideoItem[]; loadedAt: number }> = {};
 const diskCacheLock: Record<string, Promise<CacheFile> | undefined> = {};
 
+export function invalidateVideoListCache(rootPath: string) {
+  if (!rootPath) return;
+  const resolvedRoot = path.resolve(rootPath);
+  const rootKey =
+    process.platform === "win32"
+      ? resolvedRoot.toLowerCase()
+      : resolvedRoot;
+  for (const k of Object.keys(memoryCache)) {
+    const nk =
+      process.platform === "win32"
+        ? path.resolve(k).toLowerCase()
+        : path.resolve(k);
+    if (nk === rootKey) delete memoryCache[k];
+  }
+  try {
+    const cachePath = path.join(resolvedRoot, CACHE_NAME);
+    if (fs.existsSync(cachePath)) fs.unlinkSync(cachePath);
+  } catch {
+    /* ignore */
+  }
+}
+
 async function safeStat(p: string): Promise<fs.Stats | null> {
   try {
     return await fsPromises.stat(p);
@@ -685,7 +707,12 @@ export const videosRouter = t.router({
             };
           }
 
-          if (path.dirname(resolvedFolderPath) !== resolvedRoot) {
+          const parent = path.dirname(resolvedFolderPath);
+          const sameParent =
+            process.platform === "win32"
+              ? parent.toLowerCase() === resolvedRoot.toLowerCase()
+              : parent === resolvedRoot;
+          if (!sameParent) {
             return {
               success: false,
               error: "Only first-level child folders can be deleted",
@@ -694,6 +721,7 @@ export const videosRouter = t.router({
 
           fs.rmSync(resolvedFolderPath, { recursive: true, force: true });
           console.log(`[videos.delete] deleted ${resolvedFolderPath}`);
+          invalidateVideoListCache(resolvedRoot);
           return { success: true, error: undefined as string | undefined };
         } catch (err: any) {
           console.error(`[删除视频] 失败: ${err.message}`);

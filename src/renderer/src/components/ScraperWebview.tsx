@@ -10,8 +10,8 @@ import { Loader2 } from "lucide-react";
 
 // 常驻抓取 webview：平时隐藏（用于启动时后台抓取 + 注册给主进程）；
 // 「一键抓取」时临时弹出可见，让 Cloudflare 能过盾（必要时用户可直接点验证）。
+// 注意：不要在挂载时自动打开 missav——会拖一堆 CDN 封面，本地播放也被网络拖慢。
 const SCRAPER_PARTITION = "persist:missav-web";
-const BASE_FOR_WARMUP = "https://missav.ai/dm817/cn/uncensored-leak?page=1";
 const PER_PAGE_TIMEOUT = 90000; // 每页最多等 90s 过盾/渲染
 
 type ElectronWebview = HTMLElement & {
@@ -179,7 +179,7 @@ export function ScraperWebview() {
           ref={(el) => {
             ref.current = el as unknown as ElectronWebview | null;
           }}
-          src={BASE_FOR_WARMUP}
+          src="about:blank"
           partition={SCRAPER_PARTITION}
           style={{ width: "100%", height: "100%" }}
         />

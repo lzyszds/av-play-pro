@@ -307,6 +307,7 @@ export default function App() {
       <div className="flex-1 min-h-0 overflow-hidden anim-fade-in-up">
         <div className={currentPage === "download" ? "h-full" : "hidden"}>
           <DownloadPage
+            active={currentPage === "download"}
             settings={settings}
             onSettingsChange={setSettings}
             onAddSystemLog={addLog}
@@ -342,7 +343,11 @@ export default function App() {
           <StatsPage videoPath={settings.video_path} onAddSystemLog={addLog} />
         )}
         {currentPage === "command" && (
-          <CommandCenterPage videoPath={settings.video_path} onAddSystemLog={addLog} />
+          <CommandCenterPage
+            videoPath={settings.video_path}
+            tempPath={settings.temp_path}
+            onAddSystemLog={addLog}
+          />
         )}
 
         {currentPage === "intel" && (

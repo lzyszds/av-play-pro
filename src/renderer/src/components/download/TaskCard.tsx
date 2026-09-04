@@ -5,8 +5,7 @@ import type { DownloadTask } from "../../pages/download/types";
 import {
   formatBytes,
   formatSpeed,
-  getCoverUrlFromName,
-  toProxiedAssetUrl,
+  resolveTaskCoverUrl,
 } from "../../pages/download/utils";
 import { getStatusBadge } from "./StatusBadge";
 
@@ -16,6 +15,8 @@ export interface TaskCardProps {
   isFlashing?: boolean;
   copiedTaskId: string | null;
   index: number;
+  /** 是否允许加载远程/CDN 封面；下载页隐藏时应为 false */
+  allowRemoteCovers?: boolean;
   onSelectTask: (id: string) => void;
   onTriggerPauseResume: (id: string) => void;
   onDeleteTask: (id: string) => void;
@@ -53,6 +54,7 @@ function TaskCardImpl({
   isFlashing,
   copiedTaskId,
   index,
+  allowRemoteCovers = true,
   onSelectTask,
   onTriggerPauseResume,
   onDeleteTask,
@@ -60,8 +62,9 @@ function TaskCardImpl({
   onPlayCompleted,
   onRedownload,
 }: TaskCardProps) {
-  const coverUrl =
-    toProxiedAssetUrl(task.coverUrl) || getCoverUrlFromName(task.name);
+  const coverUrl = resolveTaskCoverUrl(task, {
+    allowRemote: allowRemoteCovers,
+  });
   useScheduleTick(task.taskTag === "SCHEDULED" && !!task.scheduledAt);
 
   return (
@@ -242,6 +245,7 @@ export const TaskCard = React.memo(TaskCardImpl, (prev, next) => {
   if (prev.onCopyCommand !== next.onCopyCommand) return false;
   if (prev.onPlayCompleted !== next.onPlayCompleted) return false;
   if (prev.onRedownload !== next.onRedownload) return false;
+  if (prev.allowRemoteCovers !== next.allowRemoteCovers) return false;
   const a = prev.task;
   const b = next.task;
   if (a === b) return true;

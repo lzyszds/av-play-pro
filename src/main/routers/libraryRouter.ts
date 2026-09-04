@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { app } from "electron";
 import { t } from "../trpc";
+import { invalidateVideoListCache } from "./videosRouter";
 
 interface LibraryVideo {
   id: string;
@@ -176,6 +177,47 @@ function dateKey(ts?: number): string {
 
 function dayDiff(a: Date, b: Date): number {
   return Math.floor((a.getTime() - b.getTime()) / 86400000);
+}
+
+type CleanupKind = "empty" | "no_video" | "tiny_video" | "temp" | "loose_file";
+
+interface CleanupItem {
+  id: string;
+  path: string;
+  name: string;
+  kind: CleanupKind;
+  reason: string;
+  sizeBytes: number;
+  sizeLabel: string;
+  fileCount: number;
+  selectedByDefault: boolean;
+}
+
+async function measurePath(target: string): Promise<{ bytes: number; files: number }> {
+  const st = await fs.promises.stat(target).catch(() => null);
+  if (!st) return { bytes: 0, files: 0 };
+  if (st.isFile()) return { bytes: st.size, files: 1 };
+  if (!st.isDirectory()) return { bytes: 0, files: 0 };
+
+  let bytes = 0;
+  let files = 0;
+  const stack = [target];
+  while (stack.length > 0) {
+    const dir = stack.pop()!;
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const fileStat = await fs.promises.stat(full).catch(() => null);
+      bytes += fileStat?.size || 0;
+      files += 1;
+    }
+  }
+  return { bytes, files };
 }
 
 export const libraryRouter = t.router({
@@ -455,5 +497,208 @@ export const libraryRouter = t.router({
         })
         .slice()
         .reverse();
+    }),
+
+  /** 扫描删除失败残留 / 空目录 / 临时目录垃圾 */
+  scanCleanupTargets: t.procedure
+    .input((input: unknown) => input as { rootPath: string; tempPath?: string })
+    .query(async ({ input }) => {
+      const items: CleanupItem[] = [];
+      const rootPath = input.rootPath?.trim();
+      if (rootPath && fs.existsSync(rootPath)) {
+        const names = await fs.promises.readdir(rootPath).catch(() => [] as string[]);
+        for (const name of names) {
+          if (name.startsWith(".") || name === ".avplay_index.json") continue;
+          const folderPath = path.join(rootPath, name);
+          const st = await fs.promises.stat(folderPath).catch(() => null);
+          if (!st) continue;
+
+          if (st.isFile()) {
+            const { bytes, files } = await measurePath(folderPath);
+            items.push({
+              id: `root-file:${name}`,
+              path: folderPath,
+              name,
+              kind: "loose_file",
+              reason: "片库根目录散落文件（非标准文件夹结构）",
+              sizeBytes: bytes,
+              sizeLabel: formatBytes(bytes),
+              fileCount: files,
+              selectedByDefault: true,
+            });
+            continue;
+          }
+
+          if (!st.isDirectory()) continue;
+
+          const entries = await fs.promises.readdir(folderPath).catch(() => [] as string[]);
+          const videoName = findByExt(
+            entries.filter((n) => !/^preview\./i.test(n)),
+            VIDEO_EXTS,
+            ["video.mp4", "video.mkv", "video.ts", "video.m4v"],
+          );
+
+          if (!videoName) {
+            const { bytes, files } = await measurePath(folderPath);
+            const kind: CleanupKind = files === 0 ? "empty" : "no_video";
+            items.push({
+              id: `orphan:${name}`,
+              path: folderPath,
+              name,
+              kind,
+              reason:
+                kind === "empty"
+                  ? "空文件夹"
+                  : "无正片文件（多半是删除失败留下的 meta/封面/缩略图）",
+              sizeBytes: bytes,
+              sizeLabel: formatBytes(bytes),
+              fileCount: files,
+              selectedByDefault: true,
+            });
+            continue;
+          }
+
+          const videoPath = path.join(folderPath, videoName);
+          const videoStat = await fs.promises.stat(videoPath).catch(() => null);
+          const videoSize = videoStat?.size || 0;
+          // 过小的正片通常是下载中断残留
+          if (videoSize > 0 && videoSize < 5 * 1024 * 1024) {
+            const { bytes, files } = await measurePath(folderPath);
+            items.push({
+              id: `tiny:${name}`,
+              path: folderPath,
+              name,
+              kind: "tiny_video",
+              reason: `正片过小（${formatBytes(videoSize)}），疑似下载不完整`,
+              sizeBytes: bytes,
+              sizeLabel: formatBytes(bytes),
+              fileCount: files,
+              selectedByDefault: false,
+            });
+          }
+        }
+      }
+
+      const tempPath = input.tempPath?.trim();
+      if (tempPath && fs.existsSync(tempPath)) {
+        const names = await fs.promises.readdir(tempPath).catch(() => [] as string[]);
+        for (const name of names) {
+          if (name.startsWith(".")) continue;
+          const target = path.join(tempPath, name);
+          const { bytes, files } = await measurePath(target);
+          if (files === 0 && bytes === 0) continue;
+          items.push({
+            id: `temp:${name}`,
+            path: target,
+            name,
+            kind: "temp",
+            reason: "临时目录残留（下载/转码缓存）",
+            sizeBytes: bytes,
+            sizeLabel: formatBytes(bytes),
+            fileCount: files,
+            selectedByDefault: true,
+          });
+        }
+      }
+
+      items.sort((a, b) => b.sizeBytes - a.sizeBytes);
+      const totalBytes = items.reduce((sum, item) => sum + item.sizeBytes, 0);
+      return {
+        items,
+        totalBytes,
+        totalLabel: formatBytes(totalBytes),
+        orphanCount: items.filter((i) => i.kind === "empty" || i.kind === "no_video").length,
+        tempCount: items.filter((i) => i.kind === "temp").length,
+        tinyCount: items.filter((i) => i.kind === "tiny_video").length,
+      };
+    }),
+
+  /** 批量删除扫描出的残留路径 */
+  cleanCleanupTargets: t.procedure
+    .input(
+      (input: unknown) =>
+        input as { rootPath: string; tempPath?: string; paths: string[] },
+    )
+    .mutation(async ({ input }) => {
+      const paths = Array.isArray(input.paths) ? input.paths : [];
+      if (paths.length === 0) {
+        return { success: false, deleted: 0, failed: [] as string[], freedBytes: 0, message: "未选择任何项" };
+      }
+
+      const allowedRoots = [input.rootPath, input.tempPath]
+        .filter((p): p is string => !!p?.trim())
+        .map((p) => path.resolve(p.trim()));
+
+      const failed: string[] = [];
+      let deleted = 0;
+      let freedBytes = 0;
+
+      for (const raw of paths) {
+        const target = path.resolve(raw);
+        const underAllowed = allowedRoots.some((root) => {
+          const rel = path.relative(root, target);
+          return (
+            rel !== "" &&
+            !rel.startsWith("..") &&
+            !path.isAbsolute(rel)
+          );
+        });
+        if (!underAllowed) {
+          failed.push(`${target}（不在允许目录内）`);
+          continue;
+        }
+
+        // 片库根下只允许删一级子项；临时目录允许更深
+        const parent = path.dirname(target);
+        const underRoot = allowedRoots.some((root) => {
+          const same =
+            process.platform === "win32"
+              ? parent.toLowerCase() === root.toLowerCase()
+              : parent === root;
+          return same;
+        });
+        const underTempDeep =
+          !!input.tempPath &&
+          (() => {
+            const tempRoot = path.resolve(input.tempPath!);
+            const rel = path.relative(tempRoot, target);
+            return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+          })();
+
+        if (!underRoot && !underTempDeep) {
+          failed.push(`${target}（仅允许删除根目录一级子项）`);
+          continue;
+        }
+
+        try {
+          const measured = await measurePath(target);
+          if (!fs.existsSync(target)) {
+            failed.push(`${target}（不存在）`);
+            continue;
+          }
+          fs.rmSync(target, { recursive: true, force: true });
+          deleted += 1;
+          freedBytes += measured.bytes;
+        } catch (err: any) {
+          failed.push(`${target}（${err?.message || err}）`);
+        }
+      }
+
+      // 清掉片库列表缓存，避免残留还显示
+      if (input.rootPath) {
+        invalidateVideoListCache(input.rootPath);
+      }
+
+      return {
+        success: failed.length === 0,
+        deleted,
+        failed,
+        freedBytes,
+        freedLabel: formatBytes(freedBytes),
+        message:
+          failed.length === 0
+            ? `已清理 ${deleted} 项，释放 ${formatBytes(freedBytes)}`
+            : `已清理 ${deleted} 项，${failed.length} 项失败`,
+      };
     }),
 });

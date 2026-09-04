@@ -35,7 +35,6 @@ import {
   formatBytes,
   formatSpeed,
   generateN3u8DLCommand,
-  getCoverUrlFromName,
   toProxiedAssetUrl,
 } from "./download/utils";
 
@@ -101,6 +100,7 @@ export function DownloadPage({
   onSettingsChange,
   onAddSystemLog,
   onPlayCompletedTask,
+  active = true,
   logs,
   setLogs,
   addLog,
@@ -1587,6 +1587,7 @@ export function DownloadPage({
                   isSelected={selectedTaskId === task.id}
                   isFlashing={flashTaskId === task.id}
                   copiedTaskId={copiedTaskId}
+                  allowRemoteCovers={active}
                   onSelectTask={handleSelectTask}
                   onTriggerPauseResume={handleTriggerPauseResume}
                   onDeleteTask={handleDeleteTask}

@@ -769,15 +769,129 @@ export function PlayerPage({
     setIsBackfilling(false);
   };
 
+  const releaseVideoHandle = () => {
+    if (!videoEl) return;
+    try {
+      videoEl.pause();
+      videoEl.removeAttribute("src");
+      videoEl.load();
+    } catch {
+      /* ignore */
+    }
+    setVideoEl(null);
+  };
+
   const handleDeleteVideo = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || isDeleting) return;
+    const target = deleteTarget;
     setIsDeleting(true);
-    const folderPath = deriveFolderFromUrl(deleteTarget.url);
-    if (folderPath)
-      await trpc.videos.delete.mutate({ folderPath, rootPath: videoPath });
-    setDeleteTarget(null);
-    setIsDeleting(false);
-    await refreshVideoList();
+
+    try {
+      const folderPath = deriveFolderFromUrl(target.url);
+      if (!folderPath) {
+        onAddSystemLog("删除失败: 无法解析文件夹路径", "ERROR");
+        return;
+      }
+
+      const isPlayingTarget =
+        (selectedVideoId != null && selectedVideoId === target.id) ||
+        (!!activeStream.url &&
+          (activeStream.url === target.url ||
+            activeStream.name === target.name));
+
+      let switchToId: string | null = null;
+
+      if (isPlayingTarget) {
+        const idx = filteredVideos.findIndex((v) => v.id === target.id);
+        const neighbor =
+          (idx >= 0 ? filteredVideos[idx + 1] : undefined) ??
+          (idx > 0 ? filteredVideos[idx - 1] : undefined) ??
+          null;
+
+        // 先卸掉当前文件句柄，再切到相邻视频，避免 Windows 占用导致删不干净
+        releaseVideoHandle();
+
+        if (neighbor) {
+          switchToId = neighbor.id;
+          const neighborIdx = filteredVideos.findIndex(
+            (v) => v.id === neighbor.id,
+          );
+          setSelectedVideoIndex(neighborIdx >= 0 ? neighborIdx : null);
+          setUserInitiated(true);
+          setActiveStream({
+            name: neighbor.name,
+            url: neighbor.url,
+            resolution: neighbor.resolution,
+            encryptionType: neighbor.encryptionType || "检测中",
+            referer: "",
+          });
+        } else {
+          setSelectedVideoIndex(null);
+          setActiveStream({
+            name: "等待选择视频...",
+            url: "",
+            resolution: "--",
+            encryptionType: "--",
+            referer: "",
+          });
+        }
+
+        // 等播放器 remount + 系统释放句柄
+        await new Promise((r) => setTimeout(r, 400));
+      }
+
+      const result = await trpc.videos.delete.mutate({
+        folderPath,
+        rootPath: videoPath,
+      });
+
+      if (!result?.success) {
+        onAddSystemLog(
+          `删除失败: ${result?.error || "未知错误"}`,
+          "ERROR",
+        );
+        return;
+      }
+
+      onAddSystemLog(`已删除: ${target.name}`, "SUCCESS");
+      setDeleteTarget(null);
+
+      const vids = await refreshVideoList();
+      if (switchToId) {
+        let list = vids;
+        if (showOnlyFavorites)
+          list = list.filter((v) => favorites.has(v.id));
+        if (filterActor !== "全部")
+          list = list.filter((v) => v.actors?.some((a) => a === filterActor));
+        if (filterStudio !== "全部")
+          list = list.filter((v) => v.studio === filterStudio);
+        if (filterGenre !== "全部")
+          list = list.filter((v) => v.genres?.includes(filterGenre));
+        if (filterHasSubtitle)
+          list = list.filter((v) => {
+            const folder = deriveFolderFromUrl(v.url);
+            return !!folder && subtitleFolderSet.has(folder);
+          });
+        const nextIdx = list.findIndex((v) => v.id === switchToId);
+        if (nextIdx >= 0) {
+          setSelectedVideoIndex(nextIdx);
+          const v = list[nextIdx];
+          setActiveStream({
+            name: v.name,
+            url: v.url,
+            resolution: v.resolution,
+            encryptionType: v.encryptionType || "检测中",
+            referer: "",
+          });
+        } else {
+          setSelectedVideoIndex(null);
+        }
+      }
+    } catch (err: any) {
+      onAddSystemLog(`删除失败: ${err?.message || err}`, "ERROR");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleAddTimelineBookmark = async () => {
@@ -884,8 +998,8 @@ export function PlayerPage({
     return () => { cancelled = true; };
   }, [videoPath]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const refreshVideoList = async () => {
-    if (!videoPath) return;
+  const refreshVideoList = async (): Promise<VideoItem[]> => {
+    if (!videoPath) return [];
     setEnrichProgress(0);
     setIsLoadingVideos(true);
     try {
@@ -902,6 +1016,7 @@ export function PlayerPage({
           referer: "",
         });
       }
+      return vids;
     } finally {
       setIsLoadingVideos(false);
       setEnrichProgress(2);
@@ -1373,16 +1488,18 @@ export function PlayerPage({
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => setDeleteTarget(null)}
-                className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors"
+                onClick={() => !isDeleting && setDeleteTarget(null)}
+                disabled={isDeleting}
+                className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors disabled:opacity-50"
               >
                 取消
               </button>
               <button
                 onClick={handleDeleteVideo}
-                className="flex-1 py-3 bg-rose-500 text-white rounded-xl font-bold hover:bg-rose-600 shadow-lg shadow-rose-500/20 transition-all"
+                disabled={isDeleting}
+                className="flex-1 py-3 bg-rose-500 text-white rounded-xl font-bold hover:bg-rose-600 shadow-lg shadow-rose-500/20 transition-all disabled:opacity-50"
               >
-                确认删除
+                {isDeleting ? "删除中..." : "确认删除"}
               </button>
             </div>
           </div>

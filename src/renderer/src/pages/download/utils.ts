@@ -49,6 +49,22 @@ export function toProxiedAssetUrl(url?: string): string | undefined {
     return url;
   }
 }
+
+/** 任务封面：优先用任务自带地址；禁止臆造 CDN 兜底（会在本地播放时偷偷打网） */
+export function resolveTaskCoverUrl(
+  task: { coverUrl?: string; name?: string },
+  options?: { allowRemote?: boolean },
+): string | undefined {
+  const allowRemote = options?.allowRemote !== false;
+  const proxied = toProxiedAssetUrl(task.coverUrl);
+  if (!proxied) return undefined;
+  const isRemote =
+    proxied.startsWith("cdn://") ||
+    proxied.startsWith("https://") ||
+    proxied.startsWith("http://");
+  if (isRemote && !allowRemote) return undefined;
+  return proxied;
+}
 export function formatSpeed(bytesPerSec: number): string {
   if (bytesPerSec === 0) return "0 KB/s";
   const mbs = bytesPerSec / (1024 * 1024);

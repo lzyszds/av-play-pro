@@ -23,6 +23,9 @@ import {
   Minimize2,
   AlertTriangle,
   Users,
+  Power,
+  Zap,
+  Sparkles,
 } from "lucide-react";
 import {
   Area,
@@ -79,6 +82,20 @@ interface ArousalData {
   totals: { count: number; totalSec: number };
 }
 
+interface AppLaunch {
+  at: string;
+  version?: string;
+}
+
+type DayTimelineEventType = "launch" | "play" | "download" | "arousal";
+
+interface DayTimelineEvent {
+  at: string;
+  type: DayTimelineEventType;
+  label?: string;
+  meta?: { folder?: string; durationSec?: number; bytes?: number };
+}
+
 interface StatsData {
   daily: Record<string, ActivityBucket>;
   hourly?: Record<string, ActivityBucket>;
@@ -88,6 +105,8 @@ interface StatsData {
   diskSnapshots: DiskSnapshot[];
   totals: ActivityBucket;
   arousal?: ArousalData;
+  launches?: AppLaunch[];
+  dayTimeline?: Record<string, DayTimelineEvent[]>;
 }
 
 interface LibraryVideo {
@@ -160,6 +179,71 @@ function lastNDays(n: number): string[] {
 function parseDay(key: string): Date {
   const [y, m, d] = key.split("-").map(Number);
   return new Date(y, (m || 1) - 1, d || 1);
+}
+
+function formatDayTitle(key: string): string {
+  const d = parseDay(key);
+  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${WEEKDAY_LABELS[d.getDay()]}`;
+}
+
+function formatClockTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "--:--:--";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+}
+
+function formatGapMs(ms: number): string {
+  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))} 秒`;
+  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)} 分钟`;
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  return m > 0 ? `${h} 小时 ${m} 分` : `${h} 小时`;
+}
+
+function timelineEventIcon(type: DayTimelineEventType): IconType {
+  switch (type) {
+    case "launch":
+      return Power;
+    case "play":
+      return Play;
+    case "download":
+      return Download;
+    case "arousal":
+      return Timer;
+    default:
+      return Activity;
+  }
+}
+
+function timelineEventTone(type: DayTimelineEventType): string {
+  switch (type) {
+    case "launch":
+      return "text-violet-500 bg-violet-500/10 border-violet-500/20";
+    case "play":
+      return "text-amber-500 bg-amber-500/10 border-amber-500/20";
+    case "download":
+      return "text-sky-500 bg-sky-500/10 border-sky-500/20";
+    case "arousal":
+      return "text-rose-500 bg-rose-500/10 border-rose-500/20";
+    default:
+      return "text-slate-500 bg-slate-500/10 border-slate-500/20";
+  }
+}
+
+function timelineEventLabel(event: DayTimelineEvent): string {
+  if (event.label) return event.label;
+  switch (event.type) {
+    case "launch":
+      return "应用启动";
+    case "play":
+      return "播放视频";
+    case "download":
+      return "下载任务";
+    case "arousal":
+      return "私密计时";
+    default:
+      return "活动";
+  }
 }
 
 function dayDiff(a: string, b: string): number {
@@ -460,8 +544,297 @@ function HeatStat({
   );
 }
 
-function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
+function HeatmapDayPanel({
+  day,
+  daily,
+  dayTimeline,
+  launches,
+  arousal,
+  days,
+  topDay,
+}: {
+  day: string | null;
+  daily: Record<string, ActivityBucket>;
+  dayTimeline: Record<string, DayTimelineEvent[]>;
+  launches: AppLaunch[];
+  arousal?: ArousalData;
+  days: string[];
+  topDay: { day: string; watch: number; plays: number } | null;
+}) {
+  const bucket = day ? daily[day] : null;
+  const plays = bucket?.plays || 0;
+  const watch = bucket?.watchSec || 0;
+  const downloads = bucket?.downloads || 0;
+
+  const dayLaunches = useMemo(() => {
+    if (!day) return [];
+    const map = new Map<string, AppLaunch>();
+    for (const launch of launches) {
+      if (launch.at.slice(0, 10) === day) map.set(launch.at, launch);
+    }
+    for (const event of dayTimeline[day] || []) {
+      if (event.type === "launch") map.set(event.at, { at: event.at });
+    }
+    return Array.from(map.values()).sort((a, b) => a.at.localeCompare(b.at));
+  }, [day, launches, dayTimeline]);
+
+  const events = useMemo(() => {
+    if (!day) return [];
+    return [...(dayTimeline[day] || [])].sort((a, b) => a.at.localeCompare(b.at));
+  }, [day, dayTimeline]);
+
+  const arousalToday = useMemo(() => {
+    if (!day || !arousal) return [];
+    return arousal.sessions.filter((s) => s.startedAt.slice(0, 10) === day);
+  }, [day, arousal]);
+
+  const playPercentile = useMemo(() => {
+    if (!day || !plays) return 0;
+    const active = days.map((d) => daily[d]?.plays || 0).filter((v) => v > 0);
+    if (!active.length) return 0;
+    const below = active.filter((v) => v < plays).length;
+    return Math.round((below / active.length) * 100);
+  }, [day, plays, days, daily]);
+
+  const launchGaps = useMemo(() => {
+    const gaps: number[] = [];
+    for (let i = 1; i < dayLaunches.length; i++) {
+      gaps.push(new Date(dayLaunches[i].at).getTime() - new Date(dayLaunches[i - 1].at).getTime());
+    }
+    return gaps;
+  }, [dayLaunches]);
+
+  const activityLevel = useMemo(() => {
+    if (!day) return "none" as const;
+    const score = plays * 60 + watch + downloads * 120 + dayLaunches.length * 30;
+    if (score === 0) return "none" as const;
+    if (score >= 3600 || plays >= 20) return "high" as const;
+    if (score >= 600 || plays >= 5) return "medium" as const;
+    return "low" as const;
+  }, [day, plays, watch, downloads, dayLaunches.length]);
+
+  const isTopDay = topDay?.day === day;
+  const isToday = day === todayKey();
+
+  if (!day) {
+    return (
+      <div className="w-64 shrink-0 self-stretch rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30 flex flex-col items-center justify-center text-center px-4 py-6 anim-fade-in">
+        <CalendarDays className="w-8 h-8 text-slate-300 dark:text-slate-600 mb-2" />
+        <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400">点击日历格子</p>
+        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
+          查看当日启动时间、播放记录与活动时间轴
+        </p>
+      </div>
+    );
+  }
+
+  const levelBadge =
+    activityLevel === "high"
+      ? { text: "高能日", cls: "from-amber-500/20 to-orange-500/10 text-amber-700 dark:text-amber-300" }
+      : activityLevel === "medium"
+        ? { text: "活跃日", cls: "from-emerald-500/20 to-teal-500/10 text-emerald-700 dark:text-emerald-300" }
+        : activityLevel === "low"
+          ? { text: "轻量日", cls: "from-slate-400/15 to-slate-500/5 text-slate-600 dark:text-slate-300" }
+          : { text: "空白日", cls: "from-slate-300/10 to-slate-400/5 text-slate-500 dark:text-slate-400" };
+
+  return (
+    <div
+      key={day}
+      className="w-64 shrink-0 self-stretch rounded-xl border border-slate-200/80 dark:border-slate-700/80 bg-gradient-to-br from-white via-slate-50/80 to-violet-50/30 dark:from-slate-900 dark:via-slate-900 dark:to-violet-950/20 overflow-hidden flex flex-col anim-slide-right shadow-sm"
+    >
+      <div className="relative px-3 pt-3 pb-2 border-b border-slate-200/60 dark:border-slate-800/80">
+        <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-violet-500 via-amber-400 to-emerald-400 opacity-80" />
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold text-violet-600 dark:text-violet-400 flex items-center gap-1">
+              <Sparkles className="w-3 h-3" />
+              当日明细
+            </div>
+            <div className="text-xs font-bold text-slate-800 dark:text-slate-100 mt-0.5 truncate">
+              {formatDayTitle(day)}
+            </div>
+          </div>
+          <span
+            className={`shrink-0 text-[9px] font-bold px-2 py-0.5 rounded-full bg-gradient-to-r ${levelBadge.cls}`}
+          >
+            {levelBadge.text}
+          </span>
+        </div>
+        {(isToday || isTopDay) && (
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {isToday && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 dark:text-violet-400 font-bold">
+                今天
+              </span>
+            )}
+            {isTopDay && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold">
+                年度峰值日
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3 min-h-0">
+        {/* 启动时间 */}
+        <section>
+          <div className="flex items-center justify-between mb-1.5">
+            <h4 className="text-[10px] font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1">
+              <Power className="w-3 h-3 text-violet-500" />
+              启动时间
+            </h4>
+            <span className="text-[9px] font-mono text-violet-600 dark:text-violet-400">
+              {dayLaunches.length} 次
+            </span>
+          </div>
+          {dayLaunches.length === 0 ? (
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 py-2 text-center rounded-lg bg-slate-100/60 dark:bg-slate-800/40">
+              暂无启动记录
+            </p>
+          ) : (
+            <ul className="relative pl-3 space-y-0">
+              <div className="absolute left-[5px] top-2 bottom-2 w-px bg-gradient-to-b from-violet-400/60 via-violet-300/30 to-transparent" />
+              {dayLaunches.map((launch, i) => {
+                const gap = launchGaps[i - 1];
+                return (
+                  <li
+                    key={launch.at}
+                    className="relative anim-stagger"
+                    style={{ "--i": i } as React.CSSProperties}
+                  >
+                    <span className="absolute -left-3 top-2.5 w-2 h-2 rounded-full bg-violet-500 ring-2 ring-white dark:ring-slate-900 shadow-[0_0_8px_rgba(139,92,246,0.55)]" />
+                    <div className="ml-1 mb-2 rounded-lg border border-violet-200/50 dark:border-violet-500/20 bg-violet-50/50 dark:bg-violet-500/5 px-2 py-1.5 hover:border-violet-300/70 transition-colors">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold font-mono text-violet-700 dark:text-violet-300">
+                          {formatClockTime(launch.at)}
+                        </span>
+                        <span className="text-[9px] text-slate-400">#{i + 1}</span>
+                      </div>
+                      {gap != null && gap > 0 && (
+                        <div className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-1">
+                          <Zap className="w-2.5 h-2.5" />
+                          距上次 {formatGapMs(gap)}
+                        </div>
+                      )}
+                      {launch.version && (
+                        <div className="text-[9px] text-slate-400 mt-0.5">v{launch.version}</div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        {/* 当日指标 */}
+        <section className="grid grid-cols-2 gap-1.5">
+          {[
+            { label: "播放", value: `${plays}`, tone: "text-amber-600 dark:text-amber-400" },
+            { label: "观看", value: formatDuration(watch), tone: "text-emerald-600 dark:text-emerald-400" },
+            { label: "下载", value: `${downloads}`, tone: "text-sky-600 dark:text-sky-400" },
+            {
+              label: "播放排名",
+              value: plays ? `前 ${100 - playPercentile}%` : "—",
+              tone: "text-slate-600 dark:text-slate-300",
+            },
+          ].map((item, i) => (
+            <div
+              key={item.label}
+              className="rounded-lg border border-slate-200/70 dark:border-slate-700/70 bg-white/60 dark:bg-slate-800/40 px-2 py-1.5 anim-stagger"
+              style={{ "--i": i + 2 } as React.CSSProperties}
+            >
+              <div className="text-[9px] text-slate-400">{item.label}</div>
+              <div className={`text-[11px] font-bold font-mono truncate ${item.tone}`}>{item.value}</div>
+            </div>
+          ))}
+        </section>
+
+        {/* 活动时间轴 */}
+        {events.length > 0 && (
+          <section>
+            <h4 className="text-[10px] font-bold text-slate-600 dark:text-slate-300 flex items-center gap-1 mb-1.5">
+              <History className="w-3 h-3" />
+              活动时间轴
+              <span className="text-[9px] font-normal text-slate-400 ml-auto">{events.length} 条</span>
+            </h4>
+            <ul className="space-y-1 max-h-36 overflow-y-auto pr-0.5">
+              {events.map((event, i) => {
+                const Icon = timelineEventIcon(event.type);
+                const tone = timelineEventTone(event.type);
+                const extra =
+                  event.type === "arousal" && event.meta?.durationSec
+                    ? formatDuration(event.meta.durationSec)
+                    : event.type === "download" && event.meta?.bytes
+                      ? formatBytes(event.meta.bytes)
+                      : null;
+                return (
+                  <li
+                    key={`${event.at}-${event.type}-${i}`}
+                    className={`flex items-center gap-2 rounded-md border px-2 py-1 anim-stagger ${tone}`}
+                    style={{ "--i": i + 4 } as React.CSSProperties}
+                  >
+                    <Icon className="w-3 h-3 shrink-0" />
+                    <span className="text-[9px] font-mono shrink-0">{formatClockTime(event.at)}</span>
+                    <span className="text-[9px] truncate flex-1 min-w-0 opacity-90">
+                      {timelineEventLabel(event)}
+                    </span>
+                    {extra && (
+                      <span className="text-[9px] font-mono shrink-0 opacity-70">{extra}</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {events.length >= 2 && (
+              <p className="text-[9px] text-slate-400 mt-1.5">
+                活跃跨度 {formatClockTime(events[0].at)} → {formatClockTime(events[events.length - 1].at)}
+              </p>
+            )}
+          </section>
+        )}
+
+        {/* 私密计时 */}
+        {arousalToday.length > 0 && (
+          <section>
+            <h4 className="text-[10px] font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1 mb-1">
+              <Timer className="w-3 h-3" />
+              私密计时 · {arousalToday.length} 次
+            </h4>
+            <ul className="space-y-1">
+              {arousalToday.map((s, i) => (
+                <li
+                  key={s.startedAt}
+                  className="text-[9px] rounded-md bg-rose-500/5 border border-rose-500/15 px-2 py-1 anim-stagger"
+                  style={{ "--i": i + 6 } as React.CSSProperties}
+                >
+                  <span className="font-mono">{formatClockTime(s.startedAt)}</span>
+                  <span className="mx-1 text-slate-400">·</span>
+                  <span>{formatDuration(s.durationSec)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DualHeatmap({
+  daily,
+  dayTimeline,
+  launches,
+  arousal,
+}: {
+  daily: Record<string, ActivityBucket>;
+  dayTimeline: Record<string, DayTimelineEvent[]>;
+  launches: AppLaunch[];
+  arousal?: ArousalData;
+}) {
   const days = useMemo(() => lastNDays(365), []);
+  const [selectedDay, setSelectedDay] = useState<string | null>(() => todayKey());
   const playsValues = days.map((d) => daily[d]?.plays || 0);
   const watchValues = days.map((d) => daily[d]?.watchSec || 0);
   const maxPlays = Math.max(1, ...playsValues);
@@ -617,11 +990,32 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                   const tip =
                     `${item.day}\n播放 ${item.plays?.toLocaleString() ?? 0} 次` +
                     `\n观看 ${formatDuration(item.watch ?? 0)}`;
+                  const selected = item.day === selectedDay;
                   return (
                     <g key={`${weekIndex}-${dayIndex}`}>
                       <polygon points={tl} className={amberTier(item.plays)} />
                       <polygon points={br} className={watchTier(item.watch)} />
-                      <title>{tip}</title>
+                      <rect
+                        x={x}
+                        y={y}
+                        width={cell}
+                        height={cell}
+                        className="fill-transparent cursor-pointer"
+                        onClick={() => setSelectedDay(item.day!)}
+                      >
+                        <title>{tip}</title>
+                      </rect>
+                      {selected && (
+                        <rect
+                          x={x - 1.5}
+                          y={y - 1.5}
+                          width={cell + 3}
+                          height={cell + 3}
+                          rx={2}
+                          className="fill-none stroke-violet-500 dark:stroke-violet-400 stroke-[1.5] pointer-events-none"
+                          style={{ filter: "drop-shadow(0 0 3px rgba(139,92,246,0.6))" }}
+                        />
+                      )}
                     </g>
                   );
                 }),
@@ -629,6 +1023,15 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
             </g>
           </svg>
         </div>
+        <HeatmapDayPanel
+          day={selectedDay}
+          daily={daily}
+          dayTimeline={dayTimeline}
+          launches={launches}
+          arousal={arousal}
+          days={days}
+          topDay={topDay}
+        />
         {/* 右侧紧凑摘要面板 */}
         <div className="w-44 shrink-0 grid grid-cols-2 gap-2 self-stretch">
           <HeatStat
@@ -685,7 +1088,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
             ))}
           </span>
         </div>
-        <span>悬停查看当日明细 · 左上播放 · 右下时长</span>
+        <span>点击日期查看启动时间与当日明细 · 左上播放 · 右下时长</span>
       </div>
     </div>
   );
@@ -1337,7 +1740,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
         videoPath
           ? trpc.videos.list.query({ path: videoPath }).catch(() => [])
           : Promise.resolve([]),
-        trpc.stats.getRankings.query().catch(() => ({ series: [], actors: [] })),
+        trpc.stats.getRankings.query({ rootPath: videoPath || undefined }).catch(() => ({ series: [], actors: [] })),
         trpc.stats.getDiskPrediction.query().catch(() => null),
       ]);
       setStats(statsData as StatsData);
@@ -1717,7 +2120,12 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
         />
       </div>
 
-      <DualHeatmap daily={stats.daily} />
+      <DualHeatmap
+        daily={stats.daily}
+        dayTimeline={stats.dayTimeline || {}}
+        launches={stats.launches || []}
+        arousal={stats.arousal}
+      />
 
       <AdvancedStatsChart
         daily={stats.daily}

@@ -8,7 +8,6 @@ import { registerAppProtocolSchemes } from "./protocols/registerSchemes";
 import { startExtensionPushServer } from "./extensions/pushServer";
 import { setupMissavWebSession } from "./webview/missavWebSession";
 import { runStartupScrape } from "./routers/scrapeRouter";
-import { recordAppLaunch } from "./routers/statsRouter";
 import { initLogger, installGlobalErrorHandlers, log } from "./logger";
 import { markQuitting } from "./tray";
 
@@ -30,10 +29,6 @@ app.whenReady().then(async () => {
   startExtensionPushServer();
   await setupMissavWebSession();
   createMainWindow();
-
-  void recordAppLaunch().catch((err) => {
-    log.error(`[stats] record launch failed: ${err?.message || err}`);
-  });
 
   // 启动后延迟抓取一次 missav 列表并写入缓存（等 webview 过盾）
   runStartupScrape();

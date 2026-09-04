@@ -56,20 +56,6 @@ export interface ArousalData {
   totals: { count: number; totalSec: number };
 }
 
-export interface AppLaunch {
-  at: string;
-  version?: string;
-}
-
-export type DayTimelineEventType = "launch" | "play" | "download" | "arousal";
-
-export interface DayTimelineEvent {
-  at: string;
-  type: DayTimelineEventType;
-  label?: string;
-  meta?: { folder?: string; durationSec?: number; bytes?: number };
-}
-
 export interface StatsData {
   version: 2;
   daily: Record<string, ActivityBucket>;
@@ -80,8 +66,6 @@ export interface StatsData {
   diskSnapshots: DiskSnapshot[];
   totals: ActivityBucket;
   arousal: ArousalData;
-  launches: AppLaunch[];
-  dayTimeline: Record<string, DayTimelineEvent[]>;
 }
 
 function emptyBucket(): ActivityBucket {
@@ -103,31 +87,7 @@ function emptyStats(): StatsData {
     diskSnapshots: [],
     totals: emptyBucket(),
     arousal: emptyArousal(),
-    launches: [],
-    dayTimeline: {},
   };
-}
-
-const MAX_LAUNCHES = 5000;
-const MAX_DAY_TIMELINE = 80;
-
-function appendDayEvent(s: StatsData, event: DayTimelineEvent, at = new Date()): void {
-  const key = dateKey(at);
-  if (!s.dayTimeline[key]) s.dayTimeline[key] = [];
-  s.dayTimeline[key].push(event);
-  if (s.dayTimeline[key].length > MAX_DAY_TIMELINE) {
-    s.dayTimeline[key] = s.dayTimeline[key].slice(-MAX_DAY_TIMELINE);
-  }
-}
-
-export async function recordAppLaunch(): Promise<void> {
-  const s = loadStatsSync();
-  const now = new Date();
-  const iso = now.toISOString();
-  s.launches.push({ at: iso, version: app.getVersion() });
-  if (s.launches.length > MAX_LAUNCHES) s.launches = s.launches.slice(-MAX_LAUNCHES);
-  appendDayEvent(s, { at: iso, type: "launch", label: "应用启动" }, now);
-  await saveStatsAsync(s);
 }
 
 function statsPath(): string {
@@ -172,147 +132,66 @@ function normalizeBuckets(
   return out;
 }
 
-const TIMELINE_TYPES = new Set<DayTimelineEventType>(["launch", "play", "download", "arousal"]);
-
-function normalizeDayTimeline(raw?: Record<string, unknown[]>): Record<string, DayTimelineEvent[]> {
-  const out: Record<string, DayTimelineEvent[]> = {};
-  for (const [key, events] of Object.entries(raw || {})) {
-    if (!Array.isArray(events)) continue;
-    const normalized = events
-      .map((event: any): DayTimelineEvent | null => {
-        const type = String(event?.type || "") as DayTimelineEventType;
-        if (!TIMELINE_TYPES.has(type)) return null;
-        const at = String(event?.at || "");
-        if (!at) return null;
-        const item: DayTimelineEvent = { at, type };
-        if (event?.label) item.label = String(event.label);
-        if (event?.meta) {
-          item.meta = {
-            folder: event.meta.folder ? String(event.meta.folder) : undefined,
-            durationSec:
-              event.meta.durationSec == null
-                ? undefined
-                : Math.max(0, Math.floor(Number(event.meta.durationSec) || 0)),
-            bytes:
-              event.meta.bytes == null
-                ? undefined
-                : Math.max(0, Math.floor(Number(event.meta.bytes) || 0)),
-          };
-        }
-        return item;
-      })
-      .filter((event): event is DayTimelineEvent => event != null);
-    if (normalized.length) out[key] = normalized.slice(-MAX_DAY_TIMELINE);
-  }
-  return out;
-}
-
 // =================== 核心优化：内存缓存与异步 IO ===================
 
 let cachedStats: StatsData | null = null;
 let saveTimeout: NodeJS.Timeout | null = null;
-/** 加载失败时禁止落盘，避免用空数据覆盖已有 stats.json */
-let statsPersistBlocked = false;
-
-function hydrateStatsData(data: Partial<StatsData>): StatsData {
-  return {
-    version: 2,
-    daily: normalizeBuckets(data.daily),
-    hourly: normalizeBuckets(data.hourly),
-    weekdays: normalizeBuckets(data.weekdays),
-    monthly: normalizeBuckets(data.monthly),
-    videos: data.videos || {},
-    diskSnapshots: (data.diskSnapshots || []).map((snap) => ({
-      at: snap.at,
-      totalBytes: Number(snap.totalBytes || 0),
-      videoCount: Number(snap.videoCount || 0),
-      freeBytes: snap.freeBytes == null ? undefined : Number(snap.freeBytes || 0),
-      totalDiskBytes: snap.totalDiskBytes == null ? undefined : Number(snap.totalDiskBytes || 0),
-    })),
-    totals: normalizeBucket(data.totals),
-    arousal: {
-      sessions: Array.isArray((data as any).arousal?.sessions)
-        ? (data as any).arousal.sessions.map((s: any) => ({
-            startedAt: String(s.startedAt || ""),
-            endedAt: String(s.endedAt || ""),
-            durationSec: Math.max(0, Math.floor(Number(s.durationSec) || 0)),
-            videoFolder: s.videoFolder ?? null,
-          }))
-        : [],
-      totals: {
-        count: Math.max(0, Number((data as any).arousal?.totals?.count) || 0),
-        totalSec: Math.max(0, Number((data as any).arousal?.totals?.totalSec) || 0),
-      },
-    },
-    launches: Array.isArray((data as any).launches)
-      ? (data as any).launches
-          .map((l: any) => ({
-            at: String(l.at || ""),
-            version: l.version ? String(l.version) : undefined,
-          }))
-          .filter((l: AppLaunch) => l.at)
-      : [],
-    dayTimeline: normalizeDayTimeline((data as any).dayTimeline),
-  };
-}
-
-function backupStatsFile(file: string): void {
-  try {
-    if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
-  } catch (err: any) {
-    log.warn(`[stats] backup failed: ${err?.message || err}`);
-  }
-}
-
-function writeStatsFileSync(file: string, data: StatsData): void {
-  backupStatsFile(file);
-  fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf8");
-}
 
 function loadStatsSync(): StatsData {
   if (cachedStats) return cachedStats;
-  const file = statsPath();
-  if (!fs.existsSync(file)) {
+  try {
+    const file = statsPath();
+    if (!fs.existsSync(file)) {
+      cachedStats = emptyStats();
+      return cachedStats;
+    }
+    const data = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<StatsData>;
+    cachedStats = {
+      version: 2,
+      daily: normalizeBuckets(data.daily),
+      hourly: normalizeBuckets(data.hourly),
+      weekdays: normalizeBuckets(data.weekdays),
+      monthly: normalizeBuckets(data.monthly),
+      videos: data.videos || {},
+      diskSnapshots: (data.diskSnapshots || []).map((snap) => ({
+        at: snap.at,
+        totalBytes: Number(snap.totalBytes || 0),
+        videoCount: Number(snap.videoCount || 0),
+        freeBytes: snap.freeBytes == null ? undefined : Number(snap.freeBytes || 0),
+        totalDiskBytes: snap.totalDiskBytes == null ? undefined : Number(snap.totalDiskBytes || 0),
+      })),
+      totals: normalizeBucket(data.totals),
+      arousal: {
+        sessions: Array.isArray((data as any).arousal?.sessions)
+          ? (data as any).arousal.sessions.map((s: any) => ({
+              startedAt: String(s.startedAt || ""),
+              endedAt: String(s.endedAt || ""),
+              durationSec: Math.max(0, Math.floor(Number(s.durationSec) || 0)),
+              videoFolder: s.videoFolder ?? null,
+            }))
+          : [],
+        totals: {
+          count: Math.max(0, Number((data as any).arousal?.totals?.count) || 0),
+          totalSec: Math.max(0, Number((data as any).arousal?.totals?.totalSec) || 0),
+        },
+      },
+    };
+    return cachedStats;
+  } catch (err: any) {
+    log.error(`[stats] load failed: ${err?.message}`);
     cachedStats = emptyStats();
-    statsPersistBlocked = false;
     return cachedStats;
   }
-
-  const candidates = [file, `${file}.bak`];
-  for (const candidate of candidates) {
-    if (!fs.existsSync(candidate)) continue;
-    try {
-      const data = JSON.parse(fs.readFileSync(candidate, "utf8")) as Partial<StatsData>;
-      cachedStats = hydrateStatsData(data);
-      statsPersistBlocked = false;
-      if (candidate !== file) {
-        log.warn(`[stats] recovered from ${path.basename(candidate)}`);
-      }
-      return cachedStats;
-    } catch (err: any) {
-      log.error(`[stats] load failed (${path.basename(candidate)}): ${err?.message}`);
-    }
-  }
-
-  statsPersistBlocked = true;
-  cachedStats = emptyStats();
-  log.error("[stats] all load attempts failed; in-memory only — disk file will NOT be overwritten");
-  return cachedStats;
 }
 
 async function saveStatsAsync(s: StatsData, immediate = false): Promise<void> {
   cachedStats = s;
-  if (statsPersistBlocked) {
-    log.warn("[stats] save skipped: previous load failed, refusing to overwrite stats.json");
-    return;
-  }
   if (saveTimeout && !immediate) return;
 
   const performSave = async () => {
     try {
       const file = statsPath();
       await fs.promises.mkdir(path.dirname(file), { recursive: true });
-      backupStatsFile(file);
       await fs.promises.writeFile(file, JSON.stringify(cachedStats, null, 2), "utf8");
       saveTimeout = null;
     } catch (err: any) {
@@ -324,17 +203,17 @@ async function saveStatsAsync(s: StatsData, immediate = false): Promise<void> {
     if (saveTimeout) clearTimeout(saveTimeout);
     await performSave();
   } else {
-    saveTimeout = setTimeout(performSave, 30000);
+    saveTimeout = setTimeout(performSave, 30000); 
   }
 }
 
 // 退出前强制落盘
 app.on("before-quit", () => {
-  if (cachedStats && !statsPersistBlocked) {
+  if (cachedStats) {
     const file = statsPath();
     const dir = path.dirname(file);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    writeStatsFileSync(file, cachedStats);
+    fs.writeFileSync(file, JSON.stringify(cachedStats, null, 2), "utf8");
   }
 });
 
@@ -423,51 +302,6 @@ function readDiskSpace(root: string): Pick<DiskSnapshot, "freeBytes" | "totalDis
   }
 }
 
-function readActorsFromMeta(folderPath: string): string[] {
-  try {
-    const metaPath = path.join(folderPath, "meta.json");
-    if (!fs.existsSync(metaPath)) return [];
-    const meta = JSON.parse(fs.readFileSync(metaPath, "utf8")) as { actors?: unknown };
-    if (!Array.isArray(meta.actors)) return [];
-    return meta.actors.map((a) => String(a).trim()).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
-function resolveVideoActors(video: VideoEntry, rootPath?: string): string[] {
-  if (video.actors?.length) return video.actors;
-  if (!rootPath) return [];
-  return readActorsFromMeta(path.join(rootPath, video.folder));
-}
-
-function buildRankings(s: StatsData, rootPath?: string) {
-  const seriesMap = new Map<string, RankingItem>();
-  const actorsMap = new Map<string, RankingItem>();
-  for (const v of Object.values(s.videos)) {
-    if (v.series) {
-      const item = seriesMap.get(v.series) || { name: v.series, count: 0, watchSec: 0, score: 0 };
-      item.count += v.playCount;
-      item.watchSec += v.watchSec;
-      item.score = item.count * 10 + item.watchSec / 60;
-      seriesMap.set(v.series, item);
-    }
-    const actors = resolveVideoActors(v, rootPath);
-    for (const actor of actors) {
-      const item = actorsMap.get(actor) || { name: actor, count: 0, watchSec: 0, score: 0 };
-      item.count += v.playCount;
-      item.watchSec += v.watchSec;
-      item.score = item.count * 10 + item.watchSec / 60;
-      actorsMap.set(actor, item);
-    }
-  }
-  const sortFn = (a: RankingItem, b: RankingItem) => b.score - a.score;
-  return {
-    series: Array.from(seriesMap.values()).sort(sortFn).slice(0, 20),
-    actors: Array.from(actorsMap.values()).sort(sortFn).slice(0, 20),
-  };
-}
-
 // =================== Router ===================
 
 export const statsRouter = t.router({
@@ -485,16 +319,6 @@ export const statsRouter = t.router({
       v.lastPlayedAt = now.toISOString();
       if (!v.firstPlayedAt) v.firstPlayedAt = now.toISOString();
       addToAllBuckets(s, { plays: 1 }, now);
-      appendDayEvent(
-        s,
-        {
-          at: now.toISOString(),
-          type: "play",
-          label: path.basename(folder) || folder,
-          meta: { folder },
-        },
-        now,
-      );
       await saveStatsAsync(s);
       return { success: true, playCount: v.playCount };
     }),
@@ -520,18 +344,7 @@ export const statsRouter = t.router({
     .mutation(async ({ input }) => {
       const s = loadStatsSync();
       const bytes = Math.max(0, Math.floor(input.bytes || 0));
-      const now = new Date();
-      addToAllBuckets(s, { downloads: 1, downloadBytes: bytes }, now);
-      appendDayEvent(
-        s,
-        {
-          at: now.toISOString(),
-          type: "download",
-          label: "下载任务",
-          meta: { bytes: bytes || undefined },
-        },
-        now,
-      );
+      addToAllBuckets(s, { downloads: 1, downloadBytes: bytes });
       await saveStatsAsync(s);
       return { success: true };
     }),
@@ -552,13 +365,29 @@ export const statsRouter = t.router({
       return { success: true, ...usage, ...diskSpace };
     }),
 
-  getRankings: t.procedure
-    .input((input: unknown) => (input as { rootPath?: string }) || {})
-    .query(({ input }) => {
-      const s = loadStatsSync();
-      const rootPath = input?.rootPath?.trim();
-      return buildRankings(s, rootPath && fs.existsSync(rootPath) ? rootPath : undefined);
-    }),
+  getRankings: t.procedure.query(() => {
+    const s = loadStatsSync();
+    const seriesMap = new Map<string, RankingItem>();
+    const actorsMap = new Map<string, RankingItem>();
+    for (const v of Object.values(s.videos)) {
+      if (v.series) {
+        const item = seriesMap.get(v.series) || { name: v.series, count: 0, watchSec: 0, score: 0 };
+        item.count += v.playCount; item.watchSec += v.watchSec;
+        item.score = item.count * 10 + item.watchSec / 60;
+        seriesMap.set(v.series, item);
+      }
+      if (v.actors) {
+        for (const actor of v.actors) {
+          const item = actorsMap.get(actor) || { name: actor, count: 0, watchSec: 0, score: 0 };
+          item.count += v.playCount; item.watchSec += v.watchSec;
+          item.score = item.count * 10 + item.watchSec / 60;
+          actorsMap.set(actor, item);
+        }
+      }
+    }
+    const sortFn = (a: RankingItem, b: RankingItem) => b.score - a.score;
+    return { series: Array.from(seriesMap.values()).sort(sortFn).slice(0, 20), actors: Array.from(actorsMap.values()).sort(sortFn).slice(0, 20) };
+  }),
 
   getDiskPrediction: t.procedure.query((): DiskPrediction => {
     const s = loadStatsSync();
@@ -584,20 +413,9 @@ export const statsRouter = t.router({
       if (s.arousal.sessions.length > 2000) s.arousal.sessions = s.arousal.sessions.slice(-2000);
       s.arousal.totals.count += 1;
       s.arousal.totals.totalSec += durationSec;
-      appendDayEvent(s, {
-        at: input.startedAt,
-        type: "arousal",
-        label: "私密计时",
-        meta: { durationSec, folder: input.videoFolder ?? undefined },
-      }, new Date(input.startedAt));
       await saveStatsAsync(s);
       return { success: true, totals: s.arousal.totals };
     }),
-
-  recordLaunch: t.procedure.mutation(async () => {
-    await recordAppLaunch();
-    return { success: true };
-  }),
 
   reset: t.procedure.mutation(async () => {
     cachedStats = emptyStats();

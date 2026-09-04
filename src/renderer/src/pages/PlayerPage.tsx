@@ -511,15 +511,11 @@ export function PlayerPage({
   const [timelineBookmarks, setTimelineBookmarks] = useState<TimelineBookmark[]>([]);
   const [timelineOpen, setTimelineOpen] = useState(false);
 
-  const recordPlayStats = useCallback((folder: string, url: string, actors?: string[]) => {
+  const recordPlayStats = useCallback((folder: string, url: string) => {
     if (!folder || !url || statsPlayedUrlRef.current === url) return;
     statsPlayedUrlRef.current = url;
     void trpc.stats.recordPlay
-      .mutate({
-        folder,
-        series: inferSeriesName(folder),
-        actors: actors?.filter(Boolean),
-      })
+      .mutate({ folder, series: inferSeriesName(folder) })
       .catch(() => {});
   }, []);
 
@@ -571,15 +567,11 @@ export function PlayerPage({
     if (!videoEl || !activeStream.url) return;
     const folder = activeStream.name;
     const series = inferSeriesName(folder);
-    const currentVideo = filteredVideos.find(
-      (v) => v.url === activeStream.url || v.name === folder,
-    );
-    const actors = currentVideo?.actors;
     const flushWatch = () => {
       const sec = Math.floor(pendingWatchSecRef.current);
       if (sec < 5) return;
       pendingWatchSecRef.current = 0;
-      void trpc.stats.recordWatch.mutate({ folder, series, sec, actors });
+      void trpc.stats.recordWatch.mutate({ folder, series, sec });
       localStorage.setItem(
         LAST_PLAYED_KEY,
         JSON.stringify({
@@ -600,7 +592,7 @@ export function PlayerPage({
       flushWatch();
       clearInterval(interval);
     };
-  }, [videoEl, activeStream, filteredVideos]);
+  }, [videoEl, activeStream]);
 
   const loadTimelineBookmarks = useCallback(async () => {
     if (!activeStream.url && !activeStream.name) {
@@ -638,7 +630,7 @@ export function PlayerPage({
       pendingTimelineSeekRef.current = bookmark.currentTime;
       setSelectedVideoIndex(idx);
       setUserInitiated(true);
-      recordPlayStats(video.name, video.url, video.actors);
+      recordPlayStats(video.name, video.url);
       setActiveStream({
         name: video.name,
         url: video.url,
@@ -707,7 +699,7 @@ export function PlayerPage({
       const realIndex = filteredVideos.findIndex((v) => v.id === video.id);
       setSelectedVideoIndex(realIndex >= 0 ? realIndex : index);
       setUserInitiated(true);
-      recordPlayStats(video.name, video.url, video.actors);
+      recordPlayStats(video.name, video.url);
       setActiveStream({
         name: video.name,
         url: video.url,

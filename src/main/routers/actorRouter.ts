@@ -6,13 +6,48 @@ import {
   removeActor,
   ActorRecord,
 } from "../actors/actorStore";
+import { scrapeActorFromJavDB } from "../actors/actorScraper";
 import { log } from "../logger";
 
 // 简单的内存级并发去重，避免短时间对同一演员发起重复爬取
 const inflight = new Map<string, Promise<ActorRecord>>();
 
-async function ensureOne(name: string, proxyUrl?: string) {
-  return;
+async function ensureOne(name: string, proxyUrl?: string): Promise<ActorRecord> {
+  const existing = getActor(name);
+  if (existing?.avatarBase64 && !existing.failed) {
+    return existing;
+  }
+  if (inflight.has(name)) {
+    return inflight.get(name)!;
+  }
+  const task = (async () => {
+    try {
+      const scraped = await scrapeActorFromJavDB(name, proxyUrl);
+      const rec: ActorRecord = {
+        name,
+        javdbUrl: scraped.javdbUrl,
+        avatarBase64: scraped.avatarBase64,
+        scrapedAt: new Date().toISOString(),
+        failed: false,
+      };
+      upsertActor(rec);
+      return rec;
+    } catch (e: any) {
+      log.warn(`[actors] scrape failed for ${name}: ${e?.message || e}`);
+      const failedRec: ActorRecord = {
+        name,
+        failed: true,
+        error: e?.message || String(e),
+        scrapedAt: new Date().toISOString(),
+      };
+      upsertActor(failedRec);
+      return failedRec;
+    } finally {
+      inflight.delete(name);
+    }
+  })();
+  inflight.set(name, task);
+  return task;
 }
 
 export const actorRouter = t.router({

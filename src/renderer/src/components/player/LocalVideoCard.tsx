@@ -73,9 +73,12 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
 
   React.useEffect(() => {
     if (!menu) return;
-    const close = (event: MouseEvent) => {
+    const onMouseDown = (event: MouseEvent) => {
       if (event.button !== 0) return;
       if (menuRef.current?.contains(event.target as Node)) return;
+      setMenu(null);
+    };
+    const onScroll = () => {
       setMenu(null);
     };
     const closeFromOtherCard = (event: Event) => {
@@ -83,8 +86,8 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
       if (detail !== menuTokenRef.current) setMenu(null);
     };
     window.addEventListener("local-video-card-menu-open", closeFromOtherCard);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("mousedown", close);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("mousedown", onMouseDown);
     window.dispatchEvent(
       new CustomEvent("local-video-card-menu-open", {
         detail: menuTokenRef.current,
@@ -92,8 +95,8 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
     );
     return () => {
       window.removeEventListener("local-video-card-menu-open", closeFromOtherCard);
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("mousedown", onMouseDown);
     };
   }, [menu]);
 

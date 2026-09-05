@@ -28,12 +28,12 @@ function normalizeUrl(value: string, baseUrl: string): string {
   }
 }
 
-function textOf($el: cheerio.Cheerio<unknown>, selector: string): string {
+function textOf($el: cheerio.Cheerio<any>, selector: string): string {
   return $el.find(selector).first().text().trim();
 }
 
 function attrOf(
-  $el: cheerio.Cheerio<unknown>,
+  $el: cheerio.Cheerio<any>,
   selector: string,
   attr: string,
 ): string {

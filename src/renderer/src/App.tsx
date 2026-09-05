@@ -46,7 +46,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   privacyScreenChangeSeconds: 10,
   lastPage: "player",
   cloudSyncEndpoint: "https://avplay-sync.1024327189.workers.dev",
-  cloudSyncSecret: "",
+  cloudSyncSecret: "MySecretToken_2026",
   cloudSyncLastSync: "",
   cloudSyncAutoSync: false,
 };
@@ -355,7 +355,7 @@ export default function App() {
               setPendingPlayName(name);
               setCurrentPage("player");
             }}
-            onNavigate={(page) => setCurrentPage(page)}
+            onNavigate={(page) => setCurrentPage(page as Page)}
           />
         )}
 

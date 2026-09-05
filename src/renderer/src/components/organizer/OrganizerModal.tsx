@@ -87,7 +87,7 @@ export function OrganizerModal({
       });
 
       setResult(res);
-      if (res.success) {
+      if (res.success && "count" in res) {
         onAddSystemLog?.(
           `媒体库整理完成！已成功为 ${res.count} 部影片生成 Emby 软链接与 NFO`,
           "SUCCESS",

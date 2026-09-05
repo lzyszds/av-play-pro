@@ -97,8 +97,8 @@ export async function scrapeActorFromJavDB(
   let avatarUrl: string | null = null;
   let actorHref: string | null = null;
 
-  $(".actor-box, .actor-section .box, .actors .box").each((_, el) => {
-    if (avatarUrl) return;
+  const boxes = $(".actor-box, .actor-section .box, .actors .box").toArray();
+  for (const el of boxes) {
     const $a = $(el).find("a").first();
     const href = $a.attr("href");
     const strong = $a.find("strong").first().text().trim();
@@ -114,13 +114,13 @@ export async function scrapeActorFromJavDB(
     if (url && (strong === name || strong.includes(name) || name.includes(strong))) {
       avatarUrl = url;
       actorHref = href || null;
+      break;
     }
-  });
+  }
 
   // 兜底：取第一个有头像的 box（即使名字不严格相等）
   if (!avatarUrl) {
-    $(".actor-box, .actor-section .box, .actors .box").each((_, el) => {
-      if (avatarUrl) return;
+    for (const el of boxes) {
       const $a = $(el).find("a").first();
       const href = $a.attr("href");
       const $avatar = $a.find(".avatar, .actor-avatar, figure").first();
@@ -134,8 +134,9 @@ export async function scrapeActorFromJavDB(
       if (url) {
         avatarUrl = url;
         actorHref = href || null;
+        break;
       }
-    });
+    }
   }
 
   if (!avatarUrl) {

@@ -35,6 +35,127 @@ function normalizeUrl(urlStr: string): string {
   return cleaned.replace(/\/+$/, "");
 }
 
+// 执行上传/推送本地数据至云端 KV 核心逻辑
+async function executePushToCloud(rawEndpoint: string, secretKey: string) {
+  const endpoint = normalizeUrl(rawEndpoint);
+  if (!endpoint) return { success: false as const, error: "云同步端点不能为空" };
+
+  // 读取本地核心文件
+  const settingsPath = getUserDataPath("settings.json");
+  const statsPath = getUserDataPath("stats.json");
+  const timelinePath = getUserDataPath("timeline.json");
+  const actorsPath = getUserDataPath("actors.json");
+  const tagModelPath = getUserDataPath("tag-model.json");
+  const activityPath = getUserDataPath("activity-history.json");
+  const reportPath = getUserDataPath("annual-report.json");
+
+  const localSettings = readJsonFile<Record<string, unknown>>(
+    settingsPath,
+    {},
+  );
+  const localStats = readJsonFile<Record<string, unknown>>(statsPath, {});
+  const localTimeline = readJsonFile<Record<string, unknown>>(
+    timelinePath,
+    {},
+  );
+  const localActors = readJsonFile<unknown[] | Record<string, unknown>>(
+    actorsPath,
+    [],
+  );
+  const localTagModel = readJsonFile<Record<string, unknown>>(
+    tagModelPath,
+    {},
+  );
+  const localActivities = readJsonFile<unknown[]>(activityPath, []);
+  const localReport = readJsonFile<Record<string, unknown> | null>(
+    reportPath,
+    null,
+  );
+
+  // 计算统计概况
+  const videoCount = localStats?.videos
+    ? Object.keys(localStats.videos as object).length
+    : 0;
+  const timelineCount = Array.isArray((localTimeline as any)?.bookmarks)
+    ? (localTimeline as any).bookmarks.length
+    : 0;
+  const actorCount = Array.isArray(localActors)
+    ? localActors.length
+    : Object.keys(localActors || {}).length;
+
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    clientVersion: app.getVersion(),
+    data: {
+      settings: localSettings,
+      stats: localStats,
+      timeline: localTimeline,
+      actors: localActors,
+      tagModel: localTagModel,
+      activities: localActivities,
+      annualReport: localReport,
+    },
+  };
+
+  try {
+    const res = await fetch(`${endpoint}/api/sync`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Sync-Key": secretKey.trim(),
+        "User-Agent": "AVPlayPro-Electron",
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (res.status === 401) {
+      return { success: false as const, error: "未授权：密钥错误" };
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      return {
+        success: false as const,
+        error: `上传失败 (HTTP ${res.status}): ${text}`,
+      };
+    }
+
+    const resData: any = await res.json();
+
+    // 将最新同步时间保存到本地 settings.json
+    localSettings.cloudSyncLastSync = payload.exportedAt;
+    writeJsonFile(settingsPath, localSettings);
+
+    recordActivity(
+      "SYNC",
+      "云端备份",
+      `成功将 ${videoCount} 部影片数据与 ${localActivities.length} 条操作历史备份至 Cloudflare KV`,
+    );
+
+    log.info(
+      `[syncRouter] Successfully pushed data to cloud: ${payload.exportedAt}`,
+    );
+
+    return {
+      success: true as const,
+      updatedAt: payload.exportedAt,
+      stats: {
+        videoCount,
+        timelineCount,
+        actorCount,
+      },
+      message: "数据已成功备份到 Cloudflare KV！",
+    };
+  } catch (err: any) {
+    log.error("[syncRouter] Failed to push to cloud:", err);
+    return {
+      success: false as const,
+      error: `上传异常: ${err?.message || String(err)}`,
+    };
+  }
+}
+
 export const syncRouter = t.router({
   // 测试与 Cloudflare Worker 连通性及密钥正确性
   testConnection: t.procedure
@@ -47,7 +168,7 @@ export const syncRouter = t.router({
     .mutation(async ({ input }) => {
       const endpoint = normalizeUrl(input.endpoint);
       if (!endpoint) {
-        return { success: false, error: "云同步端点地址不能为空" };
+        return { success: false as const, error: "云同步端点地址不能为空" };
       }
 
       const startTime = Date.now();
@@ -59,44 +180,50 @@ export const syncRouter = t.router({
             "X-Sync-Key": input.secretKey.trim(),
             "User-Agent": "AVPlayPro-Electron",
           },
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(8000),
         });
 
-        const latencyMs = Date.now() - startTime;
+        const latency = Date.now() - startTime;
 
         if (res.status === 401) {
           return {
-            success: false,
-            error: "未授权：密码错误（与 Cloudflare Worker 的 SYNC_SECRET 不匹配）",
+            success: false as const,
+            latency,
+            latencyMs: latency,
+            error: "认证失败：密钥 (Secret Key) 不正确",
           };
         }
 
         if (!res.ok) {
+          const text = await res.text();
           return {
-            success: false,
-            error: `服务器返回异常状态码: ${res.status} ${res.statusText}`,
+            success: false as const,
+            latency,
+            latencyMs: latency,
+            error: `服务响应异常 (${res.status}): ${text}`,
           };
         }
 
+        const data: any = await res.json().catch(() => ({}));
         return {
-          success: true,
-          latencyMs,
-          message: "连接成功，密钥验证通过！",
+          success: true as const,
+          latency,
+          latencyMs: latency,
+          message: data.message || "连接成功！",
+          timestamp: data.timestamp,
         };
       } catch (err: any) {
-        const errorMsg =
-          err?.name === "TimeoutError"
-            ? "连接超时（10秒无响应），请检查网络或代理"
-            : err?.message || String(err);
         return {
-          success: false,
-          error: `无法连接到 Worker: ${errorMsg}`,
+          success: false as const,
+          latency: Date.now() - startTime,
+          latencyMs: Date.now() - startTime,
+          error: `网络连接失败: ${err?.message || String(err)}。请检查 Worker 网址或梯子设置。`,
         };
       }
     }),
 
-  // 获取云端备份状态（版本、更新时间等）
-  getCloudStatus: t.procedure
+  // 获取云端元信息（最新同步时间、数据体积、版本）
+  getCloudMetadata: t.procedure
     .input(
       z.object({
         endpoint: z.string(),
@@ -105,27 +232,26 @@ export const syncRouter = t.router({
     )
     .query(async ({ input }) => {
       const endpoint = normalizeUrl(input.endpoint);
-      if (!endpoint) return { success: false, error: "端点未配置" };
+      if (!endpoint) return { success: false, error: "云同步端点不能为空" };
 
       try {
-        const res = await fetch(`${endpoint}/api/sync`, {
-          method: "GET",
+        const res = await fetch(`${endpoint}/api/sync/metadata`, {
           headers: {
             "X-Sync-Key": input.secretKey.trim(),
             "User-Agent": "AVPlayPro-Electron",
           },
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(8000),
         });
 
         if (res.status === 401) {
-          return { success: false, error: "密码错误，无法获取云端状态" };
+          return { success: false, error: "未授权：密钥错误" };
         }
         if (!res.ok) {
-          return { success: false, error: `请求失败 HTTP ${res.status}` };
+          return { success: false, error: `请求失败: HTTP ${res.status}` };
         }
 
         const json: any = await res.json();
-        const hasData = !!json.data && Object.keys(json.data).length > 0;
+        const hasData = Boolean(json.exists && json.updatedAt);
         return {
           success: true,
           hasData,
@@ -146,123 +272,7 @@ export const syncRouter = t.router({
       }),
     )
     .mutation(async ({ input }) => {
-      const endpoint = normalizeUrl(input.endpoint);
-      if (!endpoint) return { success: false, error: "云同步端点不能为空" };
-
-      // 读取本地核心文件
-      const settingsPath = getUserDataPath("settings.json");
-      const statsPath = getUserDataPath("stats.json");
-      const timelinePath = getUserDataPath("timeline.json");
-      const actorsPath = getUserDataPath("actors.json");
-      const tagModelPath = getUserDataPath("tag-model.json");
-      const activityPath = getUserDataPath("activity-history.json");
-      const reportPath = getUserDataPath("annual-report.json");
-
-      const localSettings = readJsonFile<Record<string, unknown>>(
-        settingsPath,
-        {},
-      );
-      const localStats = readJsonFile<Record<string, unknown>>(statsPath, {});
-      const localTimeline = readJsonFile<Record<string, unknown>>(
-        timelinePath,
-        {},
-      );
-      const localActors = readJsonFile<unknown[] | Record<string, unknown>>(
-        actorsPath,
-        [],
-      );
-      const localTagModel = readJsonFile<Record<string, unknown>>(
-        tagModelPath,
-        {},
-      );
-      const localActivities = readJsonFile<unknown[]>(activityPath, []);
-      const localReport = readJsonFile<Record<string, unknown> | null>(
-        reportPath,
-        null,
-      );
-
-      // 计算统计概况
-      const videoCount = localStats?.videos
-        ? Object.keys(localStats.videos as object).length
-        : 0;
-      const timelineCount = Array.isArray((localTimeline as any)?.bookmarks)
-        ? (localTimeline as any).bookmarks.length
-        : 0;
-      const actorCount = Array.isArray(localActors)
-        ? localActors.length
-        : Object.keys(localActors || {}).length;
-
-      const payload = {
-        version: 1,
-        exportedAt: new Date().toISOString(),
-        clientVersion: app.getVersion(),
-        data: {
-          settings: localSettings,
-          stats: localStats,
-          timeline: localTimeline,
-          actors: localActors,
-          tagModel: localTagModel,
-          activities: localActivities,
-          annualReport: localReport,
-        },
-      };
-
-      try {
-        const res = await fetch(`${endpoint}/api/sync`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Sync-Key": input.secretKey.trim(),
-            "User-Agent": "AVPlayPro-Electron",
-          },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(15000),
-        });
-
-        if (res.status === 401) {
-          return { success: false, error: "未授权：密钥错误" };
-        }
-        if (!res.ok) {
-          const text = await res.text();
-          return {
-            success: false,
-            error: `上传失败 (HTTP ${res.status}): ${text}`,
-          };
-        }
-
-        const resData: any = await res.json();
-
-        // 将最新同步时间保存到本地 settings.json
-        localSettings.cloudSyncLastSync = payload.exportedAt;
-        writeJsonFile(settingsPath, localSettings);
-
-        recordActivity(
-          "SYNC",
-          "云端备份",
-          `成功将 ${videoCount} 部影片数据与 ${localActivities.length} 条操作历史备份至 Cloudflare KV`,
-        );
-
-        log.info(
-          `[syncRouter] Successfully pushed data to cloud: ${payload.exportedAt}`,
-        );
-
-        return {
-          success: true,
-          updatedAt: payload.exportedAt,
-          stats: {
-            videoCount,
-            timelineCount,
-            actorCount,
-          },
-          message: "数据已成功备份到 Cloudflare KV！",
-        };
-      } catch (err: any) {
-        log.error("[syncRouter] Failed to push to cloud:", err);
-        return {
-          success: false,
-          error: `上传异常: ${err?.message || String(err)}`,
-        };
-      }
+      return executePushToCloud(input.endpoint, input.secretKey);
     }),
 
   // 专门将年度战力报告保存到本地并上传至云端
@@ -271,7 +281,7 @@ export const syncRouter = t.router({
       z.object({
         endpoint: z.string(),
         secretKey: z.string(),
-        report: z.record(z.unknown()),
+        report: z.record(z.string(), z.unknown()),
       }),
     )
     .mutation(async ({ input }) => {
@@ -283,10 +293,7 @@ export const syncRouter = t.router({
       writeJsonFile(reportPath, input.report);
 
       // 2. 触发一次全量推送（带 report）
-      const pushRes = await syncRouter.createCaller({} as any).pushToCloud({
-        endpoint: input.endpoint,
-        secretKey: input.secretKey,
-      });
+      const pushRes = await executePushToCloud(input.endpoint, input.secretKey);
 
       if (pushRes.success) {
         recordActivity(
@@ -315,7 +322,7 @@ export const syncRouter = t.router({
     )
     .mutation(async ({ input }) => {
       const endpoint = normalizeUrl(input.endpoint);
-      if (!endpoint) return { success: false, error: "云同步端点不能为空" };
+      if (!endpoint) return { success: false as const, error: "云同步端点不能为空" };
 
       try {
         const res = await fetch(`${endpoint}/api/sync`, {
@@ -328,10 +335,10 @@ export const syncRouter = t.router({
         });
 
         if (res.status === 401) {
-          return { success: false, error: "未授权：密钥错误" };
+          return { success: false as const, error: "未授权：密钥错误" };
         }
         if (!res.ok) {
-          return { success: false, error: `拉取失败 HTTP ${res.status}` };
+          return { success: false as const, error: `拉取失败 HTTP ${res.status}` };
         }
 
         const remotePayload: any = await res.json();
@@ -339,7 +346,7 @@ export const syncRouter = t.router({
 
         if (!remoteData || Object.keys(remoteData).length === 0) {
           return {
-            success: false,
+            success: false as const,
             error: "云端尚无备份数据，请先点击【立即备份到云端】上传一次数据。",
           };
         }
@@ -440,15 +447,15 @@ export const syncRouter = t.router({
         );
 
         return {
-          success: true,
-          updatedAt: remotePayload.updatedAt,
+          success: true as const,
+          updatedAt: (remotePayload.updatedAt as string) || new Date().toISOString(),
           backupDir,
           message: "数据已成功从云端恢复！本地旧数据已自动安全备份。",
         };
       } catch (err: any) {
         log.error("[syncRouter] Failed to pull from cloud:", err);
         return {
-          success: false,
+          success: false as const,
           error: `拉取异常: ${err?.message || String(err)}`,
         };
       }

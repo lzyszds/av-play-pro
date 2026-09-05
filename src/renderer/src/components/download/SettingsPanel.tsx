@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Tooltip } from "../common/Tooltip";
 import {
   X,
   Folder,
@@ -408,6 +409,8 @@ export function SettingsPanel({
     <button
       type="button"
       onClick={onToggle}
+      title={on ? "点击关闭" : "点击开启"}
+      aria-label={on ? "点击关闭" : "点击开启"}
       className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${on ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-700"
         }`}
     >
@@ -444,13 +447,16 @@ export function SettingsPanel({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <Tooltip content="关闭设置 (Esc)" placement="bottom">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="关闭设置"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Body */}
@@ -1290,6 +1296,8 @@ function PathInput({
         <button
           type="button"
           onClick={onPick}
+          title="浏览并选择本地目录"
+          aria-label="浏览目录"
           className="px-3 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-lg transition cursor-pointer flex items-center justify-center"
         >
           <Folder className="w-4 h-4 text-slate-500 dark:text-slate-400" />

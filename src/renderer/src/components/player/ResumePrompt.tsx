@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Play, X, History } from "lucide-react";
+import { Tooltip } from "../common/Tooltip";
 
 interface ResumePromptProps {
   videoName: string;
@@ -69,14 +70,15 @@ export const ResumePrompt: React.FC<ResumePromptProps> = ({
               </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-            title="关闭"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+          <Tooltip content="关闭提示" placement="left">
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
         </div>
 
         <div

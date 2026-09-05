@@ -247,6 +247,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         </Tooltip>
 
         {/* 底部日志控制台 */}
+        {/* 底部日志控制台 */}
         <Tooltip
           content={consoleOpen ? "隐藏底部实时日志控制台" : "展开底部实时日志控制台"}
           placement="bottom"
@@ -254,6 +255,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           <button
             type="button"
             onClick={onToggleConsole}
+            title={consoleOpen ? "隐藏底部实时日志控制台" : "展开底部实时日志控制台"}
+            aria-label="实时日志控制台"
             className={`w-9 h-full flex items-center justify-center transition cursor-pointer ${
               consoleOpen
                 ? "text-amber-400 bg-slate-800"
@@ -272,6 +275,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           <button
             type="button"
             onClick={onToggleSound}
+            title={notifySound ? "任务完成提示音：已开启 (点击静音)" : "任务完成提示音：已关闭 (点击开启)"}
+            aria-label="提示音开关"
             className="w-9 h-full flex items-center justify-center text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition cursor-pointer"
           >
             {notifySound ? (
@@ -287,6 +292,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           <button
             type="button"
             onClick={onCycleTheme}
+            title={`当前外观：${themeMeta[theme].label} (点击切换深/浅/系统)`}
+            aria-label="切换外观主题"
             className="w-9 h-full flex items-center justify-center text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition cursor-pointer"
           >
             <ThemeIcon className="w-3.5 h-3.5" />
@@ -298,6 +305,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           <button
             type="button"
             onClick={onOpenSettings}
+            title="偏好设置与 Cloudflare 云端同步"
+            aria-label="系统设置"
             className="w-9 h-full flex items-center justify-center text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition cursor-pointer"
           >
             <SettingsIcon className="w-3.5 h-3.5" />
@@ -311,6 +320,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           <button
             type="button"
             onClick={() => trpc.window.minimize.mutate()}
+            title="最小化窗口"
+            aria-label="最小化窗口"
             className="w-10 h-full flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
           >
             <Minus className="w-3.5 h-3.5" />
@@ -320,6 +331,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           <button
             type="button"
             onClick={() => trpc.window.maximize.mutate()}
+            title="最大化 / 还原窗口"
+            aria-label="最大化窗口"
             className="w-10 h-full flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
           >
             <Square className="w-3 h-3" />
@@ -329,6 +342,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           <button
             type="button"
             onClick={() => trpc.window.close.mutate()}
+            title="关闭应用"
+            aria-label="关闭应用"
             className="w-10 h-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-rose-600 transition cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />

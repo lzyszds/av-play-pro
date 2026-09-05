@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Bell, Film, Gauge, Play, X, RefreshCw } from "lucide-react";
 import { trpc } from "../lib/trpc";
+import { Tooltip } from "./common/Tooltip";
 
 interface Props {
   videoPath: string;
@@ -53,12 +54,16 @@ export function LibraryWidget({ videoPath }: Props) {
           片库桌面小组件
         </div>
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-          <button type="button" onClick={load} className="w-6 h-6 rounded hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-amber-400 cursor-pointer" title="刷新">
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-          </button>
-          <button type="button" onClick={close} className="w-6 h-6 rounded hover:bg-rose-500/20 flex items-center justify-center text-slate-400 hover:text-rose-300 cursor-pointer" title="关闭">
-            <X className="w-3.5 h-3.5" />
-          </button>
+          <Tooltip content="刷新片库统计" placement="bottom">
+            <button type="button" onClick={load} className="w-6 h-6 rounded hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-amber-400 cursor-pointer">
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+            </button>
+          </Tooltip>
+          <Tooltip content="关闭小组件" placement="bottom">
+            <button type="button" onClick={close} className="w-6 h-6 rounded hover:bg-rose-500/20 flex items-center justify-center text-slate-400 hover:text-rose-300 cursor-pointer">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
         </div>
       </div>
 

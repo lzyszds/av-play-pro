@@ -1178,6 +1178,8 @@ export function PlayerPage({
                 <button
                   type="button"
                   onClick={() => void loadTimelineBookmarks()}
+                  title="刷新当前视频的高能时间轴书签"
+                  aria-label="刷新时间轴书签"
                   className="text-[10px] text-slate-400 hover:text-amber-400 cursor-pointer"
                 >
                   刷新
@@ -1207,14 +1209,16 @@ export function PlayerPage({
                           </div>
                           <div className="text-[10px] text-slate-300 truncate">{item.videoName}</div>
                         </button>
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteTimelineBookmark(item, e)}
-                          className="mt-0.5 rounded p-1 text-slate-500 opacity-60 hover:opacity-100 hover:text-rose-300 hover:bg-rose-500/10 transition cursor-pointer"
-                          title="删除这个书签"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                        </button>
+                        <Tooltip content="删除此时间点书签" placement="left">
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteTimelineBookmark(item, e)}
+                            className="mt-0.5 rounded p-1 text-slate-500 opacity-60 hover:opacity-100 hover:text-rose-300 hover:bg-rose-500/10 transition cursor-pointer"
+                            aria-label="删除书签"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                          </button>
+                        </Tooltip>
                       </div>
                     );
                   })}
@@ -1283,7 +1287,10 @@ export function PlayerPage({
                   className="flex-1 h-7 bg-white border border-slate-200 rounded-md pl-3 pr-3 text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
                 />
                 <button
+                  type="button"
                   onClick={() => handleParseM3u8List()}
+                  title="解析并载入 M3U8 / MP4 播放链接"
+                  aria-label="解析视频"
                   className="h-6.5 px-3 cursor-pointer rounded-md bg-amber-500 text-white text-[11px] font-bold shadow-sm shadow-amber-500/20 hover:bg-amber-600 transition-colors shrink-0"
                 >
                   解析
@@ -1307,7 +1314,7 @@ export function PlayerPage({
 
             {/* 操作按钮行 */}
             <div className="grid grid-cols-4 gap-1.5">
-              <Tooltip content="命运轮盘：今晚看啥？智能结合观影偏好随机抽取一部，拯救选片困难症" placement="bottom">
+              <Tooltip content="盲盒轮盘：随机抽取一部影片" placement="bottom">
                 <button
                   onClick={() => setLuckyOpen(true)}
                   className="w-full h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-gradient-to-br from-pink-500 to-amber-500 text-white text-[10px] font-bold cursor-pointer hover:opacity-90 transition shadow-sm"
@@ -1317,7 +1324,7 @@ export function PlayerPage({
                 </button>
               </Tooltip>
 
-              <Tooltip content="片库体检修复：为本地视频补全封面海报、生成微动预览切片与元数据" placement="bottom">
+              <Tooltip content="片库体检：补全封面海报与元数据" placement="bottom">
                 <button
                   onClick={() =>
                     setRepairTargets(
@@ -1335,7 +1342,7 @@ export function PlayerPage({
                 </button>
               </Tooltip>
 
-              <Tooltip content="重新扫描本地硬盘目录，实时更新最新下载或拷入的影片" placement="bottom">
+              <Tooltip content="重新扫描本地硬盘视频目录" placement="bottom">
                 <button
                   onClick={handleBackfillMeta}
                   className="w-full h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition"
@@ -1347,7 +1354,7 @@ export function PlayerPage({
                 </button>
               </Tooltip>
 
-              <Tooltip content="心爱筛选器：一键仅展示标记过红心收藏的心仪影片" placement="bottom">
+              <Tooltip content="心爱筛选：仅展示已收藏影片" placement="bottom">
                 <button
                   onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
                   className={`w-full h-7 flex items-center justify-center gap-1 rounded-md cursor-pointer text-[11px] font-semibold transition-colors ${

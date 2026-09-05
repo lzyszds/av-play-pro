@@ -14,6 +14,7 @@ import {
   Filter,
 } from "lucide-react";
 import { trpc } from "../../lib/trpc";
+import { Tooltip } from "../common/Tooltip";
 
 export interface ActivityHistoryModalProps {
   onClose: () => void;
@@ -33,12 +34,12 @@ interface ActivityRecord {
 }
 
 const TYPE_CONFIG = {
-  ALL: { label: "全部记录", icon: History, color: "text-slate-400" },
-  PLAY: { label: "播放观看", icon: Play, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
-  DOWNLOAD: { label: "下载活动", icon: Download, color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" },
-  ORGANIZE: { label: "归档整理", icon: FolderArchive, color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
-  SYNC: { label: "云端同步", icon: Cloud, color: "text-sky-500 bg-sky-500/10 border-sky-500/20" },
-  AROUSAL: { label: "私密计时", icon: Heart, color: "text-rose-500 bg-rose-500/10 border-rose-500/20" },
+  ALL: { label: "全部", icon: History, color: "text-slate-400" },
+  PLAY: { label: "播放", icon: Play, color: "text-amber-500 bg-amber-500/10 border-amber-500/20" },
+  DOWNLOAD: { label: "下载", icon: Download, color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20" },
+  ORGANIZE: { label: "归档", icon: FolderArchive, color: "text-blue-500 bg-blue-500/10 border-blue-500/20" },
+  SYNC: { label: "同步", icon: Cloud, color: "text-sky-500 bg-sky-500/10 border-sky-500/20" },
+  AROUSAL: { label: "私密", icon: Heart, color: "text-rose-500 bg-rose-500/10 border-rose-500/20" },
 };
 
 export function ActivityHistoryModal({
@@ -97,7 +98,7 @@ export function ActivityHistoryModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col h-[650px] anim-scale-in">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col h-[650px] anim-scale-in">
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
           <div className="flex items-center gap-3">
@@ -119,37 +120,42 @@ export function ActivityHistoryModal({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleClear}
-              disabled={items.length === 0}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition cursor-pointer disabled:opacity-40"
-              title="清空记录"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={loadData}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-              title="刷新"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-amber-500" : ""}`} />
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+          <div className="flex items-center gap-1.5">
+            <Tooltip content="清空全部操作记录" placement="bottom">
+              <button
+                type="button"
+                onClick={handleClear}
+                disabled={items.length === 0}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition cursor-pointer disabled:opacity-40"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </Tooltip>
+            <Tooltip content="刷新操作记录" placement="bottom">
+              <button
+                type="button"
+                onClick={loadData}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-amber-500" : ""}`} />
+              </button>
+            </Tooltip>
+            <Tooltip content="关闭时间线 (Esc)" placement="left">
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="关闭时间线"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </Tooltip>
           </div>
         </div>
 
-        {/* Filter & Search Bar */}
-        <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-1 overflow-x-auto py-0.5">
+        {/* Filter & Search Bar (无横向滚动条，分段胶囊设计) */}
+        <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/70 rounded-xl">
             {Object.entries(TYPE_CONFIG).map(([key, cfg]) => {
               const Icon = cfg.icon;
               const isSelected = selectedType === key;
@@ -160,20 +166,20 @@ export function ActivityHistoryModal({
                   key={key}
                   type="button"
                   onClick={() => setSelectedType(key)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
                     isSelected
                       ? "bg-amber-500 text-white font-bold shadow-sm shadow-amber-500/20"
-                      : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-700/60"
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
                   <span>{cfg.label}</span>
                   {count !== undefined && (
                     <span
-                      className={`text-[10px] px-1 rounded-full ${
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
                         isSelected
-                          ? "bg-white/20 text-white"
-                          : "bg-slate-200 dark:bg-slate-800 text-slate-500"
+                          ? "bg-white/20 text-white font-bold"
+                          : "bg-slate-200/80 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
                       }`}
                     >
                       {count}
@@ -184,7 +190,7 @@ export function ActivityHistoryModal({
             })}
           </div>
 
-          <div className="relative w-48 shrink-0">
+          <div className="relative w-44 shrink-0">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"

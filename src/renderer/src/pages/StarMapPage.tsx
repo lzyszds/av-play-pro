@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "../lib/trpc";
 import { PageLoader } from "../components/PageLoader";
+import { Tooltip } from "../components/common/Tooltip";
 import { Network, ZoomIn, ZoomOut, RotateCcw, Search } from "lucide-react";
 
 interface Props {
@@ -227,9 +228,36 @@ export function StarMapPage({ videoPath, onAddSystemLog }: Props) {
             <option value="all">全部类型</option>
             {Object.entries(TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </select>
-          <button onClick={() => setZoom((z) => Math.min(5, z * 1.2))} className="w-7 h-7 flex items-center justify-center rounded bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition cursor-pointer"><ZoomIn className="w-3.5 h-3.5" /></button>
-          <button onClick={() => setZoom((z) => Math.max(0.2, z * 0.8))} className="w-7 h-7 flex items-center justify-center rounded bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition cursor-pointer"><ZoomOut className="w-3.5 h-3.5" /></button>
-          <button onClick={resetView} className="w-7 h-7 flex items-center justify-center rounded bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition cursor-pointer"><RotateCcw className="w-3.5 h-3.5" /></button>
+          <Tooltip content="放大星图 (Zoom In)" placement="bottom">
+            <button
+              type="button"
+              onClick={() => setZoom((z) => Math.min(5, z * 1.2))}
+              aria-label="放大星图"
+              className="w-7 h-7 flex items-center justify-center rounded bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition cursor-pointer"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
+          <Tooltip content="缩小星图 (Zoom Out)" placement="bottom">
+            <button
+              type="button"
+              onClick={() => setZoom((z) => Math.max(0.2, z * 0.8))}
+              aria-label="缩小星图"
+              className="w-7 h-7 flex items-center justify-center rounded bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition cursor-pointer"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
+          <Tooltip content="重置视角 (居中还原)" placement="bottom">
+            <button
+              type="button"
+              onClick={resetView}
+              aria-label="重置视角"
+              className="w-7 h-7 flex items-center justify-center rounded bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
         </div>
       </div>
       <div className="flex-1 overflow-hidden relative" onWheel={handleWheel} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} style={{ cursor: dragging ? "grabbing" : "grab" }}>

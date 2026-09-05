@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { BarChart3, X, Trash2 } from "lucide-react";
 import { thumbnailQueue, type ThumbJob } from "../lib/thumbnailQueue";
 import { FloatingBall } from "./FloatingBall";
+import { Tooltip } from "./common/Tooltip";
 
 export function ThumbnailQueueWidget({
   bottomOffset = 16,
@@ -35,13 +36,14 @@ export function ThumbnailQueueWidget({
         <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
           {running.length} 处理 · {pending.length} 排队 / {jobs.length} 总
         </span>
-        <button
-          onClick={() => thumbnailQueue.clearFinished()}
-          title="清理已结束"
-          className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-        >
-          <Trash2 className="w-3 h-3" />
-        </button>
+        <Tooltip content="清理已结束任务" placement="left">
+          <button
+            onClick={() => thumbnailQueue.clearFinished()}
+            className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </Tooltip>
       </div>
 
       {running.length > 0 && (
@@ -99,24 +101,26 @@ export function ThumbnailQueueWidget({
                     : "—"}
                 </span>
                 {(j.status === "pending" || j.status === "running") && (
-                  <button
-                    onClick={() => thumbnailQueue.cancel(j.id)}
-                    title="取消"
-                    className="p-0.5 text-slate-400 hover:text-rose-500 cursor-pointer"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
+                  <Tooltip content="取消生成" placement="left">
+                    <button
+                      onClick={() => thumbnailQueue.cancel(j.id)}
+                      className="p-0.5 text-slate-400 hover:text-rose-500 cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Tooltip>
                 )}
                 {(j.status === "done" ||
                   j.status === "failed" ||
                   j.status === "cancelled") && (
-                  <button
-                    onClick={() => thumbnailQueue.remove(j.id)}
-                    title="移除"
-                    className="p-0.5 text-slate-300 hover:text-slate-600 cursor-pointer"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                  <Tooltip content="移除记录" placement="left">
+                    <button
+                      onClick={() => thumbnailQueue.remove(j.id)}
+                      className="p-0.5 text-slate-300 hover:text-slate-600 cursor-pointer"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </Tooltip>
                 )}
               </div>
               {j.error && (

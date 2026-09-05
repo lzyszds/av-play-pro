@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   FastForward,
 } from "lucide-react";
+import { Tooltip } from "../common/Tooltip";
 
 export interface SceneChapter {
   id: string;
@@ -171,13 +172,16 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <Tooltip content="关闭分幕抽屉 (Esc)" placement="left">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="关闭分幕抽屉"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Tab 切换 */}

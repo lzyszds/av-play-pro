@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PageLoader } from "../components/PageLoader";
+import { Tooltip } from "../components/common/Tooltip";
 import { trpc } from "../lib/trpc";
 import { runScraper, type ScrapedItem } from "../lib/scraperControl";
 import { toCdnImg } from "../lib/cdn";
@@ -134,23 +135,25 @@ const DiscoverCard = React.memo(function DiscoverCard({
           )}
           <div className="ml-auto flex items-center gap-1">
             {item.code && (
+              <Tooltip content="复制番号" placement="top">
+                <button
+                  type="button"
+                  onClick={() => onCopy(item.code!)}
+                  className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-blue-500 transition cursor-pointer"
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
+              </Tooltip>
+            )}
+            <Tooltip content="在浏览器中打开页面" placement="top">
               <button
                 type="button"
-                onClick={() => onCopy(item.code!)}
+                onClick={() => window.open(item.url, "_blank")}
                 className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-blue-500 transition cursor-pointer"
-                title="复制番号"
               >
-                <Copy className="w-3 h-3" />
+                <ExternalLink className="w-3 h-3" />
               </button>
-            )}
-            <button
-              type="button"
-              onClick={() => window.open(item.url, "_blank")}
-              className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-blue-500 transition cursor-pointer"
-              title="打开页面"
-            >
-              <ExternalLink className="w-3 h-3" />
-            </button>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -317,14 +320,15 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
           placeholder="搜索标题 / 番号…"
           className="ml-auto w-48 px-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-blue-400 outline-none text-slate-700 dark:text-slate-200"
         />
-        <button
-          type="button"
-          onClick={() => setShowConfig((v) => !v)}
-          className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-blue-500 transition cursor-pointer"
-          title="抓取设置"
-        >
-          <Settings2 className="w-4 h-4" />
-        </button>
+        <Tooltip content="网络抓取配置" placement="top">
+          <button
+            type="button"
+            onClick={() => setShowConfig((v) => !v)}
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-blue-500 transition cursor-pointer"
+          >
+            <Settings2 className="w-4 h-4" />
+          </button>
+        </Tooltip>
         <button
           type="button"
           onClick={handleScrape}

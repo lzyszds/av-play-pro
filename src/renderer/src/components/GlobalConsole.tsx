@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Terminal, Trash2, GripHorizontal, X } from "lucide-react";
 import { Dropdown } from "./Dropdown";
+import { Tooltip } from "./common/Tooltip";
 import type { LogMessage } from "../pages/download/types";
 
 type LevelFilter = "ALL" | "INFO" | "SUCCESS" | "WARNING" | "ERROR";
@@ -155,21 +156,23 @@ export function GlobalConsole({
             自动滚动
           </label>
 
-          <button
-            onClick={() => setLogs([])}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition cursor-pointer"
-            title="清空日志"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-          {onClose && (
+          <Tooltip content="清空控制台日志" placement="top">
             <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-              title="关闭控制台"
+              onClick={() => setLogs([])}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition cursor-pointer"
             >
-              <X className="w-3.5 h-3.5" />
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
+          </Tooltip>
+          {onClose && (
+            <Tooltip content="关闭控制台" placement="top">
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </Tooltip>
           )}
         </div>
       </div>

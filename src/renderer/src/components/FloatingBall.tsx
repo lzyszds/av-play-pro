@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from "react";
+import { Tooltip } from "./common/Tooltip";
 
 type Tone = "amber" | "emerald" | "rose" | "sky" | "violet";
 
@@ -147,64 +148,65 @@ export function FloatingBall({
           }`}
           style={{ width: BALL_SIZE, height: BALL_SIZE }}
         />
-        <button
-          type="button"
-          onClick={onToggle}
-          title={title}
-          className={`relative flex items-center justify-center text-white shadow-[0_8px_24px_-8px_rgba(0,0,0,0.45)] hover:shadow-[0_12px_32px_-6px_rgba(0,0,0,0.55)] active:scale-95 transition cursor-pointer bg-gradient-to-br ${meta.bg}`}
-          style={{ width: BALL_SIZE, height: BALL_SIZE, borderRadius: "9999px" }}
-        >
-          {/* 高光 */}
-          <span
-            className="absolute top-1 left-1 right-3 h-1/2 rounded-t-full bg-gradient-to-b from-white/40 to-transparent"
-            style={{ pointerEvents: "none" }}
-          />
-          {/* 进度环 */}
-          {showRing && (
-            <svg
-              className="absolute inset-0"
-              width={BALL_SIZE}
-              height={BALL_SIZE}
-              viewBox={`0 0 ${BALL_SIZE} ${BALL_SIZE}`}
-              style={{ transform: "rotate(-90deg)" }}
-            >
-              <circle
-                cx={BALL_SIZE / 2}
-                cy={BALL_SIZE / 2}
-                r={RING_R}
-                fill="none"
-                stroke="rgba(255,255,255,0.25)"
-                strokeWidth={RING_STROKE}
-              />
-              <circle
-                cx={BALL_SIZE / 2}
-                cy={BALL_SIZE / 2}
-                r={RING_R}
-                fill="none"
-                stroke={meta.ringStroke}
-                strokeWidth={RING_STROKE}
-                strokeDasharray={`${dash} ${RING_CIRC - dash}`}
-                strokeLinecap="round"
-                style={{
-                  filter: `drop-shadow(0 0 6px ${meta.ringGlow})`,
-                  transition: "stroke-dasharray 250ms ease",
-                }}
-              />
-            </svg>
-          )}
-          {/* 图标 */}
-          <span className="relative z-10 flex items-center justify-center drop-shadow-sm">
-            {icon}
-          </span>
-          {/* 角标 */}
-          {badge != null && (
+        <Tooltip content={title || ""} disabled={!title} placement="left">
+          <button
+            type="button"
+            onClick={onToggle}
+            className={`relative flex items-center justify-center text-white shadow-[0_8px_24px_-8px_rgba(0,0,0,0.45)] hover:shadow-[0_12px_32px_-6px_rgba(0,0,0,0.55)] active:scale-95 transition cursor-pointer bg-gradient-to-br ${meta.bg}`}
+            style={{ width: BALL_SIZE, height: BALL_SIZE, borderRadius: "9999px" }}
+          >
+            {/* 高光 */}
             <span
-              className={`absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1.5 rounded-full ${meta.badgeBg} text-slate-800 text-[11px] font-bold flex items-center justify-center shadow ring-2 ring-white/70`}
-            >
-              {badge}
+              className="absolute top-1 left-1 right-3 h-1/2 rounded-t-full bg-gradient-to-b from-white/40 to-transparent"
+              style={{ pointerEvents: "none" }}
+            />
+            {/* 进度环 */}
+            {showRing && (
+              <svg
+                className="absolute inset-0"
+                width={BALL_SIZE}
+                height={BALL_SIZE}
+                viewBox={`0 0 ${BALL_SIZE} ${BALL_SIZE}`}
+                style={{ transform: "rotate(-90deg)" }}
+              >
+                <circle
+                  cx={BALL_SIZE / 2}
+                  cy={BALL_SIZE / 2}
+                  r={RING_R}
+                  fill="none"
+                  stroke="rgba(255,255,255,0.25)"
+                  strokeWidth={RING_STROKE}
+                />
+                <circle
+                  cx={BALL_SIZE / 2}
+                  cy={BALL_SIZE / 2}
+                  r={RING_R}
+                  fill="none"
+                  stroke={meta.ringStroke}
+                  strokeWidth={RING_STROKE}
+                  strokeDasharray={`${dash} ${RING_CIRC - dash}`}
+                  strokeLinecap="round"
+                  style={{
+                    filter: `drop-shadow(0 0 6px ${meta.ringGlow})`,
+                    transition: "stroke-dasharray 250ms ease",
+                  }}
+                />
+              </svg>
+            )}
+            {/* 图标 */}
+            <span className="relative z-10 flex items-center justify-center drop-shadow-sm">
+              {icon}
             </span>
-          )}
-        </button>
+            {/* 角标 */}
+            {badge != null && (
+              <span
+                className={`absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1.5 rounded-full ${meta.badgeBg} text-slate-800 text-[11px] font-bold flex items-center justify-center shadow ring-2 ring-white/70`}
+              >
+                {badge}
+              </span>
+            )}
+          </button>
+        </Tooltip>
       </div>
     </>
   );

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Tooltip } from "../common/Tooltip";
 import {
   Plus,
   Play,
@@ -198,12 +199,16 @@ export function NewTaskModal({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-black hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <Tooltip content="关闭窗口 (Esc)" placement="bottom">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="关闭窗口"
+              className="p-1.5 rounded-lg text-black hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Body */}

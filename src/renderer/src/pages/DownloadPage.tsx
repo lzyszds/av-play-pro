@@ -23,6 +23,7 @@ import { SettingsPanel } from "../components/download/SettingsPanel";
 import { TaskCard } from "../components/download/TaskCard";
 import { TaskDetailCard } from "../components/download/TaskDetailCard";
 import { DownloadFloatingBall } from "../components/download/DownloadFloatingBall";
+import { Tooltip } from "../components/common/Tooltip";
 import { PageLoader } from "../components/PageLoader";
 import type {
   AppSettings,
@@ -1475,21 +1476,27 @@ export function DownloadPage({
               </div>
 
               <button
+                type="button"
                 onClick={() => setShowNewTaskModal(true)}
+                title="新建 M3U8 下载任务"
+                aria-label="新建任务"
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-xs text-white font-bold rounded-lg transition cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 新建任务
               </button>
 
-              <button
-                onClick={showPrivacyScreen}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
-                title="立即开启隐私屏保，遮住下载内容"
-              >
-                <EyeOff className="w-3.5 h-3.5" />
-                隐私屏保
-              </button>
+              <Tooltip content="立即开启隐私屏保，遮住下载内容" placement="bottom">
+                <button
+                  type="button"
+                  onClick={showPrivacyScreen}
+                  aria-label="隐私屏保"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
+                >
+                  <EyeOff className="w-3.5 h-3.5" />
+                  隐私屏保
+                </button>
+              </Tooltip>
 
               {/* 队列下载开关 */}
               <button
@@ -1513,28 +1520,37 @@ export function DownloadPage({
                 队列下载 {queueEnabled ? "ON" : "OFF"}
               </button>
 
-              <button
-                onClick={handleToggleWidget}
-                title={widgetOpen ? "关闭桌面下载小组件" : "打开桌面下载小组件（屏幕右下角悬浮球）"}
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border transition cursor-pointer ${
-                  widgetOpen
-                    ? "bg-amber-500 border-amber-500 text-white shadow-sm"
-                    : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                <Move className="w-3.5 h-3.5" />
-                {widgetOpen ? "组件 ON" : "桌面组件"}
-              </button>
+              <Tooltip content={widgetOpen ? "关闭桌面下载小组件" : "打开桌面下载小组件（屏幕右下角悬浮球）"} placement="bottom">
+                <button
+                  type="button"
+                  onClick={handleToggleWidget}
+                  aria-label="桌面小组件"
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border transition cursor-pointer ${
+                    widgetOpen
+                      ? "bg-amber-500 border-amber-500 text-white shadow-sm"
+                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <Move className="w-3.5 h-3.5" />
+                  {widgetOpen ? "组件 ON" : "桌面组件"}
+                </button>
+              </Tooltip>
 
               <button
+                type="button"
                 onClick={handleStartAll}
+                title="全部开始下载"
+                aria-label="全部开始"
                 className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
               >
                 全部开始
               </button>
 
               <button
+                type="button"
                 onClick={handlePauseAll}
+                title="全部暂停下载"
+                aria-label="全部暂停"
                 className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
               >
                 全部暂停
@@ -1550,13 +1566,16 @@ export function DownloadPage({
                 </button>
               )}
 
-              <button
-                onClick={() => setShowSettingsModal(true)}
-                className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
-                title="系统设置"
-              >
-                <Settings className="w-3.5 h-3.5" />
-              </button>
+              <Tooltip content="下载与全局系统设置" placement="bottom">
+                <button
+                  type="button"
+                  onClick={() => setShowSettingsModal(true)}
+                  className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
+                  aria-label="系统设置"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                </button>
+              </Tooltip>
             </div>
           </div>
 

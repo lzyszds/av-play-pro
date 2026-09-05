@@ -14,6 +14,7 @@ import {
   VolumeX,
 } from "lucide-react";
 import type { VideoItem } from "../../pages/player/types";
+import { Tooltip } from "../common/Tooltip";
 
 type Phase = "idle" | "spinning" | "revealed";
 
@@ -220,27 +221,31 @@ export function LuckyDraw({ videos, favorites, onClose, onPlay }: Props) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      {/* 顶部控制栏 */}
-      <div className="absolute top-5 right-5 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setSoundEnabled(!soundEnabled)}
-          className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center cursor-pointer transition"
-          title={soundEnabled ? "静音音效" : "开启音效"}
-        >
-          {soundEnabled ? (
-            <Volume2 className="w-4 h-4 text-amber-400" />
-          ) : (
-            <VolumeX className="w-4 h-4 text-slate-400" />
-          )}
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center cursor-pointer transition"
-        >
-          <X className="w-4 h-4" />
-        </button>
+      {/* 右上角关闭与控制按钮 */}
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+        <Tooltip content={soundEnabled ? "静音音效" : "开启音效"} placement="bottom">
+          <button
+            type="button"
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center cursor-pointer transition"
+          >
+            {soundEnabled ? (
+              <Volume2 className="w-4 h-4 text-amber-400" />
+            ) : (
+              <VolumeX className="w-4 h-4 text-slate-400" />
+            )}
+          </button>
+        </Tooltip>
+        <Tooltip content="关闭盲盒轮盘 (Esc)" placement="bottom">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="关闭盲盒轮盘"
+            className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center cursor-pointer transition"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </Tooltip>
       </div>
 
       {/* 礼花粒子动效 */}
@@ -310,6 +315,8 @@ export function LuckyDraw({ videos, favorites, onClose, onPlay }: Props) {
               setPoolMode("all");
               if (phase !== "spinning") spin();
             }}
+            title="从全部本地片库中随机抽取"
+            aria-label="全库盲盒"
             className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
               poolMode === "all"
                 ? "bg-amber-500 text-white shadow-sm"
@@ -325,6 +332,8 @@ export function LuckyDraw({ videos, favorites, onClose, onPlay }: Props) {
               setPoolMode("favorites");
               if (phase !== "spinning") spin();
             }}
+            title="仅在红心收藏列表中抽取"
+            aria-label="心动收藏"
             className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
               poolMode === "favorites"
                 ? "bg-rose-500 text-white shadow-sm"
@@ -340,6 +349,8 @@ export function LuckyDraw({ videos, favorites, onClose, onPlay }: Props) {
               setPoolMode("unplayed");
               if (phase !== "spinning") spin();
             }}
+            title="仅从未播放过的影片中抽取"
+            aria-label="未尝禁果"
             className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
               poolMode === "unplayed"
                 ? "bg-emerald-500 text-white shadow-sm"
@@ -355,6 +366,8 @@ export function LuckyDraw({ videos, favorites, onClose, onPlay }: Props) {
               setPoolMode("short");
               if (phase !== "spinning") spin();
             }}
+            title="仅在微电影短片(&lt;60分钟)中抽取"
+            aria-label="短平快短片"
             className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
               poolMode === "short"
                 ? "bg-sky-500 text-white shadow-sm"

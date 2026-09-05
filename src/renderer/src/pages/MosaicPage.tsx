@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { trpc } from "../lib/trpc";
 import { PageLoader } from "../components/PageLoader";
+import { Tooltip } from "../components/common/Tooltip";
 import { Grid3X3, Play, Pause, X, Plus } from "lucide-react";
 
 interface Props {
@@ -143,7 +144,16 @@ export function MosaicPage({ videoPath, onAddSystemLog }: Props) {
                   <video ref={(el) => setVideoRef(i, el)} src={slot.url} muted loop playsInline className="w-full h-full object-contain" />
                   <div className="absolute top-2 left-2 right-2 flex items-center justify-between opacity-0 group-hover:opacity-100 transition-opacity">
                     <span className="text-[9px] font-bold text-white bg-black/60 px-2 py-0.5 rounded truncate max-w-[80%]">{slot.name}</span>
-                    <button onClick={() => removeVideo(i)} className="w-5 h-5 flex items-center justify-center rounded-full bg-black/60 text-white hover:bg-rose-500 transition cursor-pointer"><X className="w-3 h-3" /></button>
+                    <Tooltip content="从九宫格拼接墙中移除该视频" placement="top">
+                      <button
+                        type="button"
+                        onClick={() => removeVideo(i)}
+                        aria-label="移除视频"
+                        className="w-5 h-5 flex items-center justify-center rounded-full bg-black/60 text-white hover:bg-rose-500 transition cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Tooltip>
                   </div>
                 </>
               ) : (
@@ -161,7 +171,16 @@ export function MosaicPage({ videoPath, onAddSystemLog }: Props) {
           <div className="bg-slate-900 rounded-2xl border border-slate-800 w-[500px] max-h-[70vh] flex flex-col shadow-2xl">
             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800">
               <h3 className="text-sm font-bold text-slate-200">选择视频到槽位 #{pickingSlot != null ? pickingSlot + 1 : "?"}</h3>
-              <button onClick={() => { setShowPicker(false); setPickingSlot(null); }} className="w-6 h-6 flex items-center justify-center rounded text-slate-500 hover:text-white hover:bg-slate-800 transition cursor-pointer"><X className="w-4 h-4" /></button>
+              <Tooltip content="关闭视频选择器 (Esc)" placement="bottom">
+                <button
+                  type="button"
+                  onClick={() => { setShowPicker(false); setPickingSlot(null); }}
+                  aria-label="关闭视频选择器"
+                  className="w-6 h-6 flex items-center justify-center rounded text-slate-500 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </Tooltip>
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-1">
               {availableVideos.length === 0 ? (

@@ -23,6 +23,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { trpc } from "../../lib/trpc";
+import { Tooltip } from "../common/Tooltip";
 
 export interface AnnualReportModalProps {
   stats: any;
@@ -208,13 +209,16 @@ export function AnnualReportModal({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <Tooltip content="关闭作战战报 (Esc)" placement="left">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="关闭作战战报"
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Content Body */}

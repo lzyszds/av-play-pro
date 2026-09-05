@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { trpc } from "../lib/trpc";
 import { PageLoader } from "../components/PageLoader";
+import { Tooltip } from "../components/common/Tooltip";
 import { CoverImage } from "../components/CoverImage";
 import { OrganizerModal } from "../components/organizer/OrganizerModal";
 
@@ -449,13 +450,16 @@ export function CommandCenterPage({
               className="w-full h-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 pl-9 pr-3 text-xs focus:outline-none focus:border-amber-500 transition shadow-2xs"
             />
             {query && (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-              >
-                ✕
-              </button>
+              <Tooltip content="清空搜索词" placement="bottom">
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  aria-label="清空搜索词"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </Tooltip>
             )}
           </div>
 

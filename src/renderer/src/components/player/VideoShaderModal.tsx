@@ -10,6 +10,7 @@ import {
   Eye,
   Check,
 } from "lucide-react";
+import { Tooltip } from "../common/Tooltip";
 
 export type FilterPresetKey =
   | "native"
@@ -252,13 +253,16 @@ export const VideoShaderModal: React.FC<Props> = ({
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <Tooltip content="关闭画质增强 (Esc)" placement="left">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="关闭画质增强"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
 
         <div className="p-5 space-y-5 max-h-[75vh] overflow-y-auto">
@@ -332,6 +336,8 @@ export const VideoShaderModal: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={handleToggleSharpen}
+                title="切换 CAS 对比度自适应锐化状态"
+                aria-label="切换 CAS 锐化"
                 className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border transition cursor-pointer flex items-center gap-1 ${
                   localSettings.sharpen
                     ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"

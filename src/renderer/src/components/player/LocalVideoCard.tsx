@@ -478,7 +478,10 @@ const CardIconBtn: React.FC<{
 }> = ({ onClick, title, children }) => (
   <Tooltip content={title} placement="top" delay={150}>
     <button
+      type="button"
       onClick={onClick}
+      title={title}
+      aria-label={title}
       className="p-1.5 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
     >
       {children}

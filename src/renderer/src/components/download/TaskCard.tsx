@@ -8,6 +8,7 @@ import {
   resolveTaskCoverUrl,
 } from "../../pages/download/utils";
 import { getStatusBadge } from "./StatusBadge";
+import { Tooltip } from "../common/Tooltip";
 
 export interface TaskCardProps {
   task: DownloadTask;
@@ -163,68 +164,77 @@ function TaskCardImpl({
             className="flex items-center gap-1.5 text-black shrink-0"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              onClick={(e) => onCopyCommand(e, task)}
-              className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:bg-amber-50 hover:text-amber-700 transition cursor-pointer"
-              title="复制 N_m3u8DL-RE 调取指令"
-            >
-              {copiedTaskId === task.id ? (
-                <Check className="w-3.5 h-3.5 text-emerald-500" />
-              ) : (
-                <Copy className="w-3.5 h-3.5" />
-              )}
-            </button>
+            <Tooltip content="复制 N_m3u8DL-RE 调取指令" placement="top">
+              <button
+                onClick={(e) => onCopyCommand(e, task)}
+                className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:bg-amber-50 hover:text-amber-700 transition cursor-pointer"
+              >
+                {copiedTaskId === task.id ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-500" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </Tooltip>
 
             {task.status === "COMPLETED" ? (
               <>
+                <Tooltip content="重新下载（覆盖已下载文件）" placement="top">
+                  <button
+                    onClick={() => onRedownload?.(task.id)}
+                    className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 hover:text-amber-700 hover:bg-amber-50 transition cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                </Tooltip>
+                <Tooltip content="立即查看" placement="top">
+                  <button
+                    onClick={() => onPlayCompleted?.(task)}
+                    className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-600 hover:bg-emerald-100 transition cursor-pointer"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                  </button>
+                </Tooltip>
+              </>
+            ) : task.status === "FAILED" ? (
+              <Tooltip content="重试下载（清零进度后重新入队）" placement="top">
                 <button
-                  onClick={() => onRedownload?.(task.id)}
-                  className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 hover:text-amber-700 hover:bg-amber-50 transition cursor-pointer"
-                  title="重新下载（覆盖已下载文件）"
+                  onClick={() => onTriggerPauseResume(task.id)}
+                  className="p-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 transition cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>
-                <button
-                  onClick={() => onPlayCompleted?.(task)}
-                  className="p-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-600 hover:bg-emerald-100 transition cursor-pointer"
-                  title="立即查看"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                </button>
-              </>
-            ) : task.status === "FAILED" ? (
-              <button
-                onClick={() => onTriggerPauseResume(task.id)}
-                className="p-1.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 transition cursor-pointer"
-                title="重试下载（清零进度后重新入队）"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-              </button>
+              </Tooltip>
             ) : (
-              <button
-                onClick={() => onTriggerPauseResume(task.id)}
-                className={`p-1.5 rounded-lg bg-slate-50 border border-slate-200 transition cursor-pointer ${
-                  task.status === "DOWNLOADING"
-                    ? "text-amber-600 hover:bg-amber-50"
-                    : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
-                }`}
-                title={task.status === "DOWNLOADING" ? "暂停下载" : "继续下载"}
+              <Tooltip
+                content={task.status === "DOWNLOADING" ? "暂停下载" : "继续下载"}
+                placement="top"
               >
-                {task.status === "DOWNLOADING" ? (
-                  <Pause className="w-3.5 h-3.5" />
-                ) : (
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                )}
-              </button>
+                <button
+                  onClick={() => onTriggerPauseResume(task.id)}
+                  className={`p-1.5 rounded-lg bg-slate-50 border border-slate-200 transition cursor-pointer ${
+                    task.status === "DOWNLOADING"
+                      ? "text-amber-600 hover:bg-amber-50"
+                      : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                  }`}
+                >
+                  {task.status === "DOWNLOADING" ? (
+                    <Pause className="w-3.5 h-3.5" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                  )}
+                </button>
+              </Tooltip>
             )}
 
-            <button
-              onClick={() => onDeleteTask(task.id)}
-              className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-              title="删除任务"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            <Tooltip content="删除任务" placement="top">
+              <button
+                onClick={() => onDeleteTask(task.id)}
+                className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </Tooltip>
           </div>
         </div>
       </div>

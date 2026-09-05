@@ -900,17 +900,6 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
     }
   };
 
-  const handleReset = async () => {
-    if (!confirm("确定要重置并清空所有统计数据吗？此操作无法撤销。")) return;
-    try {
-      await trpc.stats.reset.mutate();
-      onAddSystemLog("统计数据已重置", "SUCCESS");
-      await refresh();
-    } catch (err: any) {
-      onAddSystemLog(`重置失败: ${err?.message || err}`, "ERROR");
-    }
-  };
-
   // 基础聚合计算
   const days30 = useMemo(() => lastNDays(30), []);
   const chartData = useMemo(() => {
@@ -1074,36 +1063,6 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
           >
             <FolderArchive className="w-3.5 h-3.5 text-blue-500" />
             Emby软链接
-          </button>
-
-          <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-0.5" />
-
-          <button
-            type="button"
-            onClick={refresh}
-            className="p-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
-            title="刷新数据"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-
-          <button
-            type="button"
-            onClick={handleSnapshot}
-            disabled={isSnapshotting}
-            className="p-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/20 transition cursor-pointer disabled:opacity-50"
-            title="手动拍摄磁盘占用快照"
-          >
-            <HardDrive className={`w-3.5 h-3.5 ${isSnapshotting ? "animate-spin" : ""}`} />
-          </button>
-
-          <button
-            type="button"
-            onClick={handleReset}
-            className="p-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition cursor-pointer"
-            title="重置统计"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

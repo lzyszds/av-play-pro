@@ -20,6 +20,7 @@ import {
   resolveTaskCoverUrl,
 } from "../../pages/download/utils";
 import { getStatusBadge } from "./StatusBadge";
+import { Tooltip } from "../common/Tooltip";
 
 interface Props {
   task: DownloadTask;
@@ -139,16 +140,19 @@ export function TaskDetailCard({
               </span>
             )}
           </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onClose();
-            }}
-            className="w-7 h-7 rounded-full bg-black/55 backdrop-blur-sm hover:bg-rose-500/80 flex items-center justify-center text-white/90 transition cursor-pointer"
-            title="关闭详情"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+          <Tooltip content="关闭详情面板 (Esc)" placement="left">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              className="w-7 h-7 rounded-full bg-black/55 backdrop-blur-sm hover:bg-rose-500/80 flex items-center justify-center text-white/90 transition cursor-pointer"
+              aria-label="关闭详情面板"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </Tooltip>
         </div>
 
         {/* 进度环挂在封面底部偏右 */}
@@ -234,10 +238,13 @@ export function TaskDetailCard({
         {/* 折叠的终端命令 */}
         <div className="mt-auto">
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               setTerminalOpen((v) => !v);
             }}
+            title={terminalOpen ? "收起终端执行命令" : "展开查看终端执行命令"}
+            aria-label={terminalOpen ? "收起终端命令" : "展开终端命令"}
             className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg bg-slate-100/80 hover:bg-slate-200/70 dark:bg-slate-800/60 dark:hover:bg-slate-800 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition cursor-pointer"
           >
             <span className="flex items-center gap-1.5">

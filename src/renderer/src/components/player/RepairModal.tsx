@@ -16,6 +16,7 @@ import * as Progress from "@radix-ui/react-progress";
 import { trpc } from "../../lib/trpc";
 import { thumbnailQueue } from "../../lib/thumbnailQueue";
 import type { VideoItem } from "../../pages/player/types";
+import { Tooltip } from "../common/Tooltip";
 
 export interface RepairTarget {
   name: string;
@@ -343,14 +344,17 @@ export function RepairModal({
               {title}
             </span>
           </div>
-          <button
-            type="button"
-            disabled={running}
-            onClick={onClose}
-            className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer disabled:opacity-40"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <Tooltip content="关闭修复窗口 (Esc)" placement="left">
+            <button
+              type="button"
+              disabled={running}
+              onClick={onClose}
+              aria-label="关闭修复窗口"
+              className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer disabled:opacity-40"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
 
         <div className="px-5 py-4 space-y-4 text-xs flex-1 overflow-y-auto">
@@ -630,18 +634,21 @@ const ConcRow = React.memo(function ConcRow({
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          disabled={running || localValue <= 1}
-          onClick={() => {
-            const next = Math.max(1, localValue - 1);
-            setLocalValue(next);
-            onChange(next);
-          }}
-          className="w-6 h-6 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 cursor-pointer text-xs font-bold shrink-0"
-        >
-          −
-        </button>
+        <Tooltip content="减少并发数" placement="top">
+          <button
+            type="button"
+            disabled={running || localValue <= 1}
+            onClick={() => {
+              const next = Math.max(1, localValue - 1);
+              setLocalValue(next);
+              onChange(next);
+            }}
+            aria-label="减少并发数"
+            className="w-6 h-6 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 cursor-pointer text-xs font-bold shrink-0"
+          >
+            −
+          </button>
+        </Tooltip>
         <Slider.Root
           className="conc-slider relative flex items-center select-none touch-none w-full h-5 cursor-pointer data-[disabled]:opacity-50 data-[disabled]:cursor-not-allowed"
           value={[localValue]}
@@ -660,18 +667,21 @@ const ConcRow = React.memo(function ConcRow({
             aria-label={label}
           />
         </Slider.Root>
-        <button
-          type="button"
-          disabled={running || localValue >= max}
-          onClick={() => {
-            const next = Math.min(max, localValue + 1);
-            setLocalValue(next);
-            onChange(next);
-          }}
-          className="w-6 h-6 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 cursor-pointer text-xs font-bold shrink-0"
-        >
-          +
-        </button>
+        <Tooltip content="增加并发数" placement="top">
+          <button
+            type="button"
+            disabled={running || localValue >= max}
+            onClick={() => {
+              const next = Math.min(max, localValue + 1);
+              setLocalValue(next);
+              onChange(next);
+            }}
+            aria-label="增加并发数"
+            className="w-6 h-6 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 cursor-pointer text-xs font-bold shrink-0"
+          >
+            +
+          </button>
+        </Tooltip>
       </div>
     </div>
   );

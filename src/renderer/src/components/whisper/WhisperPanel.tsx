@@ -11,6 +11,7 @@ import {
   Zap,
 } from "lucide-react";
 import { trpc } from "../../lib/trpc";
+import { Tooltip } from "../common/Tooltip";
 
 type Model = "tiny" | "base" | "small" | "medium" | "large-v3";
 
@@ -205,12 +206,16 @@ export const WhisperPanel: React.FC<Props> = ({
             <Captions className="w-4 h-4 text-amber-500" />
             <span className="font-bold text-slate-800 text-sm">AI 字幕（Whisper）</span>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <Tooltip content="关闭语音识别 (Esc)" placement="left">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="关闭语音识别"
+              className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-5 text-xs">

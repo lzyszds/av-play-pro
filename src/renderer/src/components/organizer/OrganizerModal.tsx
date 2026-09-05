@@ -15,6 +15,7 @@ import {
   Info,
 } from "lucide-react";
 import { trpc } from "../../lib/trpc";
+import { Tooltip } from "../common/Tooltip";
 
 export interface OrganizerModalProps {
   sourcePath: string;
@@ -138,13 +139,16 @@ export function OrganizerModal({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <Tooltip content="关闭整理器 (Esc)" placement="left">
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="关闭整理器"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Path and Options Form */}

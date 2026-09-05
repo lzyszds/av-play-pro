@@ -22,6 +22,7 @@ export interface VideoItem {
   rating?: number;
   plot?: string;
   sourceSite?: string;
+  playCount?: number;
 }
 
 export interface PlayerPageProps {

@@ -23,6 +23,13 @@ import {
 } from "../lib/tonightRecommend";
 import { LuckyDraw } from "../components/player/LuckyDraw";
 import { HlsVideoPlayer } from "../components/player/HlsVideoPlayer";
+import {
+  VideoShaderModal,
+  buildCssFilter,
+  loadSavedFilterSettings,
+  type VideoFilterSettings,
+} from "../components/player/VideoShaderModal";
+import { SceneChaptersDrawer } from "../components/player/SceneChaptersDrawer";
 import { WhisperPanel } from "../components/whisper/WhisperPanel";
 import type { PlayerPageProps, VideoItem } from "./player/types";
 import { PageLoader } from "../components/PageLoader";
@@ -89,6 +96,8 @@ import {
   BookmarkPlus,
   ListChecks,
   XCircle,
+  Sparkles,
+  Film,
 } from "lucide-react";
 import {
   deriveFolderFromUrl,
@@ -140,6 +149,17 @@ export function PlayerPage({
 
   // 抽奖弹窗
   const [luckyOpen, setLuckyOpen] = useState(false);
+  // 画质着色器滤镜弹窗
+  const [shaderModalOpen, setShaderModalOpen] = useState(false);
+  const [filterSettings, setFilterSettings] =
+    useState<VideoFilterSettings>(loadSavedFilterSettings);
+  const filterCss = useMemo(
+    () => buildCssFilter(filterSettings),
+    [filterSettings],
+  );
+  // 剧情分幕大纲与 9 宫格速览抽屉
+  const [chaptersDrawerOpen, setChaptersDrawerOpen] = useState(false);
+  const pendingSeekRef = useRef<number | null>(null);
   // Whisper 字幕面板
   const [whisperOpen, setWhisperOpen] = useState(false);
   // 修复面板（单个 / 全部）
@@ -696,7 +716,7 @@ export function PlayerPage({
     }));
 
   const handleLoadLocalVideo = useCallback(
-    (video: VideoItem, index: number) => {
+    (video: VideoItem, index: number, seekTime?: number) => {
       const realIndex = filteredVideos.findIndex((v) => v.id === video.id);
       setSelectedVideoIndex(realIndex >= 0 ? realIndex : index);
       setUserInitiated(true);
@@ -708,9 +728,30 @@ export function PlayerPage({
         encryptionType: video.encryptionType || "检测中",
         referer: "",
       });
+      if (typeof seekTime === "number" && seekTime > 0) {
+        pendingSeekRef.current = seekTime;
+      }
     },
     [filteredVideos, recordPlayStats],
   );
+
+  // 延后 Seek 处理（例如盲盒直达高潮播放）
+  useEffect(() => {
+    if (!videoEl || pendingSeekRef.current == null) return;
+    const target = pendingSeekRef.current;
+    const executeSeek = () => {
+      if (videoEl.duration > 0 && target > 0) {
+        videoEl.currentTime = Math.min(target, Math.max(0, videoEl.duration - 2));
+        videoEl.play().catch(() => {});
+        pendingSeekRef.current = null;
+      }
+    };
+    if (videoEl.readyState >= 1) {
+      executeSeek();
+    } else {
+      videoEl.addEventListener("loadedmetadata", executeSeek, { once: true });
+    }
+  }, [videoEl, activeStream.url]);
 
   // 来自外部跳转的「立即播放某部本地视频」：等本地列表加载完后按名字匹配并播放
   useEffect(() => {
@@ -1048,6 +1089,34 @@ export function PlayerPage({
             {activeStream.name}
           </h3>
           <div className="flex items-center gap-2">
+            <Tooltip content="画质增强滤镜：CAS超清锐化、温暖胶片、夜景暗部增强HDR、饱和度微调" placement="bottom">
+              <button
+                type="button"
+                onClick={() => setShaderModalOpen(true)}
+                className={`h-7 px-2.5 rounded-md border text-[11px] font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  filterSettings.preset !== "native"
+                    ? "bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400"
+                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-600 hover:border-amber-300"
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                <span>画质增强</span>
+                {filterSettings.preset !== "native" && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                )}
+              </button>
+            </Tooltip>
+            <Tooltip content="剧情分幕大纲与 9 宫格微速览：按起承转合快速掌握节奏与秒级跳转" placement="bottom">
+              <button
+                type="button"
+                onClick={() => setChaptersDrawerOpen(true)}
+                disabled={!activeStream.url}
+                className="h-7 px-2.5 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer flex items-center gap-1.5"
+              >
+                <Film className="w-3.5 h-3.5 text-sky-500" />
+                <span>剧情分幕</span>
+              </button>
+            </Tooltip>
             <Tooltip content="在当前秒数添加高能书签，自动提升进度条热力峰值" placement="bottom">
               <button
                 type="button"
@@ -1085,6 +1154,7 @@ export function PlayerPage({
               previewVttUrl={previewVttUrl}
               subtitleUrl={subtitleUrl}
               bookmarks={timelineBookmarks}
+              filterStyle={filterCss}
               onVideoEl={setVideoEl}
               onMeta={(m) =>
                 setActiveStream((s) => ({
@@ -1455,13 +1525,37 @@ export function PlayerPage({
       {luckyOpen && (
         <LuckyDraw
           videos={localVideos}
+          favorites={favorites}
           onClose={() => setLuckyOpen(false)}
-          onPlay={(v) =>
+          onPlay={(v, seekTime) =>
             handleLoadLocalVideo(
               v,
               localVideos.findIndex((x) => x.id === v.id),
+              seekTime,
             )
           }
+        />
+      )}
+      {shaderModalOpen && (
+        <VideoShaderModal
+          settings={filterSettings}
+          onChange={setFilterSettings}
+          onClose={() => setShaderModalOpen(false)}
+        />
+      )}
+      {chaptersDrawerOpen && (
+        <SceneChaptersDrawer
+          duration={videoEl?.duration || 0}
+          currentTime={videoEl?.currentTime || 0}
+          bookmarks={timelineBookmarks}
+          previewVttUrl={previewVttUrl}
+          onSeek={(sec) => {
+            if (videoEl) {
+              videoEl.currentTime = sec;
+              videoEl.play().catch(() => {});
+            }
+          }}
+          onClose={() => setChaptersDrawerOpen(false)}
         />
       )}
       {repairTargets && (

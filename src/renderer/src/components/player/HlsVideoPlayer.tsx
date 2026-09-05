@@ -13,6 +13,7 @@ interface Props {
   /** 字幕文件的 local-media://... URL（srt 或 vtt） */
   subtitleUrl?: string | null;
   bookmarks?: Array<{ currentTime: number; note?: string }>;
+  filterStyle?: string;
   onMeta?: (info: { width: number; height: number }) => void;
   /** 透传到 <video> 上的事件，外层挂播放/暂停统计 */
   onVideoEl?: (el: HTMLVideoElement) => void;
@@ -52,6 +53,7 @@ export const HlsVideoPlayer: React.FC<Props> = ({
   previewVttUrl,
   subtitleUrl,
   bookmarks = [],
+  filterStyle = "none",
   onMeta,
   onVideoEl,
   onLog,
@@ -65,6 +67,14 @@ export const HlsVideoPlayer: React.FC<Props> = ({
   const [videoDuration, setVideoDuration] = useState<number>(0);
   const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
 
+  // 响应式应用画质滤镜
+  useEffect(() => {
+    const video = containerRef.current?.querySelector("video");
+    if (video) {
+      video.style.filter = filterStyle || "none";
+    }
+  }, [filterStyle]);
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container || !url) return;
@@ -73,6 +83,9 @@ export const HlsVideoPlayer: React.FC<Props> = ({
     const video = document.createElement("video");
     video.className = "w-full h-full object-contain";
     video.playsInline = true;
+    if (filterStyle) {
+      video.style.filter = filterStyle;
+    }
 
     container.appendChild(video);
 
@@ -340,6 +353,18 @@ export const HlsVideoPlayer: React.FC<Props> = ({
 
   return (
     <div ref={containerRef} className="w-full h-full flex bg-black relative group/plyr">
+      {/* 隐藏的 CAS 超清卷积锐化 SVG 滤镜定义 */}
+      <svg className="hidden absolute" width="0" height="0" aria-hidden="true">
+        <defs>
+          <filter id="avplay-cas-sharpen" x="0%" y="0%" width="100%" height="100%">
+            <feConvolveMatrix
+              order="3"
+              preserveAlpha="true"
+              kernelMatrix="0 -1 0 -1 5 -1 0 -1 0"
+            />
+          </filter>
+        </defs>
+      </svg>
       {progressEl && videoDuration > 0 && createPortal(
         <PlayerHeatmap
           videoKey={url}

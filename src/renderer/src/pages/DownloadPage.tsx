@@ -16,6 +16,7 @@ import {
   EyeOff,
   X,
   Move,
+  Download,
 } from "lucide-react";
 import { NewTaskModal } from "../components/download/NewTaskModal";
 import { SettingsPanel } from "../components/download/SettingsPanel";
@@ -110,6 +111,7 @@ export function DownloadPage({
   const [storageLoaded, setStorageLoaded] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
+  const [initialTaskUrl, setInitialTaskUrl] = useState("");
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -1560,45 +1562,166 @@ export function DownloadPage({
 
         </div>
         {/* Task Grid */}
-        {filteredTasks.length === 0 ? (
-          <div className="bg-white h-[calc(100%-50px)] p-3 pt-0 rounded-xl border border-slate-200 flex items-center justify-center shadow-sm text-center text-black text-xs">
-            <div className="flex flex-col items-center justify-center gap-3">
-              <FileVideo className="w-8 h-8 text-slate-300" />
-              <div>
-                <p className="font-semibold text-slate-600">
-                  {searchTerm ? "未找到符合搜索条件的项目" : "当前暂无活动任务"}
-                </p>
-                <p className="text-[10px] text-black mt-1">
-                  {searchTerm
-                    ? "试着更改关键字"
-                    : '点击右上方 "+ 新建任务" 派发你的第一个 M3U8 下载流'}
-                </p>
+        <div className="grid gap-4 p-3 pt-0 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
+          {filteredTasks.map((task, index) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              index={index}
+              isSelected={selectedTaskId === task.id}
+              isFlashing={flashTaskId === task.id}
+              copiedTaskId={copiedTaskId}
+              allowRemoteCovers={active}
+              onSelectTask={handleSelectTask}
+              onTriggerPauseResume={handleTriggerPauseResume}
+              onDeleteTask={handleDeleteTask}
+              onCopyCommand={handleCopyCommand}
+              onPlayCompleted={handlePlayCompleted}
+              onRedownload={handleRedownload}
+            />
+          ))}
+
+          {/* 当搜索无匹配项时 */}
+          {searchTerm && filteredTasks.length === 0 && (
+            <div className="col-span-full py-16 flex flex-col items-center justify-center text-center">
+              <div className="w-12 h-12 rounded-2xl bg-white/70 dark:bg-slate-800/70 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center mb-3 text-slate-400 shadow-sm">
+                <Search className="w-5 h-5" />
               </div>
+              <p className="font-bold text-sm text-slate-700 dark:text-slate-200">
+                未找到符合搜索条件的项目
+              </p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                没有找到与「{searchTerm}」相关的任务，试着更改关键字
+              </p>
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="mt-3 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold shadow-sm transition cursor-pointer"
+              >
+                清除搜索
+              </button>
             </div>
-          </div>
-        ) : (
-          <div className="grid gap-4 p-3 pt-0 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
-            {filteredTasks.map((task, index) => {
-              return (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  index={index}
-                  isSelected={selectedTaskId === task.id}
-                  isFlashing={flashTaskId === task.id}
-                  copiedTaskId={copiedTaskId}
-                  allowRemoteCovers={active}
-                  onSelectTask={handleSelectTask}
-                  onTriggerPauseResume={handleTriggerPauseResume}
-                  onDeleteTask={handleDeleteTask}
-                  onCopyCommand={handleCopyCommand}
-                  onPlayCompleted={handlePlayCompleted}
-                  onRedownload={handleRedownload}
-                />
-              );
-            })}
-          </div>
-        )}
+          )}
+
+          {/* 当任务列表为空时：保持与有任务时一致的卡片网格布局，背景壁纸自然显露，彻底消除突兀大白框 */}
+          {!searchTerm && tasks.length === 0 && (
+            <>
+              {/* 卡片 1: 新建下载任务 */}
+              <div
+                onClick={() => {
+                  setInitialTaskUrl("");
+                  setShowNewTaskModal(true);
+                }}
+                className="group relative flex flex-col bg-white/85 dark:bg-slate-900/85 backdrop-blur-sm rounded-xl border-2 border-dashed border-amber-400/80 dark:border-amber-500/60 overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-amber-500 hover:shadow-lg hover:shadow-amber-500/10 shadow-sm will-change-transform"
+              >
+                <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-transparent dark:from-amber-500/20 dark:via-slate-800 dark:to-slate-900 flex flex-col items-center justify-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/30 group-hover:scale-110 transition-transform">
+                    <Plus className="w-5 h-5 stroke-[2.5]" />
+                  </div>
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                    新建下载任务
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    支持 M3U8 / MP4 链接
+                  </span>
+                </div>
+                <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
+                  <div className="space-y-0.5">
+                    <div className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                      派发新下载流
+                    </div>
+                    <div className="text-[10px] text-slate-400 leading-tight">
+                      手动输入番号或视频直链创建下载
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                    <span>点击创建</span>
+                    <span className="group-hover:translate-x-0.5 transition-transform">→</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 卡片 2: 剪贴板一键填入 */}
+              <div
+                onClick={async () => {
+                  try {
+                    const clip = await navigator.clipboard.readText();
+                    if (clip && (clip.startsWith("http://") || clip.startsWith("https://") || clip.includes(".m3u8"))) {
+                      setInitialTaskUrl(clip.trim());
+                    } else {
+                      setInitialTaskUrl("");
+                    }
+                  } catch {
+                    setInitialTaskUrl("");
+                  }
+                  setShowNewTaskModal(true);
+                }}
+                className="group relative flex flex-col bg-white/85 dark:bg-slate-900/85 backdrop-blur-sm rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-sky-400 dark:hover:border-sky-500 hover:shadow-lg hover:shadow-sky-500/10 shadow-sm will-change-transform"
+              >
+                <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-sky-500/15 via-sky-500/5 to-transparent dark:from-sky-500/20 dark:via-slate-800 dark:to-slate-900 flex flex-col items-center justify-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-sky-500/15 dark:bg-sky-500/25 text-sky-600 dark:text-sky-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Copy className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                    剪贴板极速导入
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    自动读取复制的播放链接
+                  </span>
+                </div>
+                <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
+                  <div className="space-y-0.5">
+                    <div className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                      智能识别 URL
+                    </div>
+                    <div className="text-[10px] text-slate-400 leading-tight">
+                      无需手动打字，读取剪贴板直链
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-sky-600 dark:text-sky-400 font-semibold">
+                    <span>粘贴并新建</span>
+                    <span className="group-hover:translate-x-0.5 transition-transform">→</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 卡片 3: 队列极速并发 */}
+              <div
+                onClick={() => {
+                  setInitialTaskUrl("");
+                  setShowNewTaskModal(true);
+                }}
+                className="group relative flex flex-col bg-white/85 dark:bg-slate-900/85 backdrop-blur-sm rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-lg hover:shadow-violet-500/10 shadow-sm will-change-transform"
+              >
+                <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-violet-500/15 via-violet-500/5 to-transparent dark:from-violet-500/20 dark:via-slate-800 dark:to-slate-900 flex flex-col items-center justify-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-violet-500/15 dark:bg-violet-500/25 text-violet-600 dark:text-violet-400 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Download className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                    队列批量下载
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    多线程极速并发下载
+                  </span>
+                </div>
+                <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
+                  <div className="space-y-0.5">
+                    <div className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                      自动队列调度
+                    </div>
+                    <div className="text-[10px] text-slate-400 leading-tight">
+                      支持完成后自动转码并归档
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-violet-600 dark:text-violet-400 font-semibold">
+                    <span>开始下载</span>
+                    <span className="group-hover:translate-x-0.5 transition-transform">→</span>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
 
@@ -1656,7 +1779,11 @@ export function DownloadPage({
       {/* ====== Modals ====== */}
       {showNewTaskModal && (
         <NewTaskModal
-          onClose={() => setShowNewTaskModal(false)}
+          initialUrl={initialTaskUrl}
+          onClose={() => {
+            setShowNewTaskModal(false);
+            setInitialTaskUrl("");
+          }}
           onAddTask={handleAddNewTask}
           defaultSavePath={settings.video_path}
           defaultFormat={settings.defaultFormat}

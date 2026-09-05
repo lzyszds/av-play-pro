@@ -32,6 +32,7 @@ import {
 import { parseHeadersText } from "../../pages/download/utils";
 
 export interface NewTaskModalProps {
+  initialUrl?: string;
   onClose: () => void;
   onAddTask: (task: {
     name: string;
@@ -61,13 +62,17 @@ const REFERER_PRESETS = [
 ];
 
 export function NewTaskModal({
+  initialUrl = "",
   onClose,
   onAddTask,
   defaultSavePath,
   defaultFormat,
   defaultThreads,
 }: NewTaskModalProps) {
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl);
+  React.useEffect(() => {
+    if (initialUrl) setUrl(initialUrl);
+  }, [initialUrl]);
   const [name, setName] = useState("");
   const [format, setFormat] = useState<"MP4" | "MKV" | "TS">(defaultFormat);
   const [threads, setThreads] = useState<number>(defaultThreads);

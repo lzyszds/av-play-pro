@@ -424,7 +424,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
       {/* 响应式主体布局：左侧热力网格 + 右侧数据洞察与单日聚焦 */}
       <div className="flex flex-col xl:flex-row gap-5 items-stretch">
         {/* 左侧：365天热力天图 SVG */}
-        <div className="overflow-x-auto pb-1 shrink-0">
+        <div className="overflow-x-auto pb-1 shrink-0 h-[268px]">
           <svg
             width={weeks.length * (cell + gap) + 40}
             height={7 * (cell + gap) * 2 + 40}
@@ -448,29 +448,47 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
               <text
                 key={w}
                 x={10}
-                y={24 + w * (cell + gap) + 10}
-                className="fill-slate-400 text-[9px]"
+                y={20 + w * (cell + gap) + 9}
+                className="fill-slate-400 dark:fill-slate-500 text-[9px]"
+              >
+                {weekdayLabels[w]}
+              </text>
+            ))}
+            {[1, 3, 5].map((w) => (
+              <text
+                key={`w2-${w}`}
+                x={10}
+                y={20 + 7 * (cell + gap) + 14 + w * (cell + gap) + 9}
+                className="fill-slate-400 dark:fill-slate-500 text-[9px]"
               >
                 {weekdayLabels[w]}
               </text>
             ))}
 
+            {/* 分隔线 */}
+            <line
+              x1={28}
+              y1={20 + 7 * (cell + gap) + 7}
+              x2={weeks.length * (cell + gap) + 30}
+              y2={20 + 7 * (cell + gap) + 7}
+              className="stroke-slate-200/80 dark:stroke-slate-800"
+              strokeDasharray="2 2"
+            />
+
             {/* 播放次数格子 (上轨 - 琥珀色) */}
             {weeks.map((week, wi) =>
               week.map((c, di) => {
-                const x = 28 + wi * (cell + gap);
-                const y = 20 + di * (cell + gap);
                 const isHovered = hoveredCell?.day === c.day && Boolean(c.day);
                 return (
                   <rect
-                    key={`p-${wi}-${di}`}
-                    x={x}
-                    y={y}
+                    key={`plays-${wi}-${di}`}
+                    x={30 + wi * (cell + gap)}
+                    y={20 + di * (cell + gap)}
                     width={cell}
                     height={cell}
-                    rx={2.5}
-                    className={`${amberTier(c.plays)} transition-all cursor-pointer ${
-                      isHovered ? "stroke-amber-500 stroke-[1.5]" : ""
+                    rx={2}
+                    className={`${amberTier(c.plays)} cursor-pointer ${
+                      isHovered ? "stroke-amber-500 stroke-[1.5]" : "stroke-transparent"
                     }`}
                     onMouseEnter={() => {
                       if (c.day) {
@@ -494,19 +512,17 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
             {/* 观看时长格子 (下轨 - 翡翠色) */}
             {weeks.map((week, wi) =>
               week.map((c, di) => {
-                const x = 28 + wi * (cell + gap);
-                const y = 20 + 7 * (cell + gap) + 8 + di * (cell + gap);
                 const isHovered = hoveredCell?.day === c.day && Boolean(c.day);
                 return (
                   <rect
-                    key={`w-${wi}-${di}`}
-                    x={x}
-                    y={y}
+                    key={`watch-${wi}-${di}`}
+                    x={30 + wi * (cell + gap)}
+                    y={20 + 7 * (cell + gap) + 14 + di * (cell + gap)}
                     width={cell}
                     height={cell}
-                    rx={2.5}
-                    className={`${watchTier(c.watch)} transition-all cursor-pointer ${
-                      isHovered ? "stroke-emerald-500 stroke-[1.5]" : ""
+                    rx={2}
+                    className={`${watchTier(c.watch)} cursor-pointer ${
+                      isHovered ? "stroke-emerald-500 stroke-[1.5]" : "stroke-transparent"
                     }`}
                     onMouseEnter={() => {
                       if (c.day) {
@@ -534,11 +550,11 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
         {/* 分割线 (仅在宽屏展示) */}
         <div className="hidden xl:block w-px bg-slate-100 dark:bg-slate-800 self-stretch my-1 shrink-0" />
 
-        {/* 右侧：365天节律数据洞察 / 悬停单日实时聚焦面板 */}
-        <div className="flex-1 min-w-[280px] flex flex-col justify-between p-4 bg-slate-50/70 dark:bg-slate-800/30 border border-slate-200/60 dark:border-slate-800/60 rounded-xl transition-all">
+        {/* 右侧：365天节律数据洞察 / 悬停单日实时聚焦面板 (固定高度严格 268px，杜绝高度跳动) */}
+        <div className="flex-1 min-w-[280px] h-[268px] min-h-[268px] max-h-[268px] flex flex-col justify-between p-4 bg-slate-50/70 dark:bg-slate-800/30 border border-slate-200/60 dark:border-slate-800/60 rounded-xl overflow-hidden">
           {hoveredCell ? (
             /* 鼠标悬浮单日详情聚焦卡片 */
-            <div className="h-full flex flex-col justify-between space-y-3">
+            <div className="h-full flex flex-col justify-between">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="p-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400">
@@ -569,53 +585,104 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                 </span>
               </div>
 
-              {/* 聚焦数值卡片 */}
+              {/* 4 块单日聚焦指标卡片 (与默认状态尺寸完全对齐) */}
               <div className="grid grid-cols-2 gap-2.5">
-                <div className="p-3 bg-white dark:bg-slate-900 rounded-lg border border-amber-500/20 shadow-xs">
-                  <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-xs bg-amber-500 inline-block" />
-                    <span>播放频次 (琥珀轨)</span>
+                {/* 指标1: 播放频次 */}
+                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-amber-500/20 shadow-2xs flex flex-col justify-between h-[68px]">
+                  <div className="flex items-center justify-between text-[10px] text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-xs bg-amber-500 inline-block" />
+                      播放频次
+                    </span>
+                    <span className="font-semibold text-amber-600 dark:text-amber-400">
+                      {hoveredCell.plays > 0 ? `${Math.round((hoveredCell.plays / maxPlays) * 100)}% 峰值` : "0%"}
+                    </span>
                   </div>
-                  <div className="text-base font-extrabold text-amber-600 dark:text-amber-400 mt-1 stats-number">
+                  <div className="text-sm font-extrabold text-amber-600 dark:text-amber-400 stats-number">
                     {hoveredCell.plays}
-                    <span className="text-xs font-normal text-slate-400 ml-1">次</span>
+                    <span className="text-[10px] font-normal text-slate-400 ml-1">次</span>
                   </div>
-                  <div className="text-[9px] text-slate-400 mt-0.5">
-                    {hoveredCell.plays > 0
-                      ? `占单日峰值的 ${Math.round((hoveredCell.plays / maxPlays) * 100)}%`
-                      : "当日暂无点播"}
+                  <div className="text-[9px] text-slate-400 truncate">
+                    {hoveredCell.plays > 0 ? `单日峰值 ${maxPlays} 次` : "当日未点播"}
                   </div>
                 </div>
 
-                <div className="p-3 bg-white dark:bg-slate-900 rounded-lg border border-emerald-500/20 shadow-xs">
-                  <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-xs bg-emerald-500 inline-block" />
-                    <span>观看时长 (翡翠轨)</span>
+                {/* 指标2: 观看时长 */}
+                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-emerald-500/20 shadow-2xs flex flex-col justify-between h-[68px]">
+                  <div className="flex items-center justify-between text-[10px] text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-xs bg-emerald-500 inline-block" />
+                      观看时长
+                    </span>
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                      {hoveredCell.watch > 0 && avgActiveDailySec > 0 ? `${(hoveredCell.watch / avgActiveDailySec).toFixed(1)}x 均值` : "0x"}
+                    </span>
                   </div>
-                  <div className="text-base font-extrabold text-emerald-600 dark:text-emerald-400 mt-1 stats-number">
+                  <div className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 stats-number">
                     {formatDuration(hoveredCell.watch)}
                   </div>
-                  <div className="text-[9px] text-slate-400 mt-0.5">
-                    {hoveredCell.watch > 0 && avgActiveDailySec > 0
-                      ? `相当于活跃日均的 ${(hoveredCell.watch / avgActiveDailySec).toFixed(1)} 倍`
-                      : "当日暂无时长"}
+                  <div className="text-[9px] text-slate-400 truncate">
+                    {hoveredCell.watch > 0 ? "专注观影时间" : "当日暂无时长"}
+                  </div>
+                </div>
+
+                {/* 指标3: 沉浸等级 */}
+                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-[68px]">
+                  <div className="flex items-center justify-between text-[10px] text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="w-3 h-3 text-amber-500" />
+                      沉浸等级
+                    </span>
+                    <span className="text-[9px] text-slate-400">
+                      {hoveredCell.plays >= 5 ? "S 级" : hoveredCell.plays >= 2 ? "A 级" : hoveredCell.plays > 0 ? "B 级" : "休整"}
+                    </span>
+                  </div>
+                  <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 stats-number">
+                    {hoveredCell.plays >= 5 ? "极度沉浸" : hoveredCell.plays > 0 ? "观影活跃" : "静止休整"}
+                  </div>
+                  <div className="text-[9px] text-slate-400 truncate">
+                    {hoveredCell.plays > 0 ? "已记录至热力天图" : "休闲无点播记录"}
+                  </div>
+                </div>
+
+                {/* 指标4: 全年贡献比 */}
+                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-[68px]">
+                  <div className="flex items-center justify-between text-[10px] text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <Flame className="w-3 h-3 text-rose-500" />
+                      年度贡献
+                    </span>
+                    <span className="text-[9px] text-slate-400">
+                      {hoveredCell.plays > 0 ? "已计入" : "-"}
+                    </span>
+                  </div>
+                  <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 stats-number">
+                    {hoveredCell.watch > 0 && totalAnnualWatchSec > 0
+                      ? `${((hoveredCell.watch / totalAnnualWatchSec) * 100).toFixed(1)}%`
+                      : hoveredCell.plays > 0
+                        ? "<0.1%"
+                        : "0.0%"}
+                  </div>
+                  <div className="text-[9px] text-slate-400 truncate">
+                    {hoveredCell.plays > 0 ? `贡献 ${hoveredCell.plays} 次播放` : "未有点播占比"}
                   </div>
                 </div>
               </div>
 
+              {/* 底部引导栏 */}
               <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-800">
                 <span className="flex items-center gap-1 text-slate-400">
                   <MousePointerClick className="w-3 h-3 text-amber-500" />
                   光标漫游热力图可查看任意历史日期
                 </span>
-                <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium cursor-pointer" onClick={() => setHoveredCell(null)}>
+                <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium cursor-pointer hover:underline" onClick={() => setHoveredCell(null)}>
                   返回年度总览
                 </span>
               </div>
             </div>
           ) : (
             /* 默认状态：年度节律数据洞察面板 */
-            <div className="h-full flex flex-col justify-between space-y-3">
+            <div className="h-full flex flex-col justify-between">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="p-1 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400">
@@ -645,7 +712,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
               {/* 4 块节律指标卡片 */}
               <div className="grid grid-cols-2 gap-2.5">
                 {/* 指标1: 年度活跃天数 */}
-                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs">
+                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-[68px]">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <CalendarCheck className="w-3 h-3 text-amber-500" />
@@ -655,11 +722,11 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                       {coverageRate}%
                     </span>
                   </div>
-                  <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 stats-number">
+                  <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 stats-number">
                     {activeDaysCount}
                     <span className="text-[10px] font-normal text-slate-400 ml-1">/ 365天</span>
                   </div>
-                  <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded-full mt-1.5 overflow-hidden">
+                  <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
                     <div
                       className="bg-gradient-to-r from-amber-400 to-amber-500 h-full rounded-full transition-all duration-500"
                       style={{ width: `${Math.min(100, Math.max(activeDaysCount > 0 ? 3 : 0, coverageRate))}%` }}
@@ -668,7 +735,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                 </div>
 
                 {/* 指标2: 最长连续打卡 */}
-                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs">
+                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-[68px]">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <Zap className="w-3 h-3 text-amber-500" />
@@ -678,28 +745,28 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                       当前 {currentStreak} 天
                     </span>
                   </div>
-                  <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 stats-number">
+                  <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 stats-number">
                     {maxStreak}
                     <span className="text-[10px] font-normal text-slate-400 ml-1">天连续</span>
                   </div>
-                  <div className="text-[9px] text-slate-400 mt-1 truncate">
+                  <div className="text-[9px] text-slate-400 truncate">
                     {maxStreak >= 7 ? "🏆 坚持卓越" : "保持每日打卡"}
                   </div>
                 </div>
 
                 {/* 指标3: 黄金活跃周期 */}
-                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs">
+                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-[68px]">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <Sparkles className="w-3 h-3 text-sky-500" />
                       黄金周期
                     </span>
                   </div>
-                  <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 stats-number">
+                  <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 stats-number">
                     {peakWeekdayName}
                     <span className="text-[10px] font-normal text-slate-400 ml-1">最沉浸</span>
                   </div>
-                  <div className="text-[9px] text-slate-400 mt-1 truncate">
+                  <div className="text-[9px] text-slate-400 truncate">
                     {peakDayPlays > 0
                       ? `单日最高播放 ${peakDayPlays} 部`
                       : "等待产生观影纪录"}
@@ -707,18 +774,18 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                 </div>
 
                 {/* 指标4: 活跃日均投入 */}
-                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs">
+                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-[68px]">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3 text-emerald-500" />
                       日均投入
                     </span>
                   </div>
-                  <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 mt-1 stats-number">
+                  <div className="text-sm font-extrabold text-slate-800 dark:text-slate-100 stats-number">
                     {formatDuration(avgActiveDailySec)}
                     <span className="text-[10px] font-normal text-slate-400 ml-1">/ 活跃日</span>
                   </div>
-                  <div className="text-[9px] text-slate-400 mt-1 truncate">
+                  <div className="text-[9px] text-slate-400 truncate">
                     全年累计 {formatDuration(totalAnnualWatchSec)}
                   </div>
                 </div>

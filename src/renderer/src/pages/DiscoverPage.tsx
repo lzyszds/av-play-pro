@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { PageLoader } from "../components/PageLoader";
 import { Tooltip } from "../components/common/Tooltip";
 import { trpc } from "../lib/trpc";
@@ -17,6 +16,8 @@ import {
   Clock,
   Copy,
   Settings2,
+  Trash2,
+  Layers,
 } from "lucide-react";
 
 interface Props {
@@ -115,15 +116,21 @@ const DiscoverCard = React.memo(function DiscoverCard({
             preload="none"
           />
         )}
-        {/* 底部遮罩渐变 */}
-        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+        {/* 底部遮罩渐变 + 标题 overlay */}
+        <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none" />
+        <h3
+          className="absolute inset-x-0 bottom-2 px-2.5 text-[11px] font-semibold text-white line-clamp-2 leading-snug z-10 drop-shadow"
+          title={item.title}
+        >
+          {item.title || item.code}
+        </h3>
         {item.duration && (
-          <span className="absolute bottom-1.5 right-1.5 z-10 text-[9px] px-1.5 py-0.5 rounded-md bg-black/70 text-white/90 font-mono backdrop-blur-sm">
+          <span className="absolute bottom-1.5 right-1.5 z-20 text-[9px] px-1.5 py-0.5 rounded-md bg-black/70 text-white/90 font-mono backdrop-blur-sm">
             {item.duration}
           </span>
         )}
         {preview && (
-          <span className="absolute top-1.5 left-1.5 z-10 text-[8px] px-1.5 py-0.5 rounded-md cyber-badge-cyan font-semibold tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <span className="absolute top-1.5 left-1.5 z-20 text-[8px] px-1.5 py-0.5 rounded-md cyber-badge-cyan font-semibold tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             ▶ 预览
           </span>
         )}
@@ -135,42 +142,34 @@ const DiscoverCard = React.memo(function DiscoverCard({
         </div>
       </div>
 
-      {/* 信息区 */}
-      <div className="p-2.5 flex flex-col gap-1.5 flex-1 min-h-0 bg-gradient-to-b from-transparent to-black/20">
-        <h3
-          className="text-[11px] font-semibold text-slate-200 line-clamp-2 leading-snug"
-          title={item.title}
-        >
-          {item.title || item.code}
-        </h3>
-        <div className="mt-auto flex items-center gap-1.5">
+      {/* 底部信息区：番号 + 操作按钮 */}
+      <div className="shrink-0 px-2.5 py-1.5 flex items-center gap-1.5 bg-slate-900/60">
+        {item.code && (
+          <span className="cyber-badge cyber-badge-blue font-mono truncate max-w-4xl">
+            {item.code}
+          </span>
+        )}
+        <div className="ml-auto flex items-center gap-1">
           {item.code && (
-            <span className="cyber-badge cyber-badge-blue font-mono truncate max-w-[80px]">
-              {item.code}
-            </span>
-          )}
-          <div className="ml-auto flex items-center gap-1">
-            {item.code && (
-              <Tooltip content="复制番号" placement="top">
-                <button
-                  type="button"
-                  onClick={() => onCopy(item.code!)}
-                  className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-cyan-400 hover:border-cyan-500/40 transition-all cursor-pointer"
-                >
-                  <Copy className="w-3 h-3" />
-                </button>
-              </Tooltip>
-            )}
-            <Tooltip content="在浏览器中打开页面" placement="top">
+            <Tooltip content="复制番号" placement="top">
               <button
                 type="button"
-                onClick={() => window.open(item.url, "_blank")}
-                className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-blue-400 hover:border-blue-500/40 transition-all cursor-pointer"
+                onClick={() => onCopy(item.code!)}
+                className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-cyan-400 hover:border-cyan-500/40 transition-all cursor-pointer"
               >
-                <ExternalLink className="w-3 h-3" />
+                <Copy className="w-3 h-3" />
               </button>
             </Tooltip>
-          </div>
+          )}
+          <Tooltip content="在浏览器中打开页面" placement="top">
+            <button
+              type="button"
+              onClick={() => window.open(item.url, "_blank")}
+              className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-blue-400 hover:border-blue-500/40 transition-all cursor-pointer"
+            >
+              <ExternalLink className="w-3 h-3" />
+            </button>
+          </Tooltip>
         </div>
       </div>
     </div>
@@ -265,6 +264,35 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
 
   const items = store?.items ?? [];
 
+  // 清空缓存
+  const handleClearCache = useCallback(async () => {
+    try {
+      const cleared = (await trpc.scrape.clear.mutate()) as ScrapeStore;
+      setStore(cleared);
+      onAddSystemLog("已清空抓取缓存", "INFO");
+    } catch (error) {
+      onAddSystemLog(`清空缓存失败: ${(error as Error)?.message}`, "WARNING");
+    }
+  }, [onAddSystemLog]);
+
+  // 一键去重：同一番号只保留最先出现的那条
+  const handleDedupe = useCallback(async () => {
+    try {
+      const before = items.length;
+      const deduped = (await trpc.scrape.dedupe.mutate()) as ScrapeStore;
+      setStore(deduped);
+      const removed = before - deduped.items.length;
+      onAddSystemLog(
+        removed > 0
+          ? `去重完成：移除 ${removed} 条重复番号，剩余 ${deduped.items.length} 条`
+          : "未发现重复番号",
+        removed > 0 ? "SUCCESS" : "INFO",
+      );
+    } catch (error) {
+      onAddSystemLog(`去重失败: ${(error as Error)?.message}`, "WARNING");
+    }
+  }, [items.length, onAddSystemLog]);
+
   const filtered = useMemo(() => {
     const kw = keyword.trim().toLowerCase();
     if (!kw) return items;
@@ -275,6 +303,24 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
     );
   }, [items, keyword]);
 
+  // 分页
+  const PAGE_SIZE = 20;
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // 关键词变化时回到第 1 页
+  useEffect(() => {
+    setPage(1);
+  }, [keyword]);
+  const currentPage = Math.min(page, totalPages);
+  const pagedItems = useMemo(
+    () =>
+      filtered.slice(
+        (currentPage - 1) * PAGE_SIZE,
+        currentPage * PAGE_SIZE,
+      ),
+    [filtered, currentPage],
+  );
+
   const copy = useCallback(
     (text: string) => {
       void navigator.clipboard?.writeText(text);
@@ -283,25 +329,28 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
     [onAddSystemLog],
   );
 
-  // —— 固定网格虚拟化：卡片高度完全确定，行高精确匹配 ——
+  // —— 固定 5列×4行 布局，卡片尺寸自适应填满 ——
+  const COLS = 5;
+  const ROWS = 4;
   const GAP = 12;
-  const COVER_RATIO = 3 / 2; // 封面宽高比（missav 海报 ≈ 3:2）
-  const FOOTER_H = 82; // 文字区固定高度（标题 2 行 + 番号/按钮 + 内边距）
+  const FOOTER_H = 38; // 底部信息区高度（番号 + 操作按钮）
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [colCount, setColCount] = useState(6);
   const [cellW, setCellW] = useState(220);
+  const [coverH, setCoverH] = useState(140);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const MIN = 200; // 单列最小宽度
     const PAD = 32; // p-4 左右各 16
     const compute = () => {
-      const w = el.clientWidth - PAD;
-      const cols = Math.max(1, Math.floor((w + GAP) / (MIN + GAP)));
-      setColCount(cols);
-      setCellW(Math.floor((w - GAP * (cols - 1)) / cols));
+      const availW = el.clientWidth - PAD;
+      const availH = el.clientHeight;
+      const w = Math.floor((availW - GAP * (COLS - 1)) / COLS);
+      const cardH = Math.floor((availH - GAP * (ROWS - 1)) / ROWS);
+      const cH = Math.max(60, cardH - FOOTER_H);
+      setCellW(w);
+      setCoverH(cH);
     };
     compute();
     const ro = new ResizeObserver(compute);
@@ -309,21 +358,7 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
     return () => ro.disconnect();
   }, [loading]);
 
-  const coverH = Math.round(cellW / COVER_RATIO);
   const cardH = coverH + FOOTER_H;
-  const rowHeight = cardH + GAP;
-  const rowCount = Math.ceil(filtered.length / colCount);
-
-  const rowVirtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => rowHeight,
-    overscan: 4,
-  });
-
-  useEffect(() => {
-    rowVirtualizer.measure();
-  }, [rowHeight, colCount, rowCount, rowVirtualizer]);
 
   if (loading || !config) {
     return (
@@ -389,6 +424,26 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
             <Zap className={`w-3.5 h-3.5 ${running ? "animate-pulse" : ""}`} />
             {running ? progress || "停止抓取" : "一键抓取"}
           </button>
+          <Tooltip content="按番号去重，保留最先出现的那条" placement="top">
+            <button
+              type="button"
+              onClick={handleDedupe}
+              disabled={running || items.length === 0}
+              className="w-8 h-8 flex items-center justify-center rounded-lg cyber-btn-ghost transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Layers className="w-4 h-4" />
+            </button>
+          </Tooltip>
+          <Tooltip content="清空已缓存的抓取内容" placement="top">
+            <button
+              type="button"
+              onClick={handleClearCache}
+              disabled={running || items.length === 0}
+              className="w-8 h-8 flex items-center justify-center rounded-lg cyber-btn-ghost transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -467,45 +522,94 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
           )}
         </div>
       ) : (
-        <div ref={scrollRef} className="flex-1 overflow-y-auto cyber-scroll p-4">
-          <div
-            style={{
-              height: rowVirtualizer.getTotalSize(),
-              width: "100%",
-              position: "relative",
-            }}
-          >
-            {rowVirtualizer.getVirtualItems().map((vRow) => {
-              const start = vRow.index * colCount;
-              const rowItems = filtered.slice(start, start + colCount);
-              return (
-                <div
-                  key={vRow.key}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    transform: `translateY(${vRow.start}px)`,
-                    display: "grid",
-                    gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))`,
-                    gap: GAP,
-                  }}
-                >
-                  {rowItems.map((it) => (
-                    <DiscoverCard
-                      key={it.code || it.url}
-                      item={it}
-                      onCopy={copy}
-                      coverH={coverH}
-                      cardH={cardH}
-                    />
-                  ))}
-                </div>
-              );
-            })}
+        <>
+          <div ref={scrollRef} className="flex-1 overflow-y-auto cyber-scroll p-4">
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))`,
+                gap: GAP,
+              }}
+            >
+              {pagedItems.map((it) => (
+                <DiscoverCard
+                  key={it.code || it.url}
+                  item={it}
+                  onCopy={copy}
+                  coverH={coverH}
+                  cardH={cardH}
+                />
+              ))}
+            </div>
           </div>
-        </div>
+
+          {/* 分页控件 */}
+          {totalPages > 1 && (
+            <div className="shrink-0 px-4 py-3 cyber-toolbar flex items-center justify-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  setPage((p) => Math.max(1, p - 1));
+                  scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                disabled={currentPage <= 1}
+                className="px-3 py-1.5 text-xs rounded-lg cyber-btn-ghost transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                上一页
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((p) => {
+                    // 只显示当前页附近的页码
+                    if (p === 1 || p === totalPages) return true;
+                    if (Math.abs(p - currentPage) <= 2) return true;
+                    return false;
+                  })
+                  .map((p, idx, arr) => {
+                    const showEllipsis = idx > 0 && p - arr[idx - 1] > 1;
+                    return (
+                      <React.Fragment key={p}>
+                        {showEllipsis && (
+                          <span className="px-1 text-xs text-slate-600">…</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPage(p);
+                            scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+                          }}
+                          className={`min-w-[32px] px-2 py-1 text-xs rounded-lg transition-all cursor-pointer ${
+                            p === currentPage
+                              ? "bg-blue-500/20 text-blue-400 border border-blue-500/40"
+                              : "cyber-btn-ghost"
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setPage((p) => Math.min(totalPages, p + 1));
+                  scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                disabled={currentPage >= totalPages}
+                className="px-3 py-1.5 text-xs rounded-lg cyber-btn-ghost transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                下一页
+              </button>
+
+              <span className="ml-2 text-[11px] text-slate-500">
+                第 {currentPage} / {totalPages} 页 · 共 {filtered.length} 条
+              </span>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

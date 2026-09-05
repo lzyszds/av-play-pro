@@ -750,4 +750,86 @@ export const libraryRouter = t.router({
             : `已清理 ${deleted} 项，${failed.length} 项失败`,
       };
     }),
+
+  // 按番号去重：同一番号只保留最早下载（createdAt 最小）的那个，删除其余副本
+  dedupeVideos: t.procedure
+    .input((input: unknown) => input as { rootPath: string })
+    .mutation(async ({ input }) => {
+      const rootResolved = path.resolve(input.rootPath.trim());
+      const videos = await scanLibrary(input.rootPath);
+
+      const codeGroups = new Map<string, LibraryVideo[]>();
+      for (const video of videos) {
+        if (!video.code) continue;
+        const list = codeGroups.get(video.code) || [];
+        list.push(video);
+        codeGroups.set(video.code, list);
+      }
+
+      // 每组按 createdAt 升序，第一个（最早）保留，其余删除
+      const toDelete: LibraryVideo[] = [];
+      for (const [, list] of codeGroups) {
+        if (list.length <= 1) continue;
+        const sorted = [...list].sort(
+          (a, b) => (a.createdAt || 0) - (b.createdAt || 0),
+        );
+        toDelete.push(...sorted.slice(1));
+      }
+
+      if (toDelete.length === 0) {
+        return {
+          success: true,
+          deleted: 0,
+          failed: [] as string[],
+          freedBytes: 0,
+          freedLabel: "0 B",
+          message: "未发现重复番号",
+        };
+      }
+
+      const failed: string[] = [];
+      let deleted = 0;
+      let freedBytes = 0;
+
+      for (const video of toDelete) {
+        const target = path.resolve(video.url);
+        // 安全检查：必须在片库根目录下，且是一级子项
+        const rel = path.relative(rootResolved, target);
+        const underRoot =
+          rel !== "" &&
+          !rel.startsWith("..") &&
+          !path.isAbsolute(rel) &&
+          !rel.includes(path.sep);
+        if (!underRoot) {
+          failed.push(`${video.name}（不在允许删除范围）`);
+          continue;
+        }
+        try {
+          if (!fs.existsSync(target)) {
+            failed.push(`${video.name}（不存在）`);
+            continue;
+          }
+          const measured = await measurePath(target);
+          fs.rmSync(target, { recursive: true, force: true });
+          deleted += 1;
+          freedBytes += measured.bytes;
+        } catch (err: any) {
+          failed.push(`${video.name}（${err?.message || err}）`);
+        }
+      }
+
+      invalidateVideoListCache(input.rootPath);
+
+      return {
+        success: failed.length === 0,
+        deleted,
+        failed,
+        freedBytes,
+        freedLabel: formatBytes(freedBytes),
+        message:
+          failed.length === 0
+            ? `已去重：删除 ${deleted} 个重复版本，释放 ${formatBytes(freedBytes)}`
+            : `已去重：删除 ${deleted} 个，${failed.length} 个失败`,
+      };
+    }),
 });

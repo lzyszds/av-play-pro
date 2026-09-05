@@ -37,6 +37,7 @@ export const SYNC_FILE_DEFS = [
   { key: "activities", file: "activity-history.json", label: "操作历史" },
   { key: "annualReport", file: "annual-report.json", label: "年度报告" },
   { key: "achievements", file: "achievements.json", label: "成就殿堂" },
+  { key: "scrape", file: "missav-scrape.json", label: "发现页抓取缓存" },
 ];
 
 export interface SnapshotMeta {

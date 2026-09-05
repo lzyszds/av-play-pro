@@ -77,24 +77,37 @@ function writeScrapeConfig(config: ScrapeConfig): void {
   }
 }
 
-/** 渲染端抓好的 items 直接落库（一键抓取走这个），返回最终缓存 */
+/** 渲染端抓好的 items 直接落库（一键抓取走这个），返回最终缓存。
+ *  策略：与旧缓存合并（按 code/url 去重），新内容追加，不覆盖已有内容。 */
 export function saveScrapedItems(
   items: ScrapedItem[],
   meta: { baseUrl: string; pages: number },
 ): ScrapeStore {
-  const seen = new Set<string>();
-  const deduped: ScrapedItem[] = [];
+  const oldStore = readScrapeStore();
+  const seen = new Map<string, ScrapedItem>();
+
+  // 先放入旧缓存，保留已有内容
+  for (const it of oldStore.items) {
+    if (!it || !it.url) continue;
+    seen.set(it.code || it.url, it);
+  }
+
+  // 再追加新抓取的（同 key 跳过，不覆盖旧的）
+  let addedCount = 0;
   for (const it of items) {
     if (!it || !it.url) continue;
     const key = it.code || it.url;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(it);
+    if (!seen.has(key)) {
+      seen.set(key, it);
+      addedCount++;
+    }
   }
+
+  const deduped = Array.from(seen.values());
 
   if (deduped.length === 0) {
     log.warn("[scrape] 渲染端抓取 0 条，保留旧缓存");
-    return readScrapeStore();
+    return oldStore;
   }
 
   const store: ScrapeStore = {
@@ -104,7 +117,7 @@ export function saveScrapedItems(
     items: deduped,
   };
   writeScrapeStore(store);
-  log.info(`[scrape] 渲染端已缓存 ${deduped.length} 条`);
+  log.info(`[scrape] 渲染端已缓存 ${deduped.length} 条（本次新增 ${addedCount} 条）`);
   return store;
 }
 
@@ -408,6 +421,7 @@ let startupScrapeRan = false;
 
 /**
  * 抓取并写入缓存。返回最终缓存内容。
+ * 策略：与旧缓存合并（按 code/url 去重），新内容追加，不覆盖已有内容。
  * 抓取失败（0 条）时保留旧缓存，避免清空。
  */
 export async function scrapeAndStore(opts?: {
@@ -428,14 +442,30 @@ export async function scrapeAndStore(opts?: {
     return readScrapeStore();
   }
 
+  // 合并到旧缓存：已有内容保留，新内容追加
+  const oldStore = readScrapeStore();
+  const seen = new Map<string, ScrapedItem>();
+  for (const it of oldStore.items) {
+    if (!it || !it.url) continue;
+    seen.set(it.code || it.url, it);
+  }
+  let addedCount = 0;
+  for (const it of result.items) {
+    const key = it.code || it.url;
+    if (!seen.has(key)) {
+      seen.set(key, it);
+      addedCount++;
+    }
+  }
+
   const store: ScrapeStore = {
     updatedAt: Date.now(),
     baseUrl,
     pages: result.pages,
-    items: result.items,
+    items: Array.from(seen.values()),
   };
   writeScrapeStore(store);
-  log.info(`[scrape] 已缓存 ${store.items.length} 条`);
+  log.info(`[scrape] 已缓存 ${store.items.length} 条（本次新增 ${addedCount} 条）`);
   return store;
 }
 
@@ -498,6 +528,44 @@ export const scrapeRouter = t.router({
 
   /** 读取已缓存的抓取结果（渲染进程启动时用它渲染列表） */
   getCached: t.procedure.query((): ScrapeStore => readScrapeStore()),
+
+  /** 清空抓取缓存 */
+  clear: t.procedure.mutation((): ScrapeStore => {
+    const store: ScrapeStore = { updatedAt: 0, baseUrl: "", pages: 0, items: [] };
+    writeScrapeStore(store);
+    log.info("[scrape] 缓存已清空");
+    return store;
+  }),
+
+  /** 按番号去重：同一番号只保留最先出现的那条 */
+  dedupe: t.procedure.mutation((): ScrapeStore => {
+    const oldStore = readScrapeStore();
+    const seen = new Set<string>();
+    const deduped: ScrapedItem[] = [];
+    let removed = 0;
+    for (const it of oldStore.items) {
+      if (!it.code) {
+        // 无番号的保留，无法去重
+        deduped.push(it);
+        continue;
+      }
+      const key = it.code.trim().toUpperCase();
+      if (seen.has(key)) {
+        removed++;
+      } else {
+        seen.add(key);
+        deduped.push(it);
+      }
+    }
+    const store: ScrapeStore = {
+      ...oldStore,
+      updatedAt: Date.now(),
+      items: deduped,
+    };
+    writeScrapeStore(store);
+    log.info(`[scrape] 去重完成：移除 ${removed} 条重复番号，剩余 ${deduped.length} 条`);
+    return store;
+  }),
 
   /** 手动触发一次抓取并更新缓存 */
   refresh: t.procedure

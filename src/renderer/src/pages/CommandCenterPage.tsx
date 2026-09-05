@@ -804,11 +804,36 @@ export function CommandCenterPage({
         {/* ================= 工作台 Tab 1: 重复番号去重 ================= */}
         {activeSubTab === "duplicates" && (
           <div className="p-5 space-y-4 anim-fade-in">
-            <div className="flex items-center justify-between text-xs text-slate-500">
+            <div className="flex items-center justify-between text-xs text-slate-500 gap-3 flex-wrap">
               <p>
                 检测到同一番号存在多个存放目录或不同分辨率版本。可对比画质与体积后择优保留，释放宝贵硬盘空间。
               </p>
-              <span className="font-mono text-slate-400">共 {duplicateGroups.length} 组重复记录</span>
+              <div className="flex items-center gap-3">
+                <span className="font-mono text-slate-400">共 {duplicateGroups.length} 组重复记录</span>
+                {duplicateGroups.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!videoPath) return;
+                      if (!window.confirm(`将删除 ${duplicateGroups.length} 组重复番号的多余副本，只保留最早下载的那个，确认继续？`)) return;
+                      try {
+                        const res: any = await trpc.library.dedupeVideos.mutate({ rootPath: videoPath });
+                        onAddSystemLog(res.message, res.deleted > 0 ? "SUCCESS" : "INFO");
+                        if (res.failed?.length > 0) {
+                          onAddSystemLog(`去重失败项: ${res.failed.join("; ")}`, "WARNING");
+                        }
+                        await refresh();
+                      } catch (err: any) {
+                        onAddSystemLog(`一键去重失败: ${err?.message || err}`, "ERROR");
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 hover:bg-rose-500/25 text-xs font-bold transition cursor-pointer flex items-center gap-1"
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    一键去重（保留最早）
+                  </button>
+                )}
+              </div>
             </div>
 
             {duplicateGroups.length === 0 ? (

@@ -211,6 +211,8 @@ export async function executePushToCloud(
       achievementsPath,
       {},
     );
+    const scrapePath = getUserDataPath("missav-scrape.json");
+    const localScrape = readJsonFile<Record<string, unknown>>(scrapePath, {});
 
     // 计算统计概况
     const videoCount = localStats?.videos
@@ -266,6 +268,7 @@ export async function executePushToCloud(
         activities: localActivities,
         annualReport: localReport,
         achievements: localAchievements,
+        scrape: localScrape,
       },
     };
 
@@ -714,6 +717,7 @@ export const syncRouter = t.router({
           "activity-history.json",
           "annual-report.json",
           "achievements.json",
+          "scrape-cache.json",
         ];
 
         for (const f of filesToSync) {
@@ -754,6 +758,9 @@ export const syncRouter = t.router({
             getUserDataPath("achievements.json"),
             remoteData.achievements,
           );
+        }
+        if (remoteData.scrape) {
+          writeJsonFile(getUserDataPath("missav-scrape.json"), remoteData.scrape);
         }
 
         // 3. 合并设置（保留本地设备专属路径，如 video_path / temp_path / nm3u8dlPath，以及当前云端配置参数）

@@ -8,7 +8,7 @@
 
 | 功能模块 | 功能描述 | 落地版本/组件 |
 | :--- | :--- | :--- |
-| **云端同步中心** | 基于 Cloudflare Workers + KV 的配置、播放/下载历史云端备份与恢复 | `syncRouter.ts`, `SettingsPanel.tsx` |
+| **云端同步中心** | 基于 Cloudflare Workers + KV 的配置、播放/下载历史、发现页抓取缓存的云端备份与恢复 | `syncRouter.ts`, `SettingsPanel.tsx` |
 | **操作行为追踪** | 记录详细的用户播放、下载、贤者计时等操作轨迹流 | `activityRouter.ts`, `ActivityHistoryModal.tsx` |
 | **年度作战报告 (Feature 7)** | 赛博朋克风战报弹窗，五维战斗力雷达图、巅峰时段、羁绊女优榜、一键存云 | `AnnualReportModal.tsx` |
 | **媒体库整理器 (Feature 9)** | 0 磁盘占用软链接整理 Emby/Jellyfin/Kodi 标准目录，自动刮削并生成 `movie.nfo` | `organizerRouter.ts`, `OrganizerModal.tsx` |

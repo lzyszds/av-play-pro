@@ -1,27 +1,31 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
-  Award,
-  Bell,
+  AlertCircle,
+  AlertTriangle,
   Boxes,
-  CalendarDays,
   CheckCircle2,
   Clapperboard,
-  Dice5,
+  Copy,
+  ExternalLink,
   Film,
+  FolderArchive,
   Gauge,
   HardDrive,
-  ListChecks,
+  Info,
+  Layers,
+  ListFilter,
   Play,
+  PlayCircle,
   RefreshCw,
   Search,
+  ShieldAlert,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Workflow,
-  UserRound,
-  Users,
   Wrench,
-  FolderArchive,
+  Zap,
 } from "lucide-react";
 import { trpc } from "../lib/trpc";
 import { PageLoader } from "../components/PageLoader";
@@ -32,6 +36,8 @@ interface Props {
   videoPath: string;
   tempPath?: string;
   onAddSystemLog: (text: string, level: "INFO" | "WARNING" | "SUCCESS" | "ERROR") => void;
+  onPlayVideo?: (name: string) => void;
+  onNavigate?: (page: string) => void;
 }
 
 interface VideoItem {
@@ -39,6 +45,7 @@ interface VideoItem {
   name: string;
   url: string;
   coverUrl?: string;
+  previewUrl?: string;
   size?: string;
   createdAt?: number;
   code?: string;
@@ -56,16 +63,6 @@ interface IngestStep {
   status: string;
 }
 
-interface TimelineBookmark {
-  id: string;
-  videoName: string;
-  videoUrl: string;
-  currentTime: number;
-  duration?: number;
-  note?: string;
-  createdAt: string;
-}
-
 interface CleanupItem {
   id: string;
   path: string;
@@ -78,12 +75,18 @@ interface CleanupItem {
   selectedByDefault: boolean;
 }
 
-const KIND_LABEL: Record<CleanupItem["kind"], string> = {
-  empty: "空目录",
-  no_video: "删除残留",
-  tiny_video: "不完整",
-  temp: "临时文件",
-  loose_file: "散落文件",
+interface DuplicateGroup {
+  code: string;
+  count: number;
+  videos: VideoItem[];
+}
+
+const KIND_LABEL: Record<CleanupItem["kind"], { label: string; color: string }> = {
+  empty: { label: "空文件夹", color: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" },
+  no_video: { label: "无正片残留", color: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300" },
+  tiny_video: { label: "损坏/不完整", color: "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300" },
+  temp: { label: "临时缓存", color: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300" },
+  loose_file: { label: "散落杂项", color: "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300" },
 };
 
 function encodeMediaUrl(filePath?: string): string | undefined {
@@ -101,6 +104,7 @@ function convertVideo(video: VideoItem): VideoItem {
 }
 
 function formatBytesClient(bytes: number): string {
+  if (!bytes || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];
   let value = bytes;
   let i = 0;
@@ -111,134 +115,133 @@ function formatBytesClient(bytes: number): string {
   return `${value.toFixed(value >= 100 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function StatTile({
-  icon: Icon,
-  label,
-  value,
-  sub,
-}: {
-  icon: typeof Film;
-  label: string;
-  value: string;
-  sub?: string;
-}) {
-  return (
-    <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3">
-      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-        <Icon className="w-3.5 h-3.5 text-amber-500" />
-        {label}
-      </div>
-      <div className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-100">{value}</div>
-      {sub && <div className="text-[10px] text-slate-400 truncate">{sub}</div>}
-    </div>
-  );
+/** 综合计算片库健康雷达评分 (0 - 100) */
+function calculateHealthScore(overview: any, health: any): {
+  score: number;
+  grade: string;
+  level: "excellent" | "good" | "warning" | "danger";
+  summary: string;
+} {
+  if (!overview?.totals) {
+    return { score: 100, grade: "S", level: "excellent", summary: "片库健康正常" };
+  }
+  const total = Math.max(1, overview.totals.videos || 1);
+  let deduction = 0;
+
+  // 1. 缺封面扣分 (最高扣 25 分)
+  const missingCoverRate = (overview.totals.missingCover || 0) / total;
+  deduction += Math.min(25, Math.round(missingCoverRate * 40));
+
+  // 2. 缺元数据/番号扣分 (最高扣 25 分)
+  const missingMetaRate = (overview.totals.missingMeta || 0) / total;
+  deduction += Math.min(25, Math.round(missingMetaRate * 45));
+
+  // 3. 重复番号扣分 (每组扣 3 分，最高 15 分)
+  const dupCount = overview.totals.duplicates || 0;
+  deduction += Math.min(15, dupCount * 3);
+
+  // 4. 磁盘剩余空间扣分 (低于 10% 扣 15 分，低于 5% 扣 25 分)
+  if (health && health.totalBytes > 0 && health.freeBytes > 0) {
+    const freeRatio = health.freeBytes / health.totalBytes;
+    if (freeRatio < 0.05) deduction += 25;
+    else if (freeRatio < 0.10) deduction += 15;
+    else if (freeRatio < 0.15) deduction += 5;
+  }
+
+  const score = Math.max(0, Math.min(100, 100 - deduction));
+
+  if (score >= 90) {
+    return {
+      score,
+      grade: "S 优异",
+      level: "excellent",
+      summary: "片库状态极佳，元数据完备，存储空间充裕",
+    };
+  }
+  if (score >= 75) {
+    return {
+      score,
+      grade: "A 良好",
+      level: "good",
+      summary: "片库整体健康，仅存在少量待补全元数据或重复版本",
+    };
+  }
+  if (score >= 60) {
+    return {
+      score,
+      grade: "B 需治理",
+      level: "warning",
+      summary: "发现若干待治理事项，建议运行入库流水线并清理冗余",
+    };
+  }
+  return {
+    score,
+    grade: "C 警报",
+    level: "danger",
+    summary: "元数据缺失严重或磁盘空间见底，请立即体检与清理",
+  };
 }
 
-function MiniVideo({ video, onPlay }: { video: VideoItem; onPlay?: (video: VideoItem) => void }) {
-  const v = convertVideo(video);
-  return (
-    <button
-      type="button"
-      onClick={() => onPlay?.(v)}
-      className="group text-left rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden hover:border-amber-300 dark:hover:border-amber-700 transition cursor-pointer"
-    >
-      <div className="aspect-video bg-slate-100 dark:bg-slate-800">
-        {v.coverUrl ? <CoverImage src={v.coverUrl} alt={v.name} /> : <div className="h-full flex items-center justify-center"><Film className="w-6 h-6 text-slate-400" /></div>}
-      </div>
-      <div className="p-2">
-        <div className="text-[11px] font-bold text-slate-700 dark:text-slate-200 line-clamp-2 group-hover:text-amber-600">
-          {v.title || v.name}
-        </div>
-        <div className="mt-1 flex items-center gap-1 text-[9px] text-slate-400">
-          {v.code && <span className="font-mono text-amber-500">{v.code}</span>}
-          {v.size && <span>{v.size}</span>}
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function HeatGrid({ values }: { values: Record<string, number> }) {
-  const days = useMemo(() => {
-    const out: string[] = [];
-    const base = new Date();
-    base.setHours(0, 0, 0, 0);
-    for (let i = 119; i >= 0; i -= 1) {
-      const d = new Date(base);
-      d.setDate(base.getDate() - i);
-      out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
-    }
-    return out;
-  }, []);
-  const max = Math.max(1, ...days.map((day) => values[day] || 0));
-  return (
-    <div className="grid grid-cols-[repeat(30,1fr)] gap-1">
-      {days.map((day) => {
-        const value = values[day] || 0;
-        const ratio = value / max;
-        const cls =
-          value === 0
-            ? "bg-slate-100 dark:bg-slate-800"
-            : ratio < 0.34
-              ? "bg-amber-200 dark:bg-amber-900"
-              : ratio < 0.67
-                ? "bg-amber-400 dark:bg-amber-700"
-                : "bg-amber-500";
-        return <div key={day} title={`${day}: ${value}`} className={`aspect-square rounded-sm ${cls}`} />;
-      })}
-    </div>
-  );
-}
-
-function formatTime(seconds: number): string {
-  const value = Math.max(0, Math.floor(seconds || 0));
-  const h = Math.floor(value / 3600);
-  const m = Math.floor((value % 3600) / 60);
-  const s = value % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-export function CommandCenterPage({ videoPath, tempPath, onAddSystemLog }: Props) {
+export function CommandCenterPage({
+  videoPath,
+  tempPath,
+  onAddSystemLog,
+  onPlayVideo,
+  onNavigate,
+}: Props) {
   const [loading, setLoading] = useState(true);
   const [overview, setOverview] = useState<any>(null);
-  const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<VideoItem[]>([]);
-  const [slotResults, setSlotResults] = useState<VideoItem[]>([]);
+  const [healthData, setHealthData] = useState<any>(null);
   const [ingestPlan, setIngestPlan] = useState<{ total: number; steps: IngestStep[] } | null>(null);
-  const [timelineRows, setTimelineRows] = useState<TimelineBookmark[]>([]);
   const [runningIngest, setRunningIngest] = useState(false);
+
+  // 诊断工作台子标签: "duplicates" | "metadata" | "pipeline" | "cleaner"
+  const [activeSubTab, setActiveSubTab] = useState<"duplicates" | "metadata" | "pipeline" | "cleaner">("duplicates");
+
+  // 元数据过滤: "all" | "missingCover" | "missingMeta"
+  const [metaFilter, setMetaFilter] = useState<"all" | "missingCover" | "missingMeta">("all");
+
+  // 磁盘清理状态
   const [cleanupItems, setCleanupItems] = useState<CleanupItem[]>([]);
   const [cleanupSelected, setCleanupSelected] = useState<Set<string>>(new Set());
   const [cleanupTotalLabel, setCleanupTotalLabel] = useState("0 B");
   const [cleanupScanning, setCleanupScanning] = useState(false);
   const [cleanupRunning, setCleanupRunning] = useState(false);
+  const [cleanupScannedOnce, setCleanupScannedOnce] = useState(false);
+
+  // Emby 软链接整理弹窗
   const [showOrganizerModal, setShowOrganizerModal] = useState(false);
 
+  // 本地快速搜索
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<VideoItem[]>([]);
+
+  // 刷新核心数据
   const refresh = useCallback(async () => {
     if (!videoPath) return;
     setLoading(true);
     try {
-      const data = await trpc.library.overview.query({ rootPath: videoPath });
-      const [plan, timeline] = await Promise.all([
+      const [data, health, plan] = await Promise.all([
+        trpc.library.overview.query({ rootPath: videoPath }),
+        trpc.library.health.query({ rootPath: videoPath, tempPath: tempPath || undefined }),
         trpc.library.ingestPlan.query({ rootPath: videoPath }),
-        trpc.library.timeline.query({}),
       ]);
       setOverview(data);
+      setHealthData(health);
       setIngestPlan(plan);
-      setTimelineRows((timeline as TimelineBookmark[]).slice(0, 8));
-      onAddSystemLog(`指挥中心已刷新: ${data.totals.videos} 部`, "SUCCESS");
+      onAddSystemLog(`片库控制台已同步: ${data.totals.videos} 部影片`, "SUCCESS");
     } catch (err: any) {
-      onAddSystemLog(`指挥中心刷新失败: ${err?.message || err}`, "ERROR");
+      onAddSystemLog(`片库数据同步失败: ${err?.message || err}`, "ERROR");
     } finally {
       setLoading(false);
     }
-  }, [videoPath, onAddSystemLog]);
+  }, [videoPath, tempPath, onAddSystemLog]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
+  // 搜索处理
   useEffect(() => {
     const q = query.trim();
     if (!q || !videoPath) {
@@ -246,47 +249,43 @@ export function CommandCenterPage({ videoPath, tempPath, onAddSystemLog }: Props
       return;
     }
     const timer = window.setTimeout(async () => {
-      const rows = await trpc.library.search.query({ rootPath: videoPath, query: q });
-      setSearchResults(rows.map(convertVideo));
-    }, 300);
+      try {
+        const rows = await trpc.library.search.query({ rootPath: videoPath, query: q });
+        setSearchResults(rows.map(convertVideo));
+      } catch {}
+    }, 250);
     return () => window.clearTimeout(timer);
   }, [query, videoPath]);
 
-  const runSlot = async () => {
-    const rows = await trpc.library.slot.query({ rootPath: videoPath });
-    setSlotResults(rows.map(convertVideo));
-    onAddSystemLog(`片库老虎机抽出 ${rows.length} 个候选`, "INFO");
-  };
-
+  // 运行自动入库流水线
   const runIngest = async () => {
+    if (runningIngest) return;
     setRunningIngest(true);
     try {
       const res = await trpc.library.runIngest.mutate({ rootPath: videoPath });
       onAddSystemLog(res.message, res.success ? "SUCCESS" : "WARNING");
       await refresh();
     } catch (err: any) {
-      onAddSystemLog(`自动入库失败: ${err?.message || err}`, "ERROR");
+      onAddSystemLog(`自动入库执行失败: ${err?.message || err}`, "ERROR");
     } finally {
       setRunningIngest(false);
     }
   };
 
+  // 打开桌面小组件
   const openWidgetWindow = async () => {
     try {
       await trpc.window.openLibraryWidget.mutate({ rootPath: videoPath });
-      onAddSystemLog("片库桌面小组件已打开", "SUCCESS");
+      onAddSystemLog("片库桌面微型组件已调起", "SUCCESS");
     } catch (err: any) {
-      onAddSystemLog(`打开片库小组件失败: ${err?.message || err}`, "ERROR");
+      onAddSystemLog(`打开小组件失败: ${err?.message || err}`, "ERROR");
     }
   };
 
-  const openVideo = (video: VideoItem) => {
-    window.open(encodeMediaUrl(video.url), "_blank");
-  };
-
+  // 扫描磁盘清理目标
   const scanCleanup = async () => {
     if (!videoPath) {
-      onAddSystemLog("未配置视频路径，无法扫描残留", "ERROR");
+      onAddSystemLog("未配置视频库路径，无法扫描磁盘残留", "WARNING");
       return;
     }
     setCleanupScanning(true);
@@ -304,12 +303,13 @@ export function CommandCenterPage({ videoPath, tempPath, onAddSystemLog }: Props
             .map((item) => item.path),
         ),
       );
+      setCleanupScannedOnce(true);
       onAddSystemLog(
-        `磁盘清理扫描完成: ${data.items.length} 项可清理（${data.totalLabel}）`,
+        `磁盘扫描完成: 发现 ${data.items.length} 处冗余（可释放 ${data.totalLabel}）`,
         data.items.length > 0 ? "WARNING" : "SUCCESS",
       );
     } catch (err: any) {
-      onAddSystemLog(`磁盘清理扫描失败: ${err?.message || err}`, "ERROR");
+      onAddSystemLog(`磁盘扫描失败: ${err?.message || err}`, "ERROR");
     } finally {
       setCleanupScanning(false);
     }
@@ -336,12 +336,14 @@ export function CommandCenterPage({ videoPath, tempPath, onAddSystemLog }: Props
 
   const clearCleanupSelection = () => setCleanupSelected(new Set());
 
+  // 执行删除清理
   const runCleanup = async () => {
     if (cleanupSelected.size === 0 || cleanupRunning) return;
     const ok = window.confirm(
-      `确认删除选中的 ${cleanupSelected.size} 项？此操作不可恢复。`,
+      `【谨慎操作】确认永久删除选中的 ${cleanupSelected.size} 项残留文件与文件夹？\n此操作不可恢复。`,
     );
     if (!ok) return;
+
     setCleanupRunning(true);
     try {
       const res = await trpc.library.cleanCleanupTargets.mutate({
@@ -351,19 +353,34 @@ export function CommandCenterPage({ videoPath, tempPath, onAddSystemLog }: Props
       });
       onAddSystemLog(res.message, res.success ? "SUCCESS" : "WARNING");
       if (res.failed?.length) {
-        for (const fail of res.failed.slice(0, 5)) {
+        for (const fail of res.failed.slice(0, 3)) {
           onAddSystemLog(`清理失败: ${fail}`, "ERROR");
         }
       }
       await scanCleanup();
       await refresh();
     } catch (err: any) {
-      onAddSystemLog(`清理执行失败: ${err?.message || err}`, "ERROR");
+      onAddSystemLog(`清理执行中断: ${err?.message || err}`, "ERROR");
     } finally {
       setCleanupRunning(false);
     }
   };
 
+  // 播放处理（优先应用内置播放器）
+  const handlePlayVideo = (videoName: string) => {
+    if (onPlayVideo) {
+      onPlayVideo(videoName);
+    } else {
+      // 降级回退
+      const v = overview?.recent?.find((i: VideoItem) => i.name === videoName);
+      if (v) window.open(encodeMediaUrl(v.url), "_blank");
+    }
+  };
+
+  // 计算健康评分
+  const healthMeta = useMemo(() => calculateHealthScore(overview, healthData), [overview, healthData]);
+
+  // 已选清理字节数
   const selectedCleanupBytes = useMemo(
     () =>
       cleanupItems
@@ -373,328 +390,907 @@ export function CommandCenterPage({ videoPath, tempPath, onAddSystemLog }: Props
   );
 
   const totals = overview?.totals;
+  const issues = overview?.issues;
+  const duplicateGroups: DuplicateGroup[] = issues?.duplicates || [];
+
+  // 过滤缺失项
+  const filteredMissingItems: VideoItem[] = useMemo(() => {
+    if (!issues) return [];
+    if (metaFilter === "missingCover") return issues.missingCover || [];
+    if (metaFilter === "missingMeta") return issues.missingMeta || [];
+    // all
+    const map = new Map<string, VideoItem>();
+    for (const v of issues.missingCover || []) map.set(v.id, v);
+    for (const v of issues.missingMeta || []) map.set(v.id, v);
+    return Array.from(map.values());
+  }, [issues, metaFilter]);
+
+  // 磁盘百分比
+  const diskPercentage = useMemo(() => {
+    if (!healthData || !healthData.totalBytes || healthData.totalBytes <= 0) return null;
+    const usedBytes = Math.max(0, healthData.totalBytes - (healthData.freeBytes || 0));
+    return Math.min(100, Math.round((usedBytes / healthData.totalBytes) * 100));
+  }, [healthData]);
 
   return (
-    <div className="h-full overflow-y-auto bg-[#f8fafc] dark:bg-slate-950 p-5 space-y-4">
-      <PageLoader active={loading} label="加载指挥中心" />
+    <div className="h-full overflow-y-auto bg-[#f8fafc] dark:bg-slate-950 p-6 space-y-6 text-slate-800 dark:text-slate-100">
+      <PageLoader active={loading} label="同步指挥中枢数据..." />
 
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <Gauge className="w-5 h-5 text-amber-500" />
-            片库指挥中心
-          </h2>
-          <p className="text-[11px] text-slate-400 mt-0.5">Live Mode / 入库流水线 / 搜索 / 演员墙 / 热力图 / 成就 / 通知</p>
+      {/* ===================== 1. 顶栏：标题与核心行动群 ===================== */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-1">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shadow-xs">
+            <Gauge className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                片库指挥中枢
+              </h2>
+              <span className="text-[10px] font-bold font-mono uppercase px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                Operations Console
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              片库健康诊断 · 资产规范化治理 · 磁盘空间瘦身与自动化流水线
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative w-72">
+
+        {/* 顶部行动按钮 */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* 本地搜索 */}
+          <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="本地搜索：番号 / 演员 / 标签 / 片商"
-              className="w-full h-9 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 pl-9 pr-3 text-[12px] focus:outline-none focus:border-amber-400"
+              placeholder="搜索番号 / 演员 / 片商..."
+              className="w-full h-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 pl-9 pr-3 text-xs focus:outline-none focus:border-amber-500 transition shadow-2xs"
             />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
           </div>
-          <button type="button" onClick={refresh} className="h-9 px-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[12px] font-bold text-slate-600 dark:text-slate-300 hover:text-amber-500 transition cursor-pointer">
-            <RefreshCw className="w-3.5 h-3.5 inline mr-1" />
-            刷新
+
+          <button
+            type="button"
+            onClick={refresh}
+            className="h-9 px-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-amber-500 hover:border-amber-500/40 transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+            title="刷新数据"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>刷新</span>
           </button>
+
           <button
             type="button"
             onClick={() => setShowOrganizerModal(true)}
-            className="h-9 px-3 rounded-lg bg-blue-600 text-white text-[12px] font-bold hover:bg-blue-700 transition cursor-pointer flex items-center gap-1.5"
-            title="Emby/Plex 媒体库规范化软链接与 NFO 整理"
+            className="h-9 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs shadow-blue-500/20"
+            title="Emby / Plex 媒体库规范化软链接导出与 NFO 整理"
           >
             <FolderArchive className="w-3.5 h-3.5" />
-            Emby软链接整理
+            <span>Emby软链接整理</span>
           </button>
-          <button type="button" onClick={openWidgetWindow} className="h-9 px-3 rounded-lg bg-amber-500 text-white text-[12px] font-bold hover:bg-amber-600 transition cursor-pointer">
-            小组件窗口
+
+          <button
+            type="button"
+            onClick={openWidgetWindow}
+            className="h-9 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs shadow-amber-500/20"
+            title="打开独立桌面片库悬浮组件"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>桌面小组件</span>
           </button>
         </div>
       </div>
 
+      {/* 搜索结果浮层展示 */}
       {searchResults.length > 0 && (
-        <section className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/40 dark:bg-amber-950/10 p-3">
-          <div className="text-[12px] font-bold text-amber-700 dark:text-amber-300 mb-2">搜索结果</div>
-          <div className="grid grid-cols-6 gap-2">
-            {searchResults.slice(0, 12).map((video) => <MiniVideo key={video.id} video={video} onPlay={openVideo} />)}
+        <section className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/20 p-4 space-y-3 anim-fade-in shadow-sm">
+          <div className="flex items-center justify-between text-xs font-bold text-amber-800 dark:text-amber-300">
+            <span>找到 {searchResults.length} 部相关作品</span>
+            <span className="text-[10px] text-amber-600/80 dark:text-amber-400">点击直接在播放器播放</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+            {searchResults.slice(0, 12).map((video) => (
+              <button
+                key={video.id}
+                type="button"
+                onClick={() => handlePlayVideo(video.name)}
+                className="group text-left rounded-xl border border-amber-200/60 dark:border-amber-900/40 bg-white dark:bg-slate-900 overflow-hidden hover:border-amber-400 hover:shadow-md transition cursor-pointer"
+              >
+                <div className="aspect-video bg-slate-100 dark:bg-slate-800 relative">
+                  {video.coverUrl ? (
+                    <CoverImage src={video.coverUrl} alt={video.name} />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-slate-400">
+                      <Film className="w-5 h-5" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                    <Play className="w-6 h-6 text-white drop-shadow" />
+                  </div>
+                </div>
+                <div className="p-2">
+                  <div className="text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate group-hover:text-amber-500">
+                    {video.title || video.name}
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-[9px] text-slate-400 font-mono">
+                    <span className="text-amber-600 dark:text-amber-400 font-bold">{video.code}</span>
+                    <span>{video.size}</span>
+                  </div>
+                </div>
+              </button>
+            ))}
           </div>
         </section>
       )}
 
-      {totals && (
-        <div className="grid grid-cols-4 xl:grid-cols-8 gap-3">
-          <StatTile icon={Film} label="影片" value={String(totals.videos)} sub={totals.totalSize} />
-          <StatTile icon={Users} label="演员" value={String(totals.actors)} sub={`${totals.studios} 片商`} />
-          <StatTile icon={Play} label="未看" value={String(totals.unseen)} sub={`${totals.halfWatched} 有播放记录`} />
-          <StatTile icon={Boxes} label="重复番号" value={String(totals.duplicates)} sub="可清理版本" />
-          <StatTile icon={Clapperboard} label="缺封面" value={String(totals.missingCover)} sub="入库待处理" />
-          <StatTile icon={Wrench} label="缺资料" value={String(totals.missingMeta)} sub="meta 待补" />
-          <StatTile icon={Activity} label="书签" value={String(totals.bookmarks)} sub="时间轴片段" />
-          <StatTile icon={HardDrive} label="体积" value={totals.totalSize} sub="本地片库" />
-        </div>
-      )}
-
-      <section className="rounded-lg border border-rose-200 dark:border-rose-900/40 bg-white dark:bg-slate-900 p-4">
-        <div className="flex items-center justify-between gap-3 mb-3">
-          <div>
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-              <Trash2 className="w-4 h-4 text-rose-500" />
-              磁盘清理工具
-            </h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              扫描删除失败残留、空目录、根目录散落文件与临时目录垃圾。若正片还在且播放器里仍能看到，请在播放器里重新删除。
-            </p>
+      {/* ===================== 2. 控制台驾驶舱：健康雷达 + 4大核心资产胶囊 ===================== */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* 左侧：片库健康综合雷达 (4 cols) */}
+        <div className="lg:col-span-4 rounded-2xl p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col justify-between space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {healthMeta.level === "excellent" || healthMeta.level === "good" ? (
+                <ShieldCheck className="w-4 h-4 text-emerald-500" />
+              ) : (
+                <ShieldAlert className="w-4 h-4 text-amber-500" />
+              )}
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                片库健康诊断指数
+              </h3>
+            </div>
+            <span
+              className={`text-[11px] font-bold px-2 py-0.5 rounded-lg ${
+                healthMeta.level === "excellent"
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                  : healthMeta.level === "good"
+                    ? "bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20"
+                    : healthMeta.level === "warning"
+                      ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                      : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
+              }`}
+            >
+              {healthMeta.grade}
+            </span>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-baseline gap-3 my-1">
+            <div
+              className={`text-5xl font-black tracking-tight ${
+                healthMeta.level === "excellent"
+                  ? "text-emerald-500"
+                  : healthMeta.level === "good"
+                    ? "text-sky-500"
+                    : healthMeta.level === "warning"
+                      ? "text-amber-500"
+                      : "text-rose-500"
+              }`}
+            >
+              {healthMeta.score}
+            </div>
+            <div className="text-slate-400 text-xs font-mono">/ 100 分</div>
+          </div>
+
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            {healthMeta.summary}
+          </p>
+
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+            <span>未看作品: <strong className="text-slate-700 dark:text-slate-200">{totals?.unseen || 0}</strong> 部</span>
+            <span>已看/半看: <strong className="text-slate-700 dark:text-slate-200">{totals?.halfWatched || 0}</strong> 部</span>
             <button
               type="button"
-              onClick={scanCleanup}
-              disabled={cleanupScanning || !videoPath}
-              className="h-8 px-3 rounded-md bg-slate-900 text-white text-[11px] font-bold disabled:opacity-50 cursor-pointer"
+              onClick={() => onNavigate?.("stats")}
+              className="text-amber-500 hover:underline cursor-pointer flex items-center gap-0.5"
             >
-              {cleanupScanning ? "扫描中..." : "扫描残留"}
-            </button>
-            <button
-              type="button"
-              onClick={runCleanup}
-              disabled={cleanupRunning || cleanupSelected.size === 0}
-              className="h-8 px-3 rounded-md bg-rose-500 text-white text-[11px] font-bold disabled:opacity-50 cursor-pointer"
-            >
-              {cleanupRunning ? "清理中..." : `删除所选 (${cleanupSelected.size})`}
+              查看深度统计
+              <ExternalLink className="w-2.5 h-2.5" />
             </button>
           </div>
         </div>
 
-        {cleanupItems.length === 0 ? (
-          <div className="rounded-md bg-slate-50 dark:bg-slate-800 px-3 py-6 text-center text-[12px] text-slate-400">
-            {cleanupScanning
-              ? "正在扫描磁盘..."
-              : "点击「扫描残留」开始检查。若历史删除只清了信息、文件还在，这里会列出来。"}
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center justify-between gap-3 mb-2 text-[11px]">
-              <div className="text-slate-500">
-                共 {cleanupItems.length} 项 · 合计 {cleanupTotalLabel} · 已选{" "}
-                {formatBytesClient(selectedCleanupBytes)}
+        {/* 右侧：4大资产胶囊指标 (8 cols) */}
+        <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* 胶囊 1: 影片总资产 */}
+          <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
+              <span>影片资产</span>
+              <Film className="w-4 h-4 text-blue-500" />
+            </div>
+            <div className="mt-2">
+              <div className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                {totals?.videos || 0}
+                <span className="text-xs font-normal text-slate-400 ml-1">部</span>
               </div>
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={selectCleanupDefaults} className="text-slate-500 hover:text-amber-500 cursor-pointer">
-                  默认勾选
-                </button>
-                <button type="button" onClick={selectAllCleanup} className="text-slate-500 hover:text-amber-500 cursor-pointer">
-                  全选
-                </button>
-                <button type="button" onClick={clearCleanupSelection} className="text-slate-500 hover:text-amber-500 cursor-pointer">
-                  清空
-                </button>
+              <div className="text-[11px] text-slate-400 mt-0.5 font-mono">
+                {totals?.totalSize || "0 B"}
               </div>
             </div>
-            <div className="max-h-72 overflow-y-auto space-y-1.5 pr-1">
-              {cleanupItems.map((item) => {
-                const checked = cleanupSelected.has(item.path);
-                return (
-                  <label
-                    key={item.id}
-                    className={`flex items-start gap-3 rounded-md px-3 py-2 cursor-pointer transition ${
-                      checked
-                        ? "bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40"
-                        : "bg-slate-50 dark:bg-slate-800 border border-transparent"
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 truncate">
+              覆盖 {totals?.actors || 0} 位演员 · {totals?.studios || 0} 片商
+            </div>
+          </div>
+
+          {/* 胶囊 2: 存储磁盘余量 */}
+          <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
+              <span>磁盘存储</span>
+              <HardDrive className="w-4 h-4 text-purple-500" />
+            </div>
+            <div className="mt-2">
+              <div className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                {healthData && healthData.freeBytes > 0
+                  ? formatBytesClient(healthData.freeBytes)
+                  : "--"}
+                <span className="text-xs font-normal text-slate-400 ml-1">可用</span>
+              </div>
+              <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    (diskPercentage || 0) > 90
+                      ? "bg-rose-500"
+                      : (diskPercentage || 0) > 80
+                        ? "bg-amber-500"
+                        : "bg-purple-500"
+                  }`}
+                  style={{ width: `${diskPercentage || 0}%` }}
+                />
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 truncate">
+              {healthData && healthData.totalBytes > 0
+                ? `已用 ${diskPercentage}% / 总量 ${formatBytesClient(healthData.totalBytes)}`
+                : "正在检测磁盘容量"}
+            </div>
+          </div>
+
+          {/* 胶囊 3: 元数据完备率 */}
+          <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
+              <span>资料完备度</span>
+              <Clapperboard className="w-4 h-4 text-emerald-500" />
+            </div>
+            <div className="mt-2">
+              <div className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                {totals?.videos
+                  ? `${Math.max(
+                      0,
+                      Math.round(
+                        (1 -
+                          ((totals?.missingCover || 0) + (totals?.missingMeta || 0)) /
+                            (totals.videos * 2)) *
+                          100,
+                      ),
+                    )}%`
+                  : "100%"}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">
+                缺封面 {totals?.missingCover || 0} · 缺信息 {totals?.missingMeta || 0}
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 truncate">
+              <button
+                type="button"
+                onClick={() => setActiveSubTab("metadata")}
+                className="text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+              >
+                查看待补清单 →
+              </button>
+            </div>
+          </div>
+
+          {/* 胶囊 4: 冗余版本与残留 */}
+          <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
+              <span>冗余与残留</span>
+              <Boxes className="w-4 h-4 text-rose-500" />
+            </div>
+            <div className="mt-2">
+              <div className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+                {totals?.duplicates || 0}
+                <span className="text-xs font-normal text-slate-400 ml-1">组重复</span>
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">
+                {cleanupScannedOnce ? `可瘦身 ${cleanupTotalLabel}` : "待扫描残留"}
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 truncate">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSubTab("duplicates");
+                }}
+                className="text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+              >
+                排查重复文件 →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ===================== 3. 诊断与治理中枢 (Triage & Operations Panel) ===================== */}
+      <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+        {/* 工作台 Tab 切换顶栏 */}
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-5 pt-3">
+          <div className="flex items-center gap-6">
+            <button
+              type="button"
+              onClick={() => setActiveSubTab("duplicates")}
+              className={`pb-3 text-xs font-bold transition relative cursor-pointer flex items-center gap-1.5 ${
+                activeSubTab === "duplicates"
+                  ? "text-rose-600 dark:text-rose-400 border-b-2 border-rose-500"
+                  : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              <Boxes className="w-3.5 h-3.5" />
+              <span>重复番号去重</span>
+              {duplicateGroups.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500/10 text-rose-600 dark:text-rose-400 font-mono font-bold">
+                  {duplicateGroups.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSubTab("metadata")}
+              className={`pb-3 text-xs font-bold transition relative cursor-pointer flex items-center gap-1.5 ${
+                activeSubTab === "metadata"
+                  ? "text-amber-600 dark:text-amber-400 border-b-2 border-amber-500"
+                  : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              <Clapperboard className="w-3.5 h-3.5" />
+              <span>元数据与封面缺失</span>
+              {((totals?.missingCover || 0) > 0 || (totals?.missingMeta || 0) > 0) && (
+                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono font-bold">
+                  {(totals?.missingCover || 0) + (totals?.missingMeta || 0)}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveSubTab("pipeline")}
+              className={`pb-3 text-xs font-bold transition relative cursor-pointer flex items-center gap-1.5 ${
+                activeSubTab === "pipeline"
+                  ? "text-cyan-600 dark:text-cyan-400 border-b-2 border-cyan-500"
+                  : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              <Workflow className="w-3.5 h-3.5" />
+              <span>自动入库流水线</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSubTab("cleaner");
+                if (!cleanupScannedOnce) void scanCleanup();
+              }}
+              className={`pb-3 text-xs font-bold transition relative cursor-pointer flex items-center gap-1.5 ${
+                activeSubTab === "cleaner"
+                  ? "text-purple-600 dark:text-purple-400 border-b-2 border-purple-500"
+                  : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>磁盘瘦身清理</span>
+              {cleanupItems.length > 0 && (
+                <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-purple-500/10 text-purple-600 dark:text-purple-400 font-mono font-bold">
+                  {cleanupItems.length}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* ================= 工作台 Tab 1: 重复番号去重 ================= */}
+        {activeSubTab === "duplicates" && (
+          <div className="p-5 space-y-4 anim-fade-in">
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <p>
+                检测到同一番号存在多个存放目录或不同分辨率版本。可对比画质与体积后择优保留，释放宝贵硬盘空间。
+              </p>
+              <span className="font-mono text-slate-400">共 {duplicateGroups.length} 组重复记录</span>
+            </div>
+
+            {duplicateGroups.length === 0 ? (
+              <div className="py-12 text-center text-xs text-slate-400 space-y-2">
+                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto opacity-80" />
+                <div className="font-semibold text-slate-700 dark:text-slate-200">没有发现重复番号</div>
+                <p className="text-[11px] text-slate-400">片库规范整洁，未出现多版本冗余</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+                {duplicateGroups.map((group) => (
+                  <div
+                    key={group.code}
+                    className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                          {group.code}
+                        </span>
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                          存在 {group.count} 个版本副本
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-slate-400">
+                        点击各版本可在播放器快速对比
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {group.videos.map((vid, idx) => (
+                        <div
+                          key={vid.id || idx}
+                          className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-slate-800 dark:text-slate-200 truncate" title={vid.name}>
+                              {vid.name}
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-400 font-mono">
+                              <span className="font-bold text-purple-500">{vid.size}</span>
+                              {vid.duration && <span>{vid.duration}</span>}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handlePlayVideo(vid.name)}
+                            className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-amber-500 hover:text-white text-slate-700 dark:text-slate-300 text-[11px] font-bold transition cursor-pointer shrink-0 flex items-center gap-1"
+                          >
+                            <Play className="w-3 h-3" />
+                            <span>试播对比</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= 工作台 Tab 2: 元数据与封面缺失 ================= */}
+        {activeSubTab === "metadata" && (
+          <div className="p-5 space-y-4 anim-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500">分类筛选:</span>
+                <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setMetaFilter("all")}
+                    className={`px-2.5 py-1 rounded-md font-bold transition cursor-pointer ${
+                      metaFilter === "all"
+                        ? "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-2xs"
+                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                     }`}
                   >
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={checked}
-                      onChange={() => toggleCleanupItem(item.path)}
-                    />
+                    全部缺失 ({filteredMissingItems.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMetaFilter("missingCover")}
+                    className={`px-2.5 py-1 rounded-md font-bold transition cursor-pointer ${
+                      metaFilter === "missingCover"
+                        ? "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-2xs"
+                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    缺封面 ({issues?.missingCover?.length || 0})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMetaFilter("missingMeta")}
+                    className={`px-2.5 py-1 rounded-md font-bold transition cursor-pointer ${
+                      metaFilter === "missingMeta"
+                        ? "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-2xs"
+                        : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    缺元数据 ({issues?.missingMeta?.length || 0})
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={runIngest}
+                disabled={runningIngest}
+                className="h-8 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+              >
+                <Workflow className="w-3.5 h-3.5" />
+                <span>{runningIngest ? "正在写入 meta.json..." : "一键自动生成元数据"}</span>
+              </button>
+            </div>
+
+            {filteredMissingItems.length === 0 ? (
+              <div className="py-12 text-center text-xs text-slate-400 space-y-2">
+                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto opacity-80" />
+                <div className="font-semibold text-slate-700 dark:text-slate-200">所有视频资料完备</div>
+                <p className="text-[11px] text-slate-400">目前没有缺少封面或番号标题的孤儿影片</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[500px] overflow-y-auto pr-1">
+                {filteredMissingItems.map((vid) => (
+                  <div
+                    key={vid.id}
+                    className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/40 dark:bg-slate-800/30 flex items-center justify-between gap-3 text-xs"
+                  >
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white dark:bg-slate-900 text-rose-500">
-                          {KIND_LABEL[item.kind]}
-                        </span>
-                        <span className="text-[12px] font-bold text-slate-700 dark:text-slate-200 truncate">
-                          {item.name}
-                        </span>
-                        <span className="ml-auto text-[10px] font-mono text-slate-400 shrink-0">
-                          {item.sizeLabel} · {item.fileCount} 文件
-                        </span>
+                      <div className="font-bold text-slate-800 dark:text-slate-200 truncate" title={vid.name}>
+                        {vid.name}
                       </div>
-                      <div className="mt-0.5 text-[10px] text-slate-400 truncate">{item.reason}</div>
-                      <div className="text-[9px] font-mono text-slate-300 dark:text-slate-600 truncate">
-                        {item.path}
+                      <div className="mt-1 flex items-center gap-2 text-[10px]">
+                        {!vid.coverUrl && (
+                          <span className="px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 font-bold">
+                            缺封面
+                          </span>
+                        )}
+                        {(!vid.code || !vid.title) && (
+                          <span className="px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold">
+                            缺 meta
+                          </span>
+                        )}
+                        <span className="text-slate-400 font-mono ml-auto">{vid.size}</span>
                       </div>
                     </div>
-                  </label>
+
+                    <button
+                      type="button"
+                      onClick={() => handlePlayVideo(vid.name)}
+                      className="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:text-amber-500 text-slate-600 dark:text-slate-300 text-[11px] font-bold transition cursor-pointer shrink-0"
+                      title="在内置播放器打开查看"
+                    >
+                      去播放
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= 工作台 Tab 3: 自动入库流水线 ================= */}
+        {activeSubTab === "pipeline" && (
+          <div className="p-5 space-y-5 anim-fade-in">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  本地目录自动规范化入库流水线
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  对视频库全量扫描，识别番号规则、自动补齐 meta.json、核对封面图与刷新片库检索索引。
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={runIngest}
+                disabled={runningIngest}
+                className="h-8 px-4 rounded-xl bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs shadow-cyan-500/20"
+              >
+                <Workflow className={`w-3.5 h-3.5 ${runningIngest ? "animate-spin" : ""}`} />
+                <span>{runningIngest ? "流水线运转中..." : "启动全量入库"}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+              {(ingestPlan?.steps || []).map((step, idx) => {
+                const total = Math.max(1, ingestPlan?.total || 1);
+                const pct = Math.min(100, Math.round((step.count / total) * 100));
+                return (
+                  <div
+                    key={step.key}
+                    className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 flex flex-col justify-between space-y-3"
+                  >
+                    <div className="flex items-center justify-between text-xs font-bold">
+                      <span className="text-slate-400 font-mono text-[10px]">STEP 0{idx + 1}</span>
+                      <span className="font-mono text-cyan-600 dark:text-cyan-400">{step.count}</span>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                        {step.label}
+                      </div>
+                      <div className="mt-2 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                        <div className="h-full bg-cyan-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] text-slate-400 flex items-center justify-between">
+                      <span>就绪</span>
+                      <span>{pct}%</span>
+                    </div>
+                  </div>
                 );
               })}
             </div>
-          </>
-        )}
-      </section>
 
-      <div className="grid grid-cols-[1fr_1fr] gap-4">
-        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-              <Workflow className="w-4 h-4 text-cyan-500" />
-              自动入库流水线计划
-            </h3>
-            <button type="button" onClick={runIngest} disabled={runningIngest} className="h-7 px-3 rounded-md bg-cyan-600 text-white text-[11px] font-bold disabled:opacity-50 cursor-pointer">
-              {runningIngest ? "执行中..." : "执行入库"}
-            </button>
-          </div>
-          <div className="space-y-2">
-            {(ingestPlan?.steps || []).map((step) => {
-              const total = Math.max(1, ingestPlan?.total || 1);
-              const width = Math.min(100, Math.round((step.count / total) * 100));
-              return (
-                <div key={step.key} className="rounded-md bg-slate-50 dark:bg-slate-800 px-3 py-2">
-                  <div className="flex items-center justify-between gap-3 text-[11px]">
-                    <span className="font-bold text-slate-700 dark:text-slate-200 truncate">{step.label}</span>
-                    <span className="font-mono text-slate-400 shrink-0">{step.count}</span>
-                  </div>
-                  <div className="mt-1.5 h-1.5 rounded-full bg-white dark:bg-slate-950 overflow-hidden">
-                    <div className="h-full bg-cyan-500" style={{ width: `${width}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-              <ListChecks className="w-4 h-4 text-amber-500" />
-              最近时间轴书签
-            </h3>
-            <span className="text-[10px] text-slate-400">播放器里点时间可跳转</span>
-          </div>
-          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-            {timelineRows.length === 0 ? (
-              <div className="py-8 text-center text-[12px] text-slate-400">还没有保存过时间轴书签</div>
-            ) : (
-              timelineRows.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => window.open(encodeMediaUrl(item.videoUrl), "_blank")}
-                  className="w-full text-left rounded-md bg-slate-50 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/20 px-3 py-2 transition cursor-pointer"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-[11px] font-bold text-amber-600">{formatTime(item.currentTime)}</span>
-                    <span className="text-[9px] text-slate-400">{item.createdAt?.slice(0, 10)}</span>
-                  </div>
-                  <div className="mt-0.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 truncate">{item.videoName}</div>
-                </button>
-              ))
-            )}
-          </div>
-        </section>
-      </div>
-
-      <div className="grid grid-cols-[1.3fr_0.9fr] gap-4">
-        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-500" />
-              看片仪表盘 Live Mode
-            </h3>
-            <button type="button" onClick={runIngest} disabled={runningIngest} className="h-7 px-3 rounded-md bg-amber-500 text-white text-[11px] font-bold disabled:opacity-50 cursor-pointer">
-              {runningIngest ? "入库中..." : "运行自动入库"}
-            </button>
-          </div>
-          <div className="grid grid-cols-4 gap-3">
-            {(overview?.recent || []).slice(0, 8).map((video: VideoItem) => <MiniVideo key={video.id} video={video} onPlay={openVideo} />)}
-          </div>
-        </section>
-
-        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-              <Bell className="w-4 h-4 text-rose-500" />
-              本地通知中心
-            </h3>
-          </div>
-          <div className="space-y-2">
-            {(overview?.notifications || []).length === 0 && (
-              <div className="text-[12px] text-slate-400 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                暂无待处理事项
+            <div className="p-4 rounded-xl bg-cyan-50/50 dark:bg-cyan-950/20 border border-cyan-200/60 dark:border-cyan-900/40 flex items-center justify-between text-xs text-cyan-800 dark:text-cyan-300">
+              <div className="flex items-center gap-2">
+                <Info className="w-4 h-4 text-cyan-500 shrink-0" />
+                <span>
+                  提示：如需抓取高精封面或生成 30 张切片刻度图，进入主「播放器」点击右侧「修复刮削」即可批量派发后台队列。
+                </span>
               </div>
-            )}
-            {(overview?.notifications || []).map((note: any, index: number) => (
-              <div key={index} className="rounded-md bg-slate-50 dark:bg-slate-800 px-3 py-2">
-                <div className="text-[12px] font-bold text-slate-700 dark:text-slate-200">{note.title}</div>
-                <div className="text-[10px] text-slate-400">{note.body}</div>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold flex items-center gap-2"><Dice5 className="w-4 h-4 text-pink-500" />片库老虎机</h3>
-            <button type="button" onClick={runSlot} className="h-7 px-3 rounded-md bg-pink-500 text-white text-[11px] font-bold cursor-pointer">开摇</button>
-          </div>
-          <div className="space-y-2">
-            {(slotResults.length ? slotResults : (overview?.unseen || []).slice(0, 3)).map((video: VideoItem) => (
-              <div key={video.id} className="flex items-center gap-2">
-                <div className="w-20 aspect-video rounded overflow-hidden bg-slate-100 dark:bg-slate-800 shrink-0">
-                  {convertVideo(video).coverUrl ? <CoverImage src={convertVideo(video).coverUrl} alt={video.name} /> : null}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[11px] font-bold text-slate-700 dark:text-slate-200 truncate">{video.title || video.name}</div>
-                  <div className="text-[9px] text-slate-400 truncate">{video.actors?.join(" / ") || video.code}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
-          <h3 className="text-sm font-bold flex items-center gap-2 mb-3"><CalendarDays className="w-4 h-4 text-amber-500" />欲望热力图</h3>
-          <HeatGrid values={overview?.addedByDay || {}} />
-          <div className="mt-2 text-[10px] text-slate-400">按最近 120 天入库数量计算</div>
-        </section>
-
-        <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
-          <h3 className="text-sm font-bold flex items-center gap-2 mb-3"><Award className="w-4 h-4 text-violet-500" />片库成就</h3>
-          <div className="space-y-2">
-            {(overview?.achievements || []).map((ach: any) => (
-              <div key={ach.id}>
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className={ach.done ? "text-emerald-500 font-bold" : "text-slate-600 dark:text-slate-300"}>{ach.title}</span>
-                  <span className="text-slate-400">{ach.progress}/{ach.target}</span>
-                </div>
-                <div className="mt-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                  <div className={`h-full ${ach.done ? "bg-emerald-500" : "bg-violet-500"}`} style={{ width: `${Math.min(100, (ach.progress / ach.target) * 100)}%` }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      </div>
-
-      <section className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
-        <h3 className="text-sm font-bold flex items-center gap-2 mb-3"><UserRound className="w-4 h-4 text-rose-500" />本地演员墙</h3>
-        <div className="grid grid-cols-8 gap-2">
-          {(overview?.actors || []).slice(0, 32).map((actor: any) => (
-            <div key={actor.name} className="rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-2">
-              <div className="text-[12px] font-bold text-slate-700 dark:text-slate-200 truncate">{actor.name}</div>
-              <div className="text-[10px] text-slate-400">{actor.count} 部 · {actor.unseen} 未看</div>
-              <div className="mt-1 text-[9px] text-slate-400 truncate">{actor.genres.slice(0, 3).join(" / ")}</div>
+              <button
+                type="button"
+                onClick={() => onNavigate?.("player")}
+                className="font-bold underline text-cyan-600 dark:text-cyan-400 cursor-pointer shrink-0"
+              >
+                前往播放器
+              </button>
             </div>
-          ))}
-        </div>
-      </section>
+          </div>
+        )}
 
+        {/* ================= 工作台 Tab 4: 磁盘瘦身清理 ================= */}
+        {activeSubTab === "cleaner" && (
+          <div className="p-5 space-y-4 anim-fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div>
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                  <span>片库与临时缓存清理瘦身</span>
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  扫描因下载中断、历史删除未彻底删除的空目录、无正片残留、下载缓存以及损坏超小文件。
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={scanCleanup}
+                  disabled={cleanupScanning || !videoPath}
+                  className="h-8 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${cleanupScanning ? "animate-spin" : ""}`} />
+                  <span>{cleanupScanning ? "扫描中..." : "重新扫描"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={runCleanup}
+                  disabled={cleanupRunning || cleanupSelected.size === 0}
+                  className="h-8 px-3.5 rounded-lg bg-rose-500 hover:bg-rose-600 disabled:opacity-40 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs shadow-rose-500/20"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{cleanupRunning ? "正在清理..." : `删除选中 (${cleanupSelected.size})`}</span>
+                </button>
+              </div>
+            </div>
+
+            {cleanupItems.length === 0 ? (
+              <div className="py-12 text-center text-xs text-slate-400 space-y-2">
+                {cleanupScanning ? (
+                  <div className="space-y-2">
+                    <RefreshCw className="w-6 h-6 text-amber-500 animate-spin mx-auto" />
+                    <div>正在深度遍历片库目录与临时缓存...</div>
+                  </div>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto opacity-80" />
+                    <div className="font-semibold text-slate-700 dark:text-slate-200">
+                      {cleanupScannedOnce ? "太棒了！未发现任何可清理残留" : "尚未进行磁盘体检扫描"}
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      {cleanupScannedOnce
+                        ? "所有目录均结构完整且无孤儿文件"
+                        : "点击上方「重新扫描」即可快速探测可回收空间"}
+                    </p>
+                  </>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between text-xs">
+                  <div className="text-slate-500">
+                    扫描到 <strong className="text-slate-800 dark:text-slate-200">{cleanupItems.length}</strong> 处残留 ·{" "}
+                    合计 <strong className="text-slate-800 dark:text-slate-200">{cleanupTotalLabel}</strong> ·{" "}
+                    已勾选待清理: <strong className="text-rose-500">{formatBytesClient(selectedCleanupBytes)}</strong>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={selectCleanupDefaults}
+                      className="text-xs text-slate-500 hover:text-amber-500 cursor-pointer"
+                    >
+                      推荐勾选
+                    </button>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <button
+                      type="button"
+                      onClick={selectAllCleanup}
+                      className="text-xs text-slate-500 hover:text-amber-500 cursor-pointer"
+                    >
+                      全选
+                    </button>
+                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                    <button
+                      type="button"
+                      onClick={clearCleanupSelection}
+                      className="text-xs text-slate-500 hover:text-amber-500 cursor-pointer"
+                    >
+                      清空
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-[440px] overflow-y-auto pr-1">
+                  {cleanupItems.map((item) => {
+                    const checked = cleanupSelected.has(item.path);
+                    const meta = KIND_LABEL[item.kind];
+                    return (
+                      <label
+                        key={item.id}
+                        className={`flex items-start gap-3 rounded-xl p-3 cursor-pointer border transition ${
+                          checked
+                            ? "bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40"
+                            : "bg-slate-50 dark:bg-slate-800/40 border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleCleanupItem(item.path)}
+                          className="mt-1 accent-rose-500 cursor-pointer"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${meta.color}`}>
+                              {meta.label}
+                            </span>
+                            <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                              {item.name}
+                            </span>
+                            <span className="ml-auto text-[11px] font-mono text-slate-500 dark:text-slate-400 shrink-0 font-semibold">
+                              {item.sizeLabel} ({item.fileCount} 文件)
+                            </span>
+                          </div>
+                          <div className="mt-1 text-[10px] text-slate-400 truncate">{item.reason}</div>
+                          <div className="mt-0.5 text-[9px] font-mono text-slate-300 dark:text-slate-600 truncate">
+                            {item.path}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ===================== 4. 底部联动：系统动态与最近入库速览 ===================== */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        {/* 左侧：待办与事件通知中心 (5 cols) */}
+        <div className="lg:col-span-5 rounded-2xl p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4 text-emerald-500" />
+              <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                运行环境与自检事件
+              </h4>
+            </div>
+            <span className="text-[10px] text-slate-400 font-mono">
+              v{healthData?.appVersion || "1.0.0"}
+            </span>
+          </div>
+
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {/* 磁盘与自检项目列表 */}
+            {(healthData?.checks || []).map((chk: any, idx: number) => (
+              <div
+                key={idx}
+                className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-xs"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {chk.status === "ok" ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  )}
+                  <span className="font-bold text-slate-700 dark:text-slate-200 truncate">
+                    {chk.label}
+                  </span>
+                </div>
+                <span className="text-[10px] text-slate-400 truncate max-w-[200px]" title={chk.detail}>
+                  {chk.detail}
+                </span>
+              </div>
+            ))}
+
+            {/* 告警提醒 */}
+            {(overview?.notifications || []).map((n: any, idx: number) => (
+              <div
+                key={`note-${idx}`}
+                className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs flex items-center justify-between gap-2"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span className="font-bold text-amber-900 dark:text-amber-200">{n.title}</span>
+                </div>
+                <span className="text-[10px] text-amber-700 dark:text-amber-300/80">{n.body}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 右侧：最近入库快速通道 (7 cols) */}
+        <div className="lg:col-span-7 rounded-2xl p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2">
+              <PlayCircle className="w-4 h-4 text-amber-500" />
+              <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                最近入库新片（点击直接在内置播放器启播）
+              </h4>
+            </div>
+            <button
+              type="button"
+              onClick={() => onNavigate?.("player")}
+              className="text-[11px] text-amber-500 hover:underline cursor-pointer flex items-center gap-1 font-semibold"
+            >
+              全部作品 →
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {(overview?.recent || []).slice(0, 4).map((vid: VideoItem) => (
+              <button
+                key={vid.id}
+                type="button"
+                onClick={() => handlePlayVideo(vid.name)}
+                className="group text-left rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-800/30 overflow-hidden hover:border-amber-400 hover:shadow-md transition cursor-pointer"
+              >
+                <div className="aspect-video bg-slate-100 dark:bg-slate-800 relative">
+                  {convertVideo(vid).coverUrl ? (
+                    <CoverImage src={convertVideo(vid).coverUrl} alt={vid.name} />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-slate-400">
+                      <Film className="w-5 h-5" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                    <Play className="w-6 h-6 text-white drop-shadow" />
+                  </div>
+                </div>
+
+                <div className="p-2">
+                  <div className="text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate group-hover:text-amber-500">
+                    {vid.title || vid.name}
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-[9px] text-slate-400 font-mono">
+                    <span className="text-amber-600 dark:text-amber-400 font-bold">{vid.code}</span>
+                    <span>{vid.size}</span>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ===================== 5. 弹窗：Emby / Plex 软链接整理 ===================== */}
       {showOrganizerModal && (
         <OrganizerModal
           sourcePath={videoPath}

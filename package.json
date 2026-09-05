@@ -5,8 +5,10 @@
   "main": "./out/main/index.js",
   "author": "AVPlayPro",
   "scripts": {
-    "dev": "chcp 65001 && electron-vite dev --watch",
-    "start": "chcp 65001 && electron-vite preview",
+    "dev": "electron-vite dev --watch",
+    "dev:win": "chcp 65001 && electron-vite dev --watch",
+    "dev-mac": "electron-vite dev --watch",
+    "start": "electron-vite preview",
     "build": "electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
@@ -15,6 +17,10 @@
     "build:linux": "electron-vite build && electron-builder --linux",
     "build:installer": "npm run build:unpack && npm --prefix installer install && npm --prefix installer run pack"
   },
+  "trustedDependencies": [
+    "core-js",
+    "electron"
+  ],
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",

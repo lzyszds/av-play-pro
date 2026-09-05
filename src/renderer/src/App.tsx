@@ -351,6 +351,11 @@ export default function App() {
             videoPath={settings.video_path}
             tempPath={settings.temp_path}
             onAddSystemLog={addLog}
+            onPlayVideo={(name) => {
+              setPendingPlayName(name);
+              setCurrentPage("player");
+            }}
+            onNavigate={(page) => setCurrentPage(page)}
           />
         )}
 

@@ -447,10 +447,16 @@ async function listVideos(videoDir: string): Promise<VideoItem[]> {
 
 export const videosRouter = t.router({
     list: t.procedure
-      .input((input: unknown) => (input as { path?: string }) || {})
+      .input((input: unknown) => (input as { path?: string; limit?: number; offset?: number }) || {})
       .query(async ({ input }) => {
         const videoDir = input.path || "M:\\video\\videos\\";
-        return listVideos(videoDir);
+        const all = await listVideos(videoDir);
+        if (input.limit != null || input.offset != null) {
+          const start = input.offset || 0;
+          const end = input.limit != null ? start + input.limit : all.length;
+          return all.slice(start, Math.min(end, all.length));
+        }
+        return all;
       }),
 
     // 轻量首屏：只做 readdir + stat，无 meta.json / cover / preview 扫描，毫秒级返回

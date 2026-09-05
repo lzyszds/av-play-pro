@@ -848,7 +848,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
         videoPath
           ? trpc.videos.list.query({ path: videoPath }).catch(() => [])
           : Promise.resolve([]),
-        trpc.stats.getRankings.query().catch(() => ({ series: [], actors: [] })),
+        trpc.stats.getRankings.query({ videoPath }).catch(() => ({ series: [], actors: [] })),
         trpc.stats.getDiskPrediction.query().catch(() => null),
         videoPath
           ? trpc.library.overview.query({ rootPath: videoPath }).catch(() => null)

@@ -11,8 +11,8 @@
     "start": "electron-vite preview",
     "build": "electron-vite build",
     "postinstall": "electron-builder install-app-deps",
-    "build:unpack": "npm run build && electron-builder --dir",
-    "build:win": "npm run build && electron-builder --win",
+    "build:unpack": "npm run build && node scripts/run-electron-builder.mjs --dir",
+    "build:win": "npm run build && node scripts/run-electron-builder.mjs --win",
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
     "build:installer": "npm run build:unpack && npm --prefix installer install && npm --prefix installer run pack"
@@ -51,8 +51,8 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.5.0",
-    "electron": "^39.2.6",
-    "electron-builder": "^26.0.12",
+    "electron": "44.2.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react": "^7.37.5",
@@ -69,6 +69,9 @@
   "build": {
     "appId": "com.avplaypro.app",
     "productName": "AVPlayPro",
+    "electronDownload": {
+      "mirror": "https://npmmirror.com/mirrors/electron/"
+    },
     "directories": {
       "output": "release"
     },

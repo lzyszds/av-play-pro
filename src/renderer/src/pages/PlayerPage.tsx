@@ -391,9 +391,9 @@ export function PlayerPage({
     return () => {
       cancelled = true;
     };
-  }, [localVideos.length]);
+  }, [videoPath]);
 
-  // 列表变化时批量刷新字幕索引
+  // 列表变化时批量刷新字幕索引（防抖：分批加载时避免频繁请求）
   useEffect(() => {
     if (localVideos.length === 0) {
       setSubtitleFolderSet(new Set());
@@ -408,14 +408,17 @@ export function PlayerPage({
     );
     if (folders.length === 0) return;
     let cancelled = false;
-    trpc.whisper.hasSubtitleBatch
-      .query({ folders })
-      .then((r) => {
-        if (!cancelled) setSubtitleFolderSet(new Set(r.folders));
-      })
-      .catch(() => { });
+    const timer = setTimeout(() => {
+      trpc.whisper.hasSubtitleBatch
+        .query({ folders })
+        .then((r) => {
+          if (!cancelled) setSubtitleFolderSet(new Set(r.folders));
+        })
+        .catch(() => { });
+    }, 300);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [localVideos]);
 
@@ -579,7 +582,7 @@ export function PlayerPage({
     count: filteredVideos.length,
     getScrollElement: () => listScrollRef.current,
     estimateSize: () => 340,
-    overscan: 5,
+    overscan: 3,
     measureElement: (el) => el.getBoundingClientRect().height,
   });
 
@@ -611,11 +614,11 @@ export function PlayerPage({
   const [directorCutPlayingIndex, setDirectorCutPlayingIndex] = useState<number | null>(null);
   const pendingDirectorCutSeekRef = useRef<number | null>(null);
 
-  const recordPlayStats = useCallback((folder: string, url: string) => {
+  const recordPlayStats = useCallback((folder: string, url: string, actors?: string[]) => {
     if (!folder || !url || statsPlayedUrlRef.current === url) return;
     statsPlayedUrlRef.current = url;
     void trpc.stats.recordPlay
-      .mutate({ folder, series: inferSeriesName(folder) })
+      .mutate({ folder, series: inferSeriesName(folder), actors: actors || [] })
       .catch(() => { });
   }, []);
 
@@ -697,11 +700,13 @@ export function PlayerPage({
     if (!videoEl || !activeStream.url) return;
     const folder = activeStream.name;
     const series = inferSeriesName(folder);
+    const actors =
+      localVideos.find((v) => v.name === folder || v.url === activeStream.url)?.actors || [];
     const flushWatch = () => {
       const sec = Math.floor(pendingWatchSecRef.current);
       if (sec < 5) return;
       pendingWatchSecRef.current = 0;
-      void trpc.stats.recordWatch.mutate({ folder, series, sec });
+      void trpc.stats.recordWatch.mutate({ folder, series, sec, actors });
       localStorage.setItem(
         LAST_PLAYED_KEY,
         JSON.stringify({
@@ -722,7 +727,7 @@ export function PlayerPage({
       flushWatch();
       clearInterval(interval);
     };
-  }, [videoEl, activeStream]);
+  }, [videoEl, activeStream, localVideos]);
 
   const loadTimelineBookmarks = useCallback(async () => {
     if (!activeStream.url && !activeStream.name) {
@@ -786,7 +791,7 @@ export function PlayerPage({
       pendingTimelineSeekRef.current = bookmark.currentTime;
       setSelectedVideoIndex(idx);
       setUserInitiated(true);
-      recordPlayStats(video.name, video.url);
+      recordPlayStats(video.name, video.url, video.actors);
       setActiveStream({
         name: video.name,
         url: video.url,
@@ -818,7 +823,7 @@ export function PlayerPage({
       }
       pendingDirectorCutSeekRef.current = clip.currentTime;
       setUserInitiated(true);
-      recordPlayStats(video.name, video.url);
+      recordPlayStats(video.name, video.url, video.actors);
       setActiveStream({
         name: video.name,
         url: video.url,
@@ -922,7 +927,7 @@ export function PlayerPage({
       const realIndex = filteredVideos.findIndex((v) => v.id === video.id);
       setSelectedVideoIndex(realIndex >= 0 ? realIndex : index);
       setUserInitiated(true);
-      recordPlayStats(video.name, video.url);
+      recordPlayStats(video.name, video.url, video.actors);
       setActiveStream({
         name: video.name,
         url: video.url,
@@ -1476,20 +1481,18 @@ export function PlayerPage({
     };
   }, [videoEl]);
 
-  const [enrichProgress, setEnrichProgress] = useState(0); // 0=未开始, 1=轻量已就绪, 2=完整已就绪
+  const [enrichProgress, setEnrichProgress] = useState(0); // 0=未开始, 1=轻量已就绪, 2=分批补全中, 3=全部完成
 
-  // 两阶段加载：先轻量首屏（毫秒级），再后台拉取完整数据（构建缓存后秒回）
+  // 两阶段加载：先轻量首屏（毫秒级），再分批拉取完整数据（每批 200 条，避免一次性 IPC 卡顿）
   useEffect(() => {
     if (!videoPath) return;
     let cancelled = false;
-    // 完整数据（含封面）一旦到达，就不再让轻量数据（无封面）覆盖它。
-    // 否则 list 比 lightweightList 先返回时，轻量结果会把封面刷没。
-    let fullLoaded = false;
+    const BATCH_SIZE = 200;
 
     const loadLightweight = async () => {
       try {
         const raw: any[] = await trpc.videos.lightweightList.query({ path: videoPath });
-        if (cancelled || fullLoaded) return;
+        if (cancelled) return;
         const vids = convertItems(raw);
         setLocalVideos(vids);
         if (vids.length > 0 && selectedVideoIndex === null) {
@@ -1506,33 +1509,40 @@ export function PlayerPage({
       } catch { }
     };
 
-    const loadFull = async () => {
+    const loadFullInBatches = async () => {
+      let offset = 0;
+      let totalFetched = 0;
+      setEnrichProgress(2);
       try {
-        const raw: any[] = await trpc.videos.list.query({ path: videoPath });
-        if (cancelled) return;
-        const vids = convertItems(raw);
-        if (vids.length > 0) {
-          fullLoaded = true;
-          setLocalVideos(vids);
-          if (selectedVideoIndex === null) {
-            setSelectedVideoIndex(0);
-            setActiveStream({
-              name: vids[0].name,
-              url: vids[0].url,
-              resolution: vids[0].resolution,
-              encryptionType: vids[0].encryptionType || "检测中",
-              referer: "",
-            });
-          }
+        // 先取第一批，拿到完整数据后合并
+        while (!cancelled) {
+          const raw: any[] = await trpc.videos.list.query({ path: videoPath, limit: BATCH_SIZE, offset });
+          if (cancelled) return;
+          if (raw.length === 0) break;
+          const batch = convertItems(raw);
+          // 合并：用 id 匹配，把完整字段覆盖到轻量对象上
+          setLocalVideos((prev) => {
+            const map = new Map(prev.map((v) => [v.id, v]));
+            for (const v of batch) {
+              const existing = map.get(v.id);
+              map.set(v.id, existing ? { ...existing, ...v } : v);
+            }
+            return Array.from(map.values());
+          });
+          totalFetched += batch.length;
+          offset += BATCH_SIZE;
+          if (batch.length < BATCH_SIZE) break;
+          // 批次间让出主线程，避免长时间占用
+          await new Promise((r) => setTimeout(r, 0));
         }
-        setEnrichProgress(2);
       } catch { }
+      if (!cancelled) setEnrichProgress(3);
     };
 
     setEnrichProgress(0);
     setIsLoadingVideos(true);
     void loadLightweight();
-    void loadFull();
+    void loadFullInBatches();
     return () => { cancelled = true; };
   }, [videoPath]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1540,24 +1550,49 @@ export function PlayerPage({
     if (!videoPath) return [];
     setEnrichProgress(0);
     setIsLoadingVideos(true);
+    const BATCH_SIZE = 200;
+    let all: VideoItem[] = [];
     try {
-      const raw: any[] = await trpc.videos.list.query({ path: videoPath });
-      const vids: VideoItem[] = convertItems(raw);
-      setLocalVideos(vids);
-      if (vids.length > 0 && selectedVideoIndex === null) {
+      // 轻量首屏
+      try {
+        const raw: any[] = await trpc.videos.lightweightList.query({ path: videoPath });
+        const vids = convertItems(raw);
+        setLocalVideos(vids);
+      } catch { }
+      // 分批补全
+      setEnrichProgress(2);
+      let offset = 0;
+      while (true) {
+        const raw: any[] = await trpc.videos.list.query({ path: videoPath, limit: BATCH_SIZE, offset });
+        if (raw.length === 0) break;
+        const batch = convertItems(raw);
+        all = all.concat(batch);
+        setLocalVideos((prev) => {
+          const map = new Map(prev.map((v) => [v.id, v]));
+          for (const v of batch) {
+            const existing = map.get(v.id);
+            map.set(v.id, existing ? { ...existing, ...v } : v);
+          }
+          return Array.from(map.values());
+        });
+        offset += BATCH_SIZE;
+        if (batch.length < BATCH_SIZE) break;
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      if (all.length > 0 && selectedVideoIndex === null) {
         setSelectedVideoIndex(0);
         setActiveStream({
-          name: vids[0].name,
-          url: vids[0].url,
-          resolution: vids[0].resolution,
-          encryptionType: vids[0].encryptionType || "检测中",
+          name: all[0].name,
+          url: all[0].url,
+          resolution: all[0].resolution,
+          encryptionType: all[0].encryptionType || "检测中",
           referer: "",
         });
       }
-      return vids;
+      return all;
     } finally {
       setIsLoadingVideos(false);
-      setEnrichProgress(2);
+      setEnrichProgress(3);
     }
   };
 
@@ -2214,6 +2249,8 @@ export function PlayerPage({
                       width: "100%",
                       transform: `translate3d(0, ${v.start}px, 0)`,
                       paddingBottom: "12px",
+                      contentVisibility: "auto",
+                      containIntrinsicSize: "340px",
                     }}
                   >
                     <LocalVideoCard
@@ -2361,11 +2398,17 @@ export function PlayerPage({
 
 function LibraryBackdrop({ videos }: { videos: VideoItem[] }) {
   return (
-    <div className="pointer-events-none absolute inset-0 grid grid-cols-6 gap-3 overflow-hidden bg-slate-950 p-5 opacity-20 blur-[1px]">
-      {videos.slice(0, 24).map((video) => (
+    <div className="pointer-events-none absolute inset-0 grid grid-cols-6 gap-3 overflow-hidden bg-slate-950 p-5 opacity-10">
+      {videos.slice(0, 12).map((video) => (
         <div key={video.id} className="min-h-28 overflow-hidden rounded-xl bg-slate-800">
           {video.coverUrl ? (
-            <img src={video.coverUrl} alt="" className="h-full w-full object-cover" />
+            <img
+              src={video.coverUrl}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="h-full w-full object-cover"
+            />
           ) : null}
         </div>
       ))}
@@ -2590,6 +2633,8 @@ function ZeroFingerLibrary({
                   style={{
                     height: `${virtualRow.size}px`,
                     transform: `translateY(${virtualRow.start}px)`,
+                    contentVisibility: "auto",
+                    containIntrinsicSize: `${virtualRow.size}px`,
                   }}
                 >
                   <ZeroLibVideoItem

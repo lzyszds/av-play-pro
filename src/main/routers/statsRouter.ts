@@ -376,29 +376,53 @@ export const statsRouter = t.router({
       return { success: true, ...usage, ...diskSpace };
     }),
 
-  getRankings: t.procedure.query(() => {
-    const s = loadStatsSync();
-    const seriesMap = new Map<string, RankingItem>();
-    const actorsMap = new Map<string, RankingItem>();
-    for (const v of Object.values(s.videos)) {
-      if (v.series) {
-        const item = seriesMap.get(v.series) || { name: v.series, count: 0, watchSec: 0, score: 0 };
-        item.count += v.playCount; item.watchSec += v.watchSec;
-        item.score = item.count * 10 + item.watchSec / 60;
-        seriesMap.set(v.series, item);
+  getRankings: t.procedure
+    .input((input: unknown) => (input as { videoPath?: string }) || {})
+    .query(async ({ input }) => {
+      const s = loadStatsSync();
+      const videoPath = input.videoPath;
+      // 回填：对 actors 为空的历史记录，尝试从 meta.json 读取演员
+      if (videoPath) {
+        let dirty = false;
+        for (const v of Object.values(s.videos)) {
+          if (!v.actors || v.actors.length === 0) {
+            const metaPath = path.join(videoPath, v.folder, "meta.json");
+            try {
+              if (fs.existsSync(metaPath)) {
+                const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+                if (Array.isArray(meta.actors) && meta.actors.length > 0) {
+                  v.actors = meta.actors;
+                  dirty = true;
+                }
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+        if (dirty) await saveStatsAsync(s, true);
       }
-      if (v.actors) {
-        for (const actor of v.actors) {
-          const item = actorsMap.get(actor) || { name: actor, count: 0, watchSec: 0, score: 0 };
+      const seriesMap = new Map<string, RankingItem>();
+      const actorsMap = new Map<string, RankingItem>();
+      for (const v of Object.values(s.videos)) {
+        if (v.series) {
+          const item = seriesMap.get(v.series) || { name: v.series, count: 0, watchSec: 0, score: 0 };
           item.count += v.playCount; item.watchSec += v.watchSec;
           item.score = item.count * 10 + item.watchSec / 60;
-          actorsMap.set(actor, item);
+          seriesMap.set(v.series, item);
+        }
+        if (v.actors) {
+          for (const actor of v.actors) {
+            const item = actorsMap.get(actor) || { name: actor, count: 0, watchSec: 0, score: 0 };
+            item.count += v.playCount; item.watchSec += v.watchSec;
+            item.score = item.count * 10 + item.watchSec / 60;
+            actorsMap.set(actor, item);
+          }
         }
       }
-    }
-    const sortFn = (a: RankingItem, b: RankingItem) => b.score - a.score;
-    return { series: Array.from(seriesMap.values()).sort(sortFn).slice(0, 20), actors: Array.from(actorsMap.values()).sort(sortFn).slice(0, 20) };
-  }),
+      const sortFn = (a: RankingItem, b: RankingItem) => b.score - a.score;
+      return { series: Array.from(seriesMap.values()).sort(sortFn).slice(0, 20), actors: Array.from(actorsMap.values()).sort(sortFn).slice(0, 20) };
+    }),
 
   getDiskPrediction: t.procedure.query((): DiskPrediction => {
     const s = loadStatsSync();

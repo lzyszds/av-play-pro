@@ -68,43 +68,43 @@ const pages: Array<{
   desc: string;
   icon: typeof Download;
 }> = [
-  {
-    key: "player",
-    label: "播放器",
-    desc: "本地影视播控、高能热力波形图与微动切片片库",
-    icon: Play,
-  },
-  {
-    key: "download",
-    label: "下载管理",
-    desc: "M3U8 极速多线程分片下载与任务队列",
-    icon: Download,
-  },
-  {
-    key: "discover",
-    label: "发现",
-    desc: "全网热度排行榜与新鲜番组实时探索",
-    icon: Compass,
-  },
-  {
-    key: "web",
-    label: "网页",
-    desc: "内置无痕网页嗅探器与资源捕获",
-    icon: Globe,
-  },
-  {
-    key: "command",
-    label: "指挥",
-    desc: "片库健康度体检、Emby软链接整理与去重修复",
-    icon: Gauge,
-  },
-  {
-    key: "stats",
-    label: "统计",
-    desc: "观影战斗力战报、时段规律与成就荣耀殿堂",
-    icon: BarChart3,
-  },
-];
+    {
+      key: "player",
+      label: "播放器",
+      desc: "本地影视播控、高能热力波形图与微动切片片库",
+      icon: Play,
+    },
+    {
+      key: "download",
+      label: "下载",
+      desc: "M3U8 极速多线程分片下载与任务队列",
+      icon: Download,
+    },
+    {
+      key: "discover",
+      label: "发现",
+      desc: "全网热度排行榜与新鲜番组实时探索",
+      icon: Compass,
+    },
+    {
+      key: "web",
+      label: "网页",
+      desc: "内置无痕网页嗅探器与资源捕获",
+      icon: Globe,
+    },
+    {
+      key: "command",
+      label: "指挥",
+      desc: "片库健康度体检、Emby软链接整理与去重修复",
+      icon: Gauge,
+    },
+    {
+      key: "stats",
+      label: "统计",
+      desc: "观影战斗力战报、时段规律与成就荣耀殿堂",
+      icon: BarChart3,
+    },
+  ];
 
 const themeMeta: Record<ThemeMode, { icon: typeof Sun; label: string }> = {
   system: { icon: Monitor, label: "跟随系统" },
@@ -175,11 +175,10 @@ export const TitleBar: React.FC<TitleBarProps> = ({
               <button
                 type="button"
                 onClick={() => onPageChange(key)}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
-                  currentPage === key
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${currentPage === key
                     ? "bg-amber-500 text-white shadow-sm"
                     : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-                }`}
+                  }`}
               >
                 <Icon className="w-3.5 h-3.5" />
                 {label}
@@ -219,11 +218,10 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             type="button"
             onClick={onToggleArousal}
             onContextMenu={handleHeartContextMenu}
-            className={`h-full flex items-center gap-1.5 px-2.5 transition cursor-pointer ${
-              arousalActive
+            className={`h-full flex items-center gap-1.5 px-2.5 transition cursor-pointer ${arousalActive
                 ? "bg-rose-600 text-white shadow-sm"
                 : "text-slate-400 hover:text-rose-400 hover:bg-slate-800"
-            }`}
+              }`}
           >
             <Heart
               className={`w-3.5 h-3.5 ${arousalActive ? "animate-pulse fill-current text-white" : ""}`}
@@ -247,11 +245,10 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             onClick={onToggleConsole}
             title={consoleOpen ? "隐藏底部实时日志控制台" : "展开底部实时日志控制台"}
             aria-label="实时日志控制台"
-            className={`w-9 h-full flex items-center justify-center transition cursor-pointer ${
-              consoleOpen
+            className={`w-9 h-full flex items-center justify-center transition cursor-pointer ${consoleOpen
                 ? "text-amber-400 bg-slate-800"
                 : "text-slate-400 hover:text-amber-400 hover:bg-slate-800"
-            }`}
+              }`}
           >
             <TerminalSquare className="w-3.5 h-3.5" />
           </button>

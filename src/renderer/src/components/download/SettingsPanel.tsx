@@ -820,6 +820,25 @@ export function SettingsPanel({
                       </button>
                     ))}
                   </div>
+                  <div className="relative mt-3 overflow-hidden rounded-xl border border-slate-200/70 bg-slate-950 shadow-lg dark:border-slate-800">
+                    <img
+                      src={`./${downloadBackground}.webp`}
+                      alt="当前壁纸预览"
+                      className="h-28 w-full object-cover"
+                      style={{
+                        filter: `blur(${Math.min(privacyScreenBlur, 12)}px)`,
+                        opacity: Math.max(0.32, privacyScreenImageOpacity / 100),
+                      }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/20 to-transparent" />
+                    <div className="absolute inset-x-3 bottom-2 flex items-end justify-between text-white">
+                      <div>
+                        <div className="text-[10px] font-bold tracking-[0.2em] text-white/80">WALLPAPER SCENE</div>
+                        <div className="mt-0.5 text-[9px] text-white/50">屏保 / 空态 / 加载层共用预览</div>
+                      </div>
+                      <span className="rounded-full border border-white/20 bg-black/25 px-2 py-1 text-[9px] text-white/65">实时</span>
+                    </div>
+                  </div>
                   <div className="space-y-2 pt-2">
                     <NumberControl
                       label="空闲触发"

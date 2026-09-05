@@ -48,6 +48,9 @@ type WebviewEvent = Event & {
 
 export function WebPage({ onAddSystemLog }: WebPageProps) {
   const webviewRef = useRef<ElectronWebview | null>(null);
+  // `src` 只用于 webview 创建/重建时的首跳地址。页面内部跳转（尤其是
+  // Cloudflare challenge）只更新地址栏，不能再反写 src，否则会中止正在进行的导航。
+  const [sourceUrl, setSourceUrl] = useState(DEFAULT_WEB_URL);
   const [currentUrl, setCurrentUrl] = useState(DEFAULT_WEB_URL);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -157,13 +160,16 @@ export function WebPage({ onAddSystemLog }: WebPageProps) {
   const toggleRawMode = useCallback(() => {
     const webview = webviewRef.current;
     const nextRawMode = !isRawMode;
+    let nextUrl = currentUrl || DEFAULT_WEB_URL;
 
     try {
-      setCurrentUrl(webview?.getURL() || currentUrl || DEFAULT_WEB_URL);
+      nextUrl = webview?.getURL() || nextUrl;
     } catch {
-      setCurrentUrl(currentUrl || DEFAULT_WEB_URL);
+      // 销毁中的 webview 读取 URL 可能抛错，保留上次稳定地址即可。
     }
 
+    setCurrentUrl(nextUrl);
+    setSourceUrl(nextUrl);
     setLoadError(null);
     setIsLoading(true);
     setCanGoBack(false);
@@ -287,7 +293,7 @@ export function WebPage({ onAddSystemLog }: WebPageProps) {
           ref={(element) => {
             webviewRef.current = element as unknown as ElectronWebview | null;
           }}
-          src={currentUrl || DEFAULT_WEB_URL}
+          src={sourceUrl}
           partition={isRawMode ? RAW_WEBVIEW_PARTITION : WEBVIEW_PARTITION}
           className="absolute inset-0 w-full h-full bg-black"
         />

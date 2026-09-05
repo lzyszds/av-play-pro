@@ -12,6 +12,10 @@ export const PageLoader: React.FC<PageLoaderProps> = ({
   return (
     <div className="page-loader" data-active={active ? "true" : "false"}>
       <div className="page-loader-inner">
+        <div className="page-loader-orbit" aria-hidden="true">
+          <span className="page-loader-orbit-core" />
+          <span className="page-loader-orbit-satellite" />
+        </div>
         <div className="page-loader-label">{label}</div>
         <div className="page-loader-bar" aria-hidden>
           <span className="page-loader-bar-track" />

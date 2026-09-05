@@ -414,7 +414,7 @@ export function CommandCenterPage({
   }, [healthData]);
 
   return (
-    <div className="h-full overflow-y-auto bg-[#f8fafc] dark:bg-slate-950 p-6 space-y-6 text-slate-800 dark:text-slate-100">
+    <div className="relative h-full overflow-y-auto bg-[#f8fafc] dark:bg-slate-950 p-6 space-y-6 text-slate-800 dark:text-slate-100">
       <PageLoader active={loading} label="同步指挥中枢数据..." />
 
       {/* ===================== 1. 顶栏：标题与核心行动群 ===================== */}

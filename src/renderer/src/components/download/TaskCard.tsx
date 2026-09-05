@@ -49,6 +49,14 @@ function useScheduleTick(enabled: boolean) {
   }, [enabled]);
 }
 
+function pipelineState(task: DownloadTask): number {
+  if (task.status === "FAILED") return Math.max(0, task.downloadedSegments > 0 ? 1 : 0);
+  if (task.status === "PARSING") return 0;
+  if (task.status === "PENDING" || task.status === "PAUSED") return 0;
+  if (task.status === "DOWNLOADING") return 1;
+  return 4;
+}
+
 function TaskCardImpl({
   task,
   isSelected,
@@ -66,6 +74,8 @@ function TaskCardImpl({
   const coverUrl = resolveTaskCoverUrl(task, {
     allowRemote: allowRemoteCovers,
   });
+  const activeStage = pipelineState(task);
+  const stages = ["来源", "分片", "合并", "补全", "入库"];
   useScheduleTick(task.taskTag === "SCHEDULED" && !!task.scheduledAt);
 
   return (
@@ -145,6 +155,29 @@ function TaskCardImpl({
             ⏰ {formatScheduledAt(task.scheduledAt)} · {new Date(task.scheduledAt).toLocaleString()}
           </div>
         )}
+
+        <div className="mt-1.5 rounded-lg border border-slate-100 bg-slate-50/80 px-2 py-1.5" title={task.status === "FAILED" ? "任务在当前节点前失败，可展开详情查看日志" : "下载链路"}>
+          <div className="mb-1 flex items-center justify-between text-[8px] font-bold tracking-[0.12em] text-slate-400">
+            <span>ASSET PIPELINE</span>
+            <span>{task.status === "COMPLETED" ? "READY" : task.status}</span>
+          </div>
+          <div className="flex items-center">
+            {stages.map((stage, stageIndex) => {
+              const done = stageIndex < activeStage || task.status === "COMPLETED";
+              const active = stageIndex === activeStage && task.status !== "COMPLETED";
+              const failed = task.status === "FAILED" && stageIndex === activeStage;
+              return (
+                <React.Fragment key={stage}>
+                  {stageIndex > 0 && <span className={`h-px flex-1 ${done ? "bg-emerald-400" : "bg-slate-200"}`} />}
+                  <span className="flex flex-col items-center gap-0.5">
+                    <i className={`h-1.5 w-1.5 rounded-full ${failed ? "bg-rose-500" : done ? "bg-emerald-500" : active ? "animate-pulse bg-amber-500 ring-3 ring-amber-100" : "bg-slate-300"}`} />
+                    <b className={`text-[8px] font-medium ${failed ? "text-rose-600" : active ? "text-amber-700" : done ? "text-emerald-600" : "text-slate-400"}`}>{stage}</b>
+                  </span>
+                </React.Fragment>
+              );
+            })}
+          </div>
+        </div>
 
         <div className="flex items-center justify-between mt-1">
           <div className="flex items-center gap-2 text-[10px] text-black font-mono min-w-0">

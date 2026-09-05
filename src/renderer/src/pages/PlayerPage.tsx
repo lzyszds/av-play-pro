@@ -379,7 +379,7 @@ export function PlayerPage({
         setPlayCountByFolder(counts);
         setStatsVideos(s.videos);
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       cancelled = true;
     };
@@ -405,7 +405,7 @@ export function PlayerPage({
       .then((r) => {
         if (!cancelled) setSubtitleFolderSet(new Set(r.folders));
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       cancelled = true;
     };
@@ -591,6 +591,14 @@ export function PlayerPage({
   const [zeroEdge, setZeroEdge] = useState<
     "none" | "continue" | "library" | "timeline" | "cut"
   >("none");
+  const [scrubPreviewTime, setScrubPreviewTime] = useState<number | null>(null);
+  const [scrubDirection, setScrubDirection] = useState<"back" | "forward">("forward");
+  const [playerZoom, setPlayerZoom] = useState(1);
+  const [playbackNotice, setPlaybackNotice] = useState<string | null>(null);
+  const [playbackBusy, setPlaybackBusy] = useState(false);
+  const [showEndSheet, setShowEndSheet] = useState(false);
+  const [playProgress, setPlayProgress] = useState(0);
+  const scrubRef = useRef<{ startX: number; startTime: number; wasPlaying: boolean } | null>(null);
   const [directorCutClips, setDirectorCutClips] = useState<DirectorCutClip[]>([]);
   const [directorCutPlayingIndex, setDirectorCutPlayingIndex] = useState<number | null>(null);
   const pendingDirectorCutSeekRef = useRef<number | null>(null);
@@ -600,7 +608,7 @@ export function PlayerPage({
     statsPlayedUrlRef.current = url;
     void trpc.stats.recordPlay
       .mutate({ folder, series: inferSeriesName(folder) })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const refreshSubtitleForActiveStream = useCallback(async () => {
@@ -758,7 +766,7 @@ export function PlayerPage({
     (bookmark: TimelineBookmark) => {
       if (activeStream.url === bookmark.videoUrl && videoEl) {
         videoEl.currentTime = bookmark.currentTime;
-        void videoEl.play().catch(() => {});
+        void videoEl.play().catch(() => { });
         return;
       }
 
@@ -789,7 +797,7 @@ export function PlayerPage({
       setDirectorCutPlayingIndex(index);
       if (activeStream.url === clip.videoUrl && videoEl) {
         videoEl.currentTime = clip.currentTime;
-        void videoEl.play().catch(() => {});
+        void videoEl.play().catch(() => { });
         return;
       }
       const video = localVideos.find(
@@ -820,7 +828,7 @@ export function PlayerPage({
     const jump = () => {
       videoEl.currentTime = target;
       pendingTimelineSeekRef.current = null;
-      void videoEl.play().catch(() => {});
+      void videoEl.play().catch(() => { });
     };
     if (videoEl.readyState >= 1) jump();
     else videoEl.addEventListener("loadedmetadata", jump, { once: true });
@@ -833,7 +841,7 @@ export function PlayerPage({
     const jump = () => {
       videoEl.currentTime = target;
       pendingDirectorCutSeekRef.current = null;
-      void videoEl.play().catch(() => {});
+      void videoEl.play().catch(() => { });
     };
     if (videoEl.readyState >= 1) jump();
     else videoEl.addEventListener("loadedmetadata", jump, { once: true });
@@ -928,7 +936,7 @@ export function PlayerPage({
     const executeSeek = () => {
       if (videoEl.duration > 0 && target > 0) {
         videoEl.currentTime = Math.min(target, Math.max(0, videoEl.duration - 2));
-        videoEl.play().catch(() => {});
+        videoEl.play().catch(() => { });
         pendingSeekRef.current = null;
       }
     };
@@ -1180,6 +1188,46 @@ export function PlayerPage({
     onAddSystemLog(`已加入导演剪辑: ${bookmark.videoName}`, "SUCCESS");
   };
 
+  const startScrubDial = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!isZeroLayout || event.button !== 2 || !videoEl) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    scrubRef.current = {
+      startX: event.clientX,
+      startTime: videoEl.currentTime,
+      wasPlaying: !videoEl.paused,
+    };
+    videoEl.pause();
+    setScrubPreviewTime(videoEl.currentTime);
+    setZeroEdge("none");
+  };
+
+  const moveScrubDial = (event: React.PointerEvent<HTMLDivElement>) => {
+    const scrub = scrubRef.current;
+    if (!scrub || !videoEl) return;
+    const distance = event.clientX - scrub.startX;
+    const seconds = Math.sign(distance) * Math.pow(Math.abs(distance) / 22, 1.25) * 3;
+    let target = Math.max(0, Math.min(videoEl.duration || Infinity, scrub.startTime + seconds));
+    if (!event.altKey) {
+      const snap = timelineBookmarks.find((item) => Math.abs(item.currentTime - target) <= 3);
+      if (snap) target = snap.currentTime;
+    }
+    videoEl.currentTime = target;
+    setScrubDirection(distance < 0 ? "back" : "forward");
+    setScrubPreviewTime(target);
+  };
+
+  const endScrubDial = (event: React.PointerEvent<HTMLDivElement>) => {
+    const scrub = scrubRef.current;
+    if (!scrub) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    scrubRef.current = null;
+    setScrubPreviewTime(null);
+    if (scrub.wasPlaying) void videoEl?.play().catch(() => { });
+  };
+
   const moveDirectorCutClip = (index: number, direction: -1 | 1) => {
     const target = index + direction;
     if (target < 0 || target >= directorCutClips.length) return;
@@ -1211,6 +1259,10 @@ export function PlayerPage({
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
+    // 片库已展开时，浮层本身会冒泡到这里；把整个浮层宽度视作安全区，
+    // 避免鼠标刚离开右侧 86px 的唤起带就被立即收起。
+    const libraryWidth = Math.min(544, rect.width * 0.7);
+    if (zeroEdge === "library" && x >= rect.width - libraryWidth) return;
     if (x >= rect.width - 86) setZeroEdge("library");
     else if (x <= 76) setZeroEdge("continue");
     else if (y >= rect.height - 72) setZeroEdge("timeline");
@@ -1232,6 +1284,31 @@ export function PlayerPage({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isZeroLayout]);
+
+  useEffect(() => {
+    if (!videoEl) return;
+    const updateProgress = () =>
+      setPlayProgress(videoEl.duration ? (videoEl.currentTime / videoEl.duration) * 100 : 0);
+    const waiting = () => {
+      setPlaybackBusy(true);
+      setPlaybackNotice("正在缓冲画面…");
+    };
+    const playing = () => {
+      setPlaybackBusy(false);
+      setPlaybackNotice(null);
+    };
+    const ended = () => setShowEndSheet(true);
+    videoEl.addEventListener("timeupdate", updateProgress);
+    videoEl.addEventListener("waiting", waiting);
+    videoEl.addEventListener("playing", playing);
+    videoEl.addEventListener("ended", ended);
+    return () => {
+      videoEl.removeEventListener("timeupdate", updateProgress);
+      videoEl.removeEventListener("waiting", waiting);
+      videoEl.removeEventListener("playing", playing);
+      videoEl.removeEventListener("ended", ended);
+    };
+  }, [videoEl]);
 
   const [enrichProgress, setEnrichProgress] = useState(0); // 0=未开始, 1=轻量已就绪, 2=完整已就绪
 
@@ -1260,7 +1337,7 @@ export function PlayerPage({
           });
         }
         setEnrichProgress(1);
-      } catch {}
+      } catch { }
     };
 
     const loadFull = async () => {
@@ -1283,7 +1360,7 @@ export function PlayerPage({
           }
         }
         setEnrichProgress(2);
-      } catch {}
+      } catch { }
     };
 
     setEnrichProgress(0);
@@ -1320,9 +1397,8 @@ export function PlayerPage({
 
   return (
     <div
-      className={`relative flex-1 overflow-hidden bg-[#fdf5f3] h-full font-sans select-none ${
-        layout === "runway" ? "flex flex-col" : "flex"
-      }`}
+      className={`relative flex-1 overflow-hidden bg-[#fdf5f3] h-full font-sans select-none ${layout === "runway" ? "flex flex-col" : "flex"
+        }`}
     >
       {layout === "island" && (
         <LibraryBackdrop videos={filteredVideos} />
@@ -1343,107 +1419,120 @@ export function PlayerPage({
 
       {/* MAIN CONTENT: PLAYER */}
       <div
-        className={`relative flex min-w-0 flex-col ${
-          layout === "runway"
-            ? "min-h-0 flex-1 p-4"
-            : layout === "zero"
-              ? "z-10 flex-1 p-0"
+        className={`relative flex min-w-0 flex-col ${layout === "runway"
+          ? "min-h-0 flex-1 p-4"
+          : layout === "zero"
+            ? "z-10 flex-1 p-0"
             : layout === "island"
               ? "z-10 flex-1 p-9 pr-80"
               : "flex-1 p-6"
-        }`}
+          }`}
       >
         {!isZeroLayout && (
-        <div className="mb-4 flex items-center justify-between shrink-0 px-1">
-          <h3 className="text-[15px] font-bold text-slate-900 truncate flex items-center gap-2.5 max-w-[75%]">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.5)]"></span>
-            {activeStream.name}
-          </h3>
-          <div className="flex items-center gap-2">
-            <Tooltip content="画质增强滤镜：CAS超清锐化、温暖胶片、夜景暗部增强HDR、饱和度微调" placement="bottom">
-              <button
-                type="button"
-                onClick={() => setShaderModalOpen(true)}
-                className={`h-7 px-2.5 rounded-md border text-[11px] font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                  filterSettings.preset !== "native"
+          <div className="mb-4 flex items-center justify-between shrink-0 px-1">
+            <h3 className="text-[15px] font-bold text-slate-900 truncate flex items-center gap-2.5 max-w-[75%]">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.5)]"></span>
+              {activeStream.name}
+            </h3>
+            <div className="flex items-center gap-2">
+              <Tooltip content="画质增强滤镜：CAS超清锐化、温暖胶片、夜景暗部增强HDR、饱和度微调" placement="bottom">
+                <button
+                  type="button"
+                  onClick={() => setShaderModalOpen(true)}
+                  className={`h-7 px-2.5 rounded-md border text-[11px] font-bold transition cursor-pointer flex items-center gap-1.5 ${filterSettings.preset !== "native"
                     ? "bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400"
                     : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-600 hover:border-amber-300"
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>画质增强</span>
-                {filterSettings.preset !== "native" && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                )}
-              </button>
-            </Tooltip>
-            <Tooltip content={ambientEnabled ? "关闭影院呼吸灯，切回纯黑播放器外圈" : "开启影院呼吸灯，按画面主色营造低亮度环境光"} placement="bottom">
-              <button
-                type="button"
-                onClick={toggleAmbientLight}
-                className={`h-7 px-2.5 rounded-md border text-[11px] font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                  ambientEnabled
+                    }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span>画质增强</span>
+                  {filterSettings.preset !== "native" && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  )}
+                </button>
+              </Tooltip>
+              <Tooltip content={ambientEnabled ? "关闭影院呼吸灯，切回纯黑播放器外圈" : "开启影院呼吸灯，按画面主色营造低亮度环境光"} placement="bottom">
+                <button
+                  type="button"
+                  onClick={toggleAmbientLight}
+                  className={`h-7 px-2.5 rounded-md border text-[11px] font-bold transition cursor-pointer flex items-center gap-1.5 ${ambientEnabled
                     ? "bg-fuchsia-500/10 border-fuchsia-300 text-fuchsia-700"
                     : "bg-white border-slate-200 text-slate-500 hover:text-fuchsia-600 hover:border-fuchsia-300"
-                }`}
-              >
-                <span className={`h-2 w-2 rounded-full ${ambientEnabled ? "animate-pulse bg-fuchsia-400 shadow-[0_0_8px_rgba(232,121,249,0.9)]" : "bg-slate-300"}`} />
-                呼吸灯
-              </button>
-            </Tooltip>
-            <Tooltip content="剧情分幕大纲与 9 宫格微速览：按起承转合快速掌握节奏与秒级跳转" placement="bottom">
-              <button
-                type="button"
-                onClick={() => setChaptersDrawerOpen(true)}
-                disabled={!activeStream.url}
-                className="h-7 px-2.5 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer flex items-center gap-1.5"
-              >
-                <Film className="w-3.5 h-3.5 text-sky-500" />
-                <span>剧情分幕</span>
-              </button>
-            </Tooltip>
-            <Tooltip content="在当前秒数添加高能书签，自动提升进度条热力峰值" placement="bottom">
-              <button
-                type="button"
-                onClick={handleAddTimelineBookmark}
-                disabled={!videoEl || !activeStream.url}
-                className="h-7 px-3 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-slate-600 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer"
-              >
-                <BookmarkPlus className="w-3.5 h-3.5 inline mr-1" />
-                加时间点
-              </button>
-            </Tooltip>
-            <Tooltip content="展开或折叠本片所有已标记的高能时间轴书签列表" placement="bottom">
-              <button
-                type="button"
-                onClick={() => setTimelineOpen((v) => !v)}
-                disabled={!activeStream.url}
-                className="h-7 px-3 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-slate-600 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer"
-              >
-                <ListChecks className="w-3.5 h-3.5 inline mr-1" />
-                跳转书签 {timelineBookmarks.length}
-              </button>
-            </Tooltip>
-            <Tooltip content="把不同影片的书签拼成一条连续播放的本地高光片段轨道" placement="bottom">
-              <button
-                type="button"
-                onClick={() => setDirectorCutOpen(true)}
-                className="h-7 px-3 rounded-md bg-violet-50 border border-violet-200 text-[11px] font-bold text-violet-700 hover:bg-violet-100 hover:border-violet-300 transition cursor-pointer"
-              >
-                <Clapperboard className="w-3.5 h-3.5 inline mr-1" />
-                导演剪辑 {directorCutClips.length}
-              </button>
-            </Tooltip>
-            <span className="text-[11px] bg-slate-900 text-white px-3 py-1 rounded-full font-mono font-bold shadow-sm ring-1 ring-white/10">
-              {activeStream.resolution}
-            </span>
+                    }`}
+                >
+                  <span className={`h-2 w-2 rounded-full ${ambientEnabled ? "animate-pulse bg-fuchsia-400 shadow-[0_0_8px_rgba(232,121,249,0.9)]" : "bg-slate-300"}`} />
+                  呼吸灯
+                </button>
+              </Tooltip>
+              <Tooltip content="剧情分幕大纲与 9 宫格微速览：按起承转合快速掌握节奏与秒级跳转" placement="bottom">
+                <button
+                  type="button"
+                  onClick={() => setChaptersDrawerOpen(true)}
+                  disabled={!activeStream.url}
+                  className="h-7 px-2.5 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <Film className="w-3.5 h-3.5 text-sky-500" />
+                  <span>剧情分幕</span>
+                </button>
+              </Tooltip>
+              <Tooltip content="在当前秒数添加高能书签，自动提升进度条热力峰值" placement="bottom">
+                <button
+                  type="button"
+                  onClick={handleAddTimelineBookmark}
+                  disabled={!videoEl || !activeStream.url}
+                  className="h-7 px-3 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-slate-600 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer"
+                >
+                  <BookmarkPlus className="w-3.5 h-3.5 inline mr-1" />
+                  加时间点
+                </button>
+              </Tooltip>
+              <Tooltip content="展开或折叠本片所有已标记的高能时间轴书签列表" placement="bottom">
+                <button
+                  type="button"
+                  onClick={() => setTimelineOpen((v) => !v)}
+                  disabled={!activeStream.url}
+                  className="h-7 px-3 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-slate-600 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer"
+                >
+                  <ListChecks className="w-3.5 h-3.5 inline mr-1" />
+                  跳转书签 {timelineBookmarks.length}
+                </button>
+              </Tooltip>
+              <Tooltip content="把不同影片的书签拼成一条连续播放的本地高光片段轨道" placement="bottom">
+                <button
+                  type="button"
+                  onClick={() => setDirectorCutOpen(true)}
+                  className="h-7 px-3 rounded-md bg-violet-50 border border-violet-200 text-[11px] font-bold text-violet-700 hover:bg-violet-100 hover:border-violet-300 transition cursor-pointer"
+                >
+                  <Clapperboard className="w-3.5 h-3.5 inline mr-1" />
+                  导演剪辑 {directorCutClips.length}
+                </button>
+              </Tooltip>
+              <span className="text-[11px] bg-slate-900 text-white px-3 py-1 rounded-full font-mono font-bold shadow-sm ring-1 ring-white/10">
+                {activeStream.resolution}
+              </span>
+            </div>
           </div>
-        </div>
         )}
         <div
           className="relative flex-1"
           onMouseMove={isZeroLayout ? handleZeroEdgeMove : undefined}
           onMouseLeave={isZeroLayout ? () => setZeroEdge("none") : undefined}
+          onContextMenu={isZeroLayout ? (event) => event.preventDefault() : undefined}
+          onPointerDown={isZeroLayout ? startScrubDial : undefined}
+          onPointerMove={isZeroLayout ? moveScrubDial : undefined}
+          onPointerUp={isZeroLayout ? endScrubDial : undefined}
+          onPointerCancel={isZeroLayout ? endScrubDial : undefined}
+          onDoubleClick={() => setPlayerZoom((zoom) => (zoom >= 2 ? 1 : zoom + 0.5))}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            const file = event.dataTransfer.files[0] as (File & { path?: string }) | undefined;
+            const url = file?.path || event.dataTransfer.getData("text/uri-list") || event.dataTransfer.getData("text/plain");
+            if (!url) return;
+            setActiveStream({ name: file?.name || "拖入媒体", url: encodeMediaUrl(url), resolution: "--", encryptionType: "本地载入", referer: "" });
+            setUserInitiated(true);
+            setPlaybackNotice("已接收媒体，正在放映");
+          }}
         >
           {ambientEnabled && (
             <div
@@ -1454,444 +1543,478 @@ export function PlayerPage({
               }}
             />
           )}
-          <div className="relative h-full bg-black rounded-lg overflow-hidden shadow-[0_32px_64px_-16px_rgba(0,0,0,0.3)] border border-slate-200/60 ring-1 ring-black/5">
-          {activeStream.url ? (
-            <HlsVideoPlayer
-              key={activeStream.url}
-              url={activeStream.url}
-              autoPlay={userInitiated}
-              referer={activeStream.referer}
-              previewVttUrl={previewVttUrl}
-              subtitleUrl={subtitleUrl}
-              bookmarks={timelineBookmarks}
-              filterStyle={filterCss}
-              onVideoEl={setVideoEl}
-              onMeta={(m) =>
-                setActiveStream((s) => ({
-                  ...s,
-                  resolution: `${m.width}x${m.height}`,
-                }))
-              }
-            />
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400/60 gap-4">
-              <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center">
-                <Play className="w-8 h-8 opacity-20" />
+          <div className="relative h-full bg-black overflow-hidden ">
+            {activeStream.url ? (
+              <div className="h-full overflow-hidden" style={{ transform: `scale(${playerZoom})`, transformOrigin: "center center" }}>
+                <HlsVideoPlayer
+                  key={activeStream.url}
+                  url={activeStream.url}
+                  autoPlay={userInitiated}
+                  referer={activeStream.referer}
+                  previewVttUrl={previewVttUrl}
+                  subtitleUrl={subtitleUrl}
+                  bookmarks={timelineBookmarks}
+                  filterStyle={filterCss}
+                  onVideoEl={setVideoEl}
+                  onMeta={(m) =>
+                    setActiveStream((s) => ({
+                      ...s,
+                      resolution: `${m.width}x${m.height}`,
+                    }))
+                  }
+                />
               </div>
-              <p className="text-sm font-medium italic">请从右侧列表选择视频</p>
-            </div>
-          )}
-          {timelineOpen && (
-            <div className="absolute right-3 top-3 z-20 w-72 max-h-[70%] overflow-y-auto rounded-lg border border-slate-700 bg-slate-950/90 backdrop-blur p-2 shadow-xl">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-[11px] font-bold text-slate-100">时间轴书签</div>
-                <button
-                  type="button"
-                  onClick={() => void loadTimelineBookmarks()}
-                  title="刷新当前视频的高能时间轴书签"
-                  aria-label="刷新时间轴书签"
-                  className="text-[10px] text-slate-400 hover:text-amber-400 cursor-pointer"
-                >
-                  刷新
-                </button>
-              </div>
-              {timelineBookmarks.length === 0 ? (
-                <div className="py-6 text-center text-[11px] text-slate-500">当前视频暂无书签</div>
-              ) : (
-                <div className="space-y-1">
-                  {timelineBookmarks.map((item) => {
-                    const mm = String(Math.floor(item.currentTime / 60)).padStart(2, "0");
-                    const ss = String(item.currentTime % 60).padStart(2, "0");
-                    return (
-                      <div
-                        key={item.id}
-                        className="group flex items-start gap-2 rounded-md bg-white/5 hover:bg-amber-500/20 px-2 py-1.5 transition"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => seekToTimelineBookmark(item)}
-                          className="min-w-0 flex-1 text-left cursor-pointer"
-                          title="跳到这个时间点"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] font-mono text-amber-300">{mm}:{ss}</span>
-                            <span className="text-[9px] text-slate-500">{item.createdAt?.slice(0, 10)}</span>
-                          </div>
-                          <div className="text-[10px] text-slate-300 truncate">{item.videoName}</div>
-                        </button>
-                        <Tooltip content="删除此时间点书签" placement="left">
-                          <button
-                            type="button"
-                            onClick={(e) => handleDeleteTimelineBookmark(item, e)}
-                            className="mt-0.5 rounded p-1 text-slate-500 opacity-60 hover:opacity-100 hover:text-rose-300 hover:bg-rose-500/10 transition cursor-pointer"
-                            aria-label="删除书签"
-                          >
-                            <XCircle className="w-3.5 h-3.5" />
-                          </button>
-                        </Tooltip>
-                        <Tooltip
-                          content={
-                            directorCutClips.some((clip) => clip.id === item.id)
-                              ? "已加入导演剪辑台"
-                              : "加入导演剪辑台"
-                          }
-                          placement="left"
-                        >
-                          <button
-                            type="button"
-                            disabled={directorCutClips.some((clip) => clip.id === item.id)}
-                            onClick={() => addBookmarkToDirectorCut(item)}
-                            className="mt-0.5 rounded p-1 text-violet-300/70 hover:text-violet-200 hover:bg-violet-500/20 disabled:opacity-30 transition cursor-pointer"
-                            aria-label="加入导演剪辑台"
-                          >
-                            <Clapperboard className="w-3.5 h-3.5" />
-                          </button>
-                        </Tooltip>
-                      </div>
-                    );
-                  })}
+            ) : (
+              <div className="absolute inset-0 isolate flex items-center justify-center overflow-hidden bg-[#050506] text-white">
+                <div aria-hidden="true" className="absolute inset-0 opacity-70 [background-image:linear-gradient(rgba(255,255,255,0.028)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.028)_1px,transparent_1px)] [background-size:32px_32px]" />
+                <div aria-hidden="true" className="absolute h-[28rem] w-[28rem] rounded-full bg-rose-500/10 blur-[110px]" />
+                <div className="relative flex max-w-sm flex-col items-center px-7 text-center">
+                  <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/[0.06] shadow-[0_12px_40px_rgba(0,0,0,0.38)]">
+                    <Play className="ml-0.5 h-4 w-4 text-rose-200" fill="currentColor" />
+                  </div>
+                  <span className="text-[9px] font-bold tracking-[0.28em] text-rose-200/70">READY TO PLAY</span>
+                  <h2 className="mt-3 text-xl font-semibold tracking-tight text-white/90">选一部片，开始放映</h2>
+                  <p className="mt-2 text-xs leading-5 text-white/42">
+                    {isZeroLayout ? "按 L 打开片库，或直接把媒体拖到这里" : "从右侧片库挑选，或直接把本地媒体拖到这里"}
+                  </p>
+                  {isZeroLayout && (
+                    <button
+                      type="button"
+                      onClick={() => setZeroEdge("library")}
+                      className="mt-5 rounded-full border border-white/14 bg-white/[0.07] px-4 py-2 text-[11px] font-medium text-white/80 transition hover:border-rose-300/45 hover:bg-rose-400/12 hover:text-white"
+                    >
+                      打开片库 <span className="ml-1 text-rose-200/70">L</span>
+                    </button>
+                  )}
+                  <div className="mt-7 flex items-center gap-2 text-[9px] tracking-wide text-white/28">
+                    <span className="rounded border border-white/10 px-1.5 py-0.5">拖放</span><span>本地媒体</span><i className="h-0.5 w-0.5 rounded-full bg-white/30" /><span>双击画面可缩放</span>
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
-          {directorCutOpen && (
-            <DirectorCutDrawer
-              clips={directorCutClips}
-              coverByVideoUrl={coverByVideoUrl}
-              activeIndex={directorCutPlayingIndex}
-              onClose={() => setDirectorCutOpen(false)}
-              onPlay={playDirectorCutClip}
-              onMove={moveDirectorCutClip}
-              onRemove={removeDirectorCutClip}
-              onClear={() => {
-                void saveDirectorCut([]);
-                setDirectorCutPlayingIndex(null);
-              }}
-            />
-          )}
-          {isZeroLayout && (
-            <ZeroInterfaceLayer
-              edge={zeroEdge}
-              videos={filteredVideos}
-              selectedVideoId={selectedVideoId}
-              onChooseVideo={(video, index) => {
-                handleLoadLocalVideo(video, index);
-                setZeroEdge("none");
-              }}
-              onContinue={() => void videoEl?.play().catch(() => {})}
-              onOpenTimeline={() => {
-                setTimelineOpen(true);
-                setZeroEdge("none");
-              }}
-              onOpenCut={() => {
-                setDirectorCutOpen(true);
-                setZeroEdge("none");
-              }}
-            />
-          )}
-        </div>
+              </div>
+            )}
+            {timelineOpen && (
+              <div className="absolute right-3 top-3 z-20 w-72 max-h-[70%] overflow-y-auto rounded-lg border border-slate-700 bg-slate-950/90 backdrop-blur p-2 shadow-xl">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[11px] font-bold text-slate-100">时间轴书签</div>
+                  <button
+                    type="button"
+                    onClick={() => void loadTimelineBookmarks()}
+                    title="刷新当前视频的高能时间轴书签"
+                    aria-label="刷新时间轴书签"
+                    className="text-[10px] text-slate-400 hover:text-amber-400 cursor-pointer"
+                  >
+                    刷新
+                  </button>
+                </div>
+                {timelineBookmarks.length === 0 ? (
+                  <div className="py-6 text-center text-[11px] text-slate-500">当前视频暂无书签</div>
+                ) : (
+                  <div className="space-y-1">
+                    {timelineBookmarks.map((item) => {
+                      const mm = String(Math.floor(item.currentTime / 60)).padStart(2, "0");
+                      const ss = String(item.currentTime % 60).padStart(2, "0");
+                      return (
+                        <div
+                          key={item.id}
+                          className="group flex items-start gap-2 rounded-md bg-white/5 hover:bg-amber-500/20 px-2 py-1.5 transition"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => seekToTimelineBookmark(item)}
+                            className="min-w-0 flex-1 text-left cursor-pointer"
+                            title="跳到这个时间点"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-mono text-amber-300">{mm}:{ss}</span>
+                              <span className="text-[9px] text-slate-500">{item.createdAt?.slice(0, 10)}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-300 truncate">{item.videoName}</div>
+                          </button>
+                          <Tooltip content="删除此时间点书签" placement="left">
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteTimelineBookmark(item, e)}
+                              className="mt-0.5 rounded p-1 text-slate-500 opacity-60 hover:opacity-100 hover:text-rose-300 hover:bg-rose-500/10 transition cursor-pointer"
+                              aria-label="删除书签"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
+                          <Tooltip
+                            content={
+                              directorCutClips.some((clip) => clip.id === item.id)
+                                ? "已加入导演剪辑台"
+                                : "加入导演剪辑台"
+                            }
+                            placement="left"
+                          >
+                            <button
+                              type="button"
+                              disabled={directorCutClips.some((clip) => clip.id === item.id)}
+                              onClick={() => addBookmarkToDirectorCut(item)}
+                              className="mt-0.5 rounded p-1 text-violet-300/70 hover:text-violet-200 hover:bg-violet-500/20 disabled:opacity-30 transition cursor-pointer"
+                              aria-label="加入导演剪辑台"
+                            >
+                              <Clapperboard className="w-3.5 h-3.5" />
+                            </button>
+                          </Tooltip>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+            {directorCutOpen && (
+              <DirectorCutDrawer
+                clips={directorCutClips}
+                coverByVideoUrl={coverByVideoUrl}
+                activeIndex={directorCutPlayingIndex}
+                onClose={() => setDirectorCutOpen(false)}
+                onPlay={playDirectorCutClip}
+                onMove={moveDirectorCutClip}
+                onRemove={removeDirectorCutClip}
+                onClear={() => {
+                  void saveDirectorCut([]);
+                  setDirectorCutPlayingIndex(null);
+                }}
+              />
+            )}
+            {isZeroLayout && (
+              <ZeroInterfaceLayer
+                edge={zeroEdge}
+                videos={filteredVideos}
+                selectedVideoId={selectedVideoId}
+                onChooseVideo={(video, index) => {
+                  handleLoadLocalVideo(video, index);
+                  setZeroEdge("none");
+                }}
+                onContinue={() => void videoEl?.play().catch(() => { })}
+                onOpenTimeline={() => {
+                  setTimelineOpen(true);
+                  setZeroEdge("none");
+                }}
+                onOpenCut={() => {
+                  setDirectorCutOpen(true);
+                  setZeroEdge("none");
+                }}
+              />
+            )}
+            {scrubPreviewTime != null && (
+              <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-black/20">
+                <div className="rounded-2xl border border-white/25 bg-slate-950/85 px-7 py-4 text-center text-white shadow-2xl backdrop-blur-xl">
+                  <div className="text-[10px] font-bold tracking-[0.25em] text-violet-300">镜头拨盘</div>
+                  <div className="mt-2 font-mono text-3xl font-bold">
+                    {String(Math.floor(scrubPreviewTime / 60)).padStart(2, "0")}:{String(Math.floor(scrubPreviewTime % 60)).padStart(2, "0")}
+                  </div>
+                  <div className="mt-2 text-[10px] text-white/55">{scrubDirection === "back" ? "← 回退" : "前进 →"}　松开右键继续</div>
+                </div>
+              </div>
+            )}
+            {playbackBusy && <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center bg-black/20"><div className="rounded-full border border-white/15 bg-slate-950/75 px-4 py-2 text-[11px] text-white backdrop-blur"><span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-violet-300" />{playbackNotice}</div></div>}
+            {!playbackBusy && playbackNotice && <div className="pointer-events-none absolute left-4 top-4 z-40 rounded-full bg-slate-950/75 px-3 py-1.5 text-[10px] text-white/75 backdrop-blur">{playbackNotice}</div>}
+            {showEndSheet && <div className="absolute inset-0 z-40 flex items-end justify-center bg-gradient-to-t from-black/90 via-black/25 to-transparent pb-10"><div className="flex gap-2"><button onClick={() => { if (videoEl) { videoEl.currentTime = 0; void videoEl.play(); } setShowEndSheet(false); }} className="rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-900">重看</button><button onClick={() => { setDirectorCutOpen(true); setShowEndSheet(false); }} className="rounded-full border border-white/30 px-4 py-2 text-xs font-bold text-white">导演剪辑</button><button onClick={() => setShowEndSheet(false)} className="rounded-full border border-white/30 px-4 py-2 text-xs font-bold text-white">退出</button></div></div>}
+            <div className="pointer-events-none absolute inset-1 rounded-lg border border-violet-300/25" style={{ clipPath: `inset(0 ${Math.max(0, 100 - playProgress)}% 0 0 round 8px)` }} />
+          </div>
         </div>
       </div>
 
       {/* SIDEBAR: PRO DASHBOARD */}
       {isClassicLayout && (
-      <div className="w-[340px]  bg-[#fdf5f3] border-l border-slate-200/80 flex flex-col shrink-0 h-full overflow-hidden z-20 relative">
-        {tonightPicks.length > 0 && selectedVideoIndex == null && (
-          <div className="px-2 pt-2">
-            <TonightPanel
-              items={tonightPicks}
-              onPlay={(v) => {
-                const idx = filteredVideos.findIndex((x) => x.id === v.id);
-                if (idx >= 0) handleLoadLocalVideo(v, idx);
-              }}
-              onReshuffle={() => {
-                clearCachedPicks();
-                setTonightReshuffleTick((n) => n + 1);
-              }}
-            />
-          </div>
-        )}
-        {/* Pro Control Card */}
-        <div className="p-3 bg-[#fdf5f3] relative">
-          <div className="space-y-2.5">
-            {/* HLS 深度解析 标题栏（可折叠） */}
-            <button
-              onClick={() => toggleHls()}
-              className="w-full flex items-center cursor-pointer justify-between text-slate-500 hover:text-slate-600 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <span className="w-4 h-4 opacity-60">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  >
-                    <circle cx="12" cy="12" r="3" />
-                    <path d="M12 1v6m0 10v6M4.22 4.22l4.24 4.24m7.08 7.08l4.24 4.24M1 12h6m10 0h6M4.22 19.78l4.24-4.24m7.08-7.08l4.24-4.24" />
-                  </svg>
-                </span>
-                <span className="text-[12px] font-semibold">HLS 深度解析</span>
-              </div>
-              <ChevronDown
-                className={`w-4 h-4 transition-transform duration-200 ${isHlsExpanded ? "rotate-180" : ""}`}
+        <div className="w-[340px]  bg-[#fdf5f3] border-l border-slate-200/80 flex flex-col shrink-0 h-full overflow-hidden z-20 relative">
+          {tonightPicks.length > 0 && selectedVideoIndex == null && (
+            <div className="px-2 pt-2">
+              <TonightPanel
+                items={tonightPicks}
+                onPlay={(v) => {
+                  const idx = filteredVideos.findIndex((x) => x.id === v.id);
+                  if (idx >= 0) handleLoadLocalVideo(v, idx);
+                }}
+                onReshuffle={() => {
+                  clearCachedPicks();
+                  setTonightReshuffleTick((n) => n + 1);
+                }}
               />
-            </button>
+            </div>
+          )}
+          {/* Pro Control Card */}
+          <div className="p-3 bg-[#fdf5f3] relative">
+            <div className="space-y-2.5">
+              {/* HLS 深度解析 标题栏（可折叠） */}
+              <button
+                onClick={() => toggleHls()}
+                className="w-full flex items-center cursor-pointer justify-between text-slate-500 hover:text-slate-600 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-4 h-4 opacity-60">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.8"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="3" />
+                      <path d="M12 1v6m0 10v6M4.22 4.22l4.24 4.24m7.08 7.08l4.24 4.24M1 12h6m10 0h6M4.22 19.78l4.24-4.24m7.08-7.08l4.24-4.24" />
+                    </svg>
+                  </span>
+                  <span className="text-[12px] font-semibold">HLS 深度解析</span>
+                </div>
+                <ChevronDown
+                  className={`w-4 h-4 transition-transform duration-200 ${isHlsExpanded ? "rotate-180" : ""}`}
+                />
+              </button>
 
-            {/* 展开时：m3u8 输入框 */}
-            {isHlsExpanded && (
-              <div className="flex items-center gap-2 animate-in slide-in-from-top-1">
+              {/* 展开时：m3u8 输入框 */}
+              {isHlsExpanded && (
+                <div className="flex items-center gap-2 animate-in slide-in-from-top-1">
+                  <input
+                    type="text"
+                    placeholder="输入 m3u8 / mp4 视频解析链接..."
+                    value={isUrlMode ? videoSearchQuery : ""}
+                    onChange={(e) => setVideoSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleParseM3u8List()}
+                    className="flex-1 h-7 bg-white border border-slate-200 rounded-md pl-3 pr-3 text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleParseM3u8List()}
+                    title="解析并载入 M3U8 / MP4 播放链接"
+                    aria-label="解析视频"
+                    className="h-6.5 px-3 cursor-pointer rounded-md bg-amber-500 text-white text-[11px] font-bold shadow-sm shadow-amber-500/20 hover:bg-amber-600 transition-colors shrink-0"
+                  >
+                    解析
+                  </button>
+                </div>
+              )}
+
+              {/* 视频搜索框 */}
+              <div className="relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <Search className="w-3.5 h-3.5" />
+                </div>
                 <input
                   type="text"
-                  placeholder="输入 m3u8 / mp4 视频解析链接..."
-                  value={isUrlMode ? videoSearchQuery : ""}
+                  placeholder={`搜索 ${localVideos.length} 个视频...`}
+                  value={videoSearchQuery}
                   onChange={(e) => setVideoSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleParseM3u8List()}
-                  className="flex-1 h-7 bg-white border border-slate-200 rounded-md pl-3 pr-3 text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
+                  className="w-full h-7 bg-white border border-slate-200 rounded-md pl-9 pr-3 text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
                 />
-                <button
-                  type="button"
-                  onClick={() => handleParseM3u8List()}
-                  title="解析并载入 M3U8 / MP4 播放链接"
-                  aria-label="解析视频"
-                  className="h-6.5 px-3 cursor-pointer rounded-md bg-amber-500 text-white text-[11px] font-bold shadow-sm shadow-amber-500/20 hover:bg-amber-600 transition-colors shrink-0"
-                >
-                  解析
-                </button>
               </div>
-            )}
 
-            {/* 视频搜索框 */}
-            <div className="relative">
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                <Search className="w-3.5 h-3.5" />
-              </div>
-              <input
-                type="text"
-                placeholder={`搜索 ${localVideos.length} 个视频...`}
-                value={videoSearchQuery}
-                onChange={(e) => setVideoSearchQuery(e.target.value)}
-                className="w-full h-7 bg-white border border-slate-200 rounded-md pl-9 pr-3 text-[11px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
-              />
-            </div>
+              {/* 操作按钮行 */}
+              <div className="grid grid-cols-4 gap-1.5">
+                <Tooltip content="盲盒轮盘：随机抽取一部影片" placement="bottom">
+                  <button
+                    onClick={() => setLuckyOpen(true)}
+                    className="w-full h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-gradient-to-br from-pink-500 to-amber-500 text-white text-[10px] font-bold cursor-pointer hover:opacity-90 transition shadow-sm"
+                  >
+                    <Gift className="w-3 h-3 fill-current" />
+                    抽奖
+                  </button>
+                </Tooltip>
 
-            {/* 操作按钮行 */}
-            <div className="grid grid-cols-4 gap-1.5">
-              <Tooltip content="盲盒轮盘：随机抽取一部影片" placement="bottom">
-                <button
-                  onClick={() => setLuckyOpen(true)}
-                  className="w-full h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-gradient-to-br from-pink-500 to-amber-500 text-white text-[10px] font-bold cursor-pointer hover:opacity-90 transition shadow-sm"
-                >
-                  <Gift className="w-3 h-3 fill-current" />
-                  抽奖
-                </button>
-              </Tooltip>
+                <Tooltip content="片库体检：补全封面海报与元数据" placement="bottom">
+                  <button
+                    onClick={() =>
+                      setRepairTargets(
+                        localVideos.map((v) => ({
+                          name: v.name,
+                          folderPath: deriveFolderFromUrl(v.url) || "",
+                          videoFilePath: "",
+                        })),
+                      )
+                    }
+                    className="w-full h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition"
+                  >
+                    <Wrench className="w-3 h-3" />
+                    修复
+                  </button>
+                </Tooltip>
 
-              <Tooltip content="片库体检：补全封面海报与元数据" placement="bottom">
-                <button
-                  onClick={() =>
-                    setRepairTargets(
-                      localVideos.map((v) => ({
-                        name: v.name,
-                        folderPath: deriveFolderFromUrl(v.url) || "",
-                        videoFilePath: "",
-                      })),
-                    )
-                  }
-                  className="w-full h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition"
-                >
-                  <Wrench className="w-3 h-3" />
-                  修复
-                </button>
-              </Tooltip>
+                <Tooltip content="重新扫描本地硬盘视频目录" placement="bottom">
+                  <button
+                    onClick={handleBackfillMeta}
+                    className="w-full h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition"
+                  >
+                    <RefreshCw
+                      className={`w-3 h-3 ${isLoadingVideos ? "animate-spin" : ""}`}
+                    />
+                    刷新
+                  </button>
+                </Tooltip>
 
-              <Tooltip content="重新扫描本地硬盘视频目录" placement="bottom">
-                <button
-                  onClick={handleBackfillMeta}
-                  className="w-full h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition"
-                >
-                  <RefreshCw
-                    className={`w-3 h-3 ${isLoadingVideos ? "animate-spin" : ""}`}
-                  />
-                  刷新
-                </button>
-              </Tooltip>
-
-              <Tooltip content="心爱筛选：仅展示已收藏影片" placement="bottom">
-                <button
-                  onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
-                  className={`w-full h-7 flex items-center justify-center gap-1 rounded-md cursor-pointer text-[11px] font-semibold transition-colors ${
-                    showOnlyFavorites
+                <Tooltip content="心爱筛选：仅展示已收藏影片" placement="bottom">
+                  <button
+                    onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
+                    className={`w-full h-7 flex items-center justify-center gap-1 rounded-md cursor-pointer text-[11px] font-semibold transition-colors ${showOnlyFavorites
                       ? "bg-amber-500 text-white shadow-sm shadow-amber-500/20"
                       : "bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50"
-                  }`}
-                >
-                  <Heart
-                    className={`w-3 h-3 ${showOnlyFavorites ? "fill-current" : ""}`}
-                  />
-                  心爱
-                </button>
-              </Tooltip>
-            </div>
-
-            {/* 解析成功横幅 */}
-            {parsedData && isHlsExpanded && (
-              <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                  <span className="text-[10px] font-medium truncate">
-                    {parsedData.title}
-                  </span>
-                </div>
-                <button
-                  onClick={() =>
-                    setActiveStream({
-                      name: parsedData.title,
-                      url: videoSearchQuery,
-                      resolution: "--",
-                      encryptionType: "--",
-                      referer: "",
-                    })
-                  }
-                  className="text-[10px] font-bold text-amber-600 hover:text-amber-700 shrink-0"
-                >
-                  载入
-                </button>
+                      }`}
+                  >
+                    <Heart
+                      className={`w-3 h-3 ${showOnlyFavorites ? "fill-current" : ""}`}
+                    />
+                    心爱
+                  </button>
+                </Tooltip>
               </div>
-            )}
 
-            {/* 筛选切换按钮 - 放在控制卡片底部 */}
-            <button
-              onClick={toggleFilter}
-              className="w-full flex cursor-pointer items-center justify-center gap-2 text-[10px] text-slate-400 font-medium hover:text-amber-500 transition-colors py-0.5"
-            >
-              <span className="shrink-0">筛选</span>
-              <ChevronDown
-                className={`w-2.5 h-2.5 shrink-0 transition-transform duration-200 ${
-                  isFilterExpanded ? "rotate-180" : ""
-                }`}
-              />
-              <div className="h-px flex-1 bg-slate-100" />
-
-              {(filterActor !== "全部" ||
-                filterStudio !== "全部" ||
-                filterGenre !== "全部" ||
-                filterHasSubtitle) && (
-                <button
-                  onClick={() => {
-                    setFilterActor("全部");
-                    setFilterStudio("全部");
-                    setFilterGenre("全部");
-                    setFilterHasSubtitle(false);
-                  }}
-                  className="h-4 cursor-pointer px-3 rounded-lg text-[11px] font-semibold text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
-                >
-                  重置
-                </button>
-              )}
-            </button>
-          </div>
-          {/* 筛选展开卡片 - 绝对定位，占满侧栏宽度，浮在视频列表上 */}
-          {isFilterExpanded && (
-            <div className="absolute left-0 right-0 top-35 z-40 px-3 animate-in slide-in-from-top-2">
-              <div className="bg-white rounded-xl border border-slate-200 shadow-lg shadow-slate-900/10 p-3">
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-1.5">
-                    <FilterChip
-                      label="演员"
-                      value={filterActor}
-                      options={facets.actors}
-                      onChange={setFilterActor}
-                    />
-                    <FilterChip
-                      label="厂商"
-                      value={filterStudio}
-                      options={facets.studios}
-                      onChange={setFilterStudio}
-                    />
+              {/* 解析成功横幅 */}
+              {parsedData && isHlsExpanded && (
+                <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                    <span className="text-[10px] font-medium truncate">
+                      {parsedData.title}
+                    </span>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 items-center">
-                    <FilterChip
-                      label="分类"
-                      value={filterGenre}
-                      options={facets.genres}
-                      onChange={setFilterGenre}
-                    />
+                  <button
+                    onClick={() =>
+                      setActiveStream({
+                        name: parsedData.title,
+                        url: videoSearchQuery,
+                        resolution: "--",
+                        encryptionType: "--",
+                        referer: "",
+                      })
+                    }
+                    className="text-[10px] font-bold text-amber-600 hover:text-amber-700 shrink-0"
+                  >
+                    载入
+                  </button>
+                </div>
+              )}
+
+              {/* 筛选切换按钮 - 放在控制卡片底部 */}
+              <button
+                onClick={toggleFilter}
+                className="w-full flex cursor-pointer items-center justify-center gap-2 text-[10px] text-slate-400 font-medium hover:text-amber-500 transition-colors py-0.5"
+              >
+                <span className="shrink-0">筛选</span>
+                <ChevronDown
+                  className={`w-2.5 h-2.5 shrink-0 transition-transform duration-200 ${isFilterExpanded ? "rotate-180" : ""
+                    }`}
+                />
+                <div className="h-px flex-1 bg-slate-100" />
+
+                {(filterActor !== "全部" ||
+                  filterStudio !== "全部" ||
+                  filterGenre !== "全部" ||
+                  filterHasSubtitle) && (
                     <button
-                      onClick={() => setFilterHasSubtitle(!filterHasSubtitle)}
-                      className={`h-7 w-35 cursor-pointer px-3 rounded-lg text-[11px] font-semibold transition-colors flex items-center gap-1.5 ${
-                        filterHasSubtitle
+                      onClick={() => {
+                        setFilterActor("全部");
+                        setFilterStudio("全部");
+                        setFilterGenre("全部");
+                        setFilterHasSubtitle(false);
+                      }}
+                      className="h-4 cursor-pointer px-3 rounded-lg text-[11px] font-semibold text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+                    >
+                      重置
+                    </button>
+                  )}
+              </button>
+            </div>
+            {/* 筛选展开卡片 - 绝对定位，占满侧栏宽度，浮在视频列表上 */}
+            {isFilterExpanded && (
+              <div className="absolute left-0 right-0 top-35 z-40 px-3 animate-in slide-in-from-top-2">
+                <div className="bg-white rounded-xl border border-slate-200 shadow-lg shadow-slate-900/10 p-3">
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      <FilterChip
+                        label="演员"
+                        value={filterActor}
+                        options={facets.actors}
+                        onChange={setFilterActor}
+                      />
+                      <FilterChip
+                        label="厂商"
+                        value={filterStudio}
+                        options={facets.studios}
+                        onChange={setFilterStudio}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      <FilterChip
+                        label="分类"
+                        value={filterGenre}
+                        options={facets.genres}
+                        onChange={setFilterGenre}
+                      />
+                      <button
+                        onClick={() => setFilterHasSubtitle(!filterHasSubtitle)}
+                        className={`h-7 w-35 cursor-pointer px-3 rounded-lg text-[11px] font-semibold transition-colors flex items-center gap-1.5 ${filterHasSubtitle
                           ? "bg-amber-500 text-white shadow-sm shadow-amber-500/20"
                           : "bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600"
-                      }`}
-                    >
-                      <span>字幕</span>
-                    </button>
+                          }`}
+                      >
+                        <span>字幕</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        {/* Video List */}
-        <div
-          ref={listScrollRef}
-          className="flex-1 overflow-y-scroll px-4 py-3 video-list-scroll"
-        >
-          {filteredVideos.length > 0 ? (
-            <div
-              style={{
-                height: `${rowVirtualizer.getTotalSize()}px`,
-                width: "100%",
-                position: "relative",
-              }}
-            >
-              {rowVirtualizer.getVirtualItems().map((v) => (
-                <div
-                  key={v.key}
-                  data-index={v.index}
-                  ref={rowVirtualizer.measureElement}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    transform: `translate3d(0, ${v.start}px, 0)`,
-                    paddingBottom: "12px",
-                  }}
-                >
-                  <LocalVideoCard
-                    video={filteredVideos[v.index]}
-                    isActive={selectedVideoId === filteredVideos[v.index].id}
-                    onPlay={handleLoadLocalVideo}
-                    onDelete={setDeleteTarget}
-                    onRepair={openRepairForVideo}
-                    isFavorite={favorites.has(filteredVideos[v.index].id)}
-                    onToggleFavorite={toggleFavorite}
-                    index={v.index}
-                    heat={(() => {
-                      const folder = deriveFolderFromUrl(filteredVideos[v.index].url);
-                      if (!folder) return "normal";
-                      return heatByFolder[folder] || "normal";
-                    })()}
-                    onOpenActor={onOpenActor}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-64 text-slate-300 gap-4 opacity-40">
-              <div className="w-16 h-16 rounded-full border-2 border-dashed border-slate-200 flex items-center justify-center">
-                <FileVideo className="w-8 h-8" />
+          {/* Video List */}
+          <div
+            ref={listScrollRef}
+            className="flex-1 overflow-y-scroll px-4 py-3 video-list-scroll"
+          >
+            {filteredVideos.length > 0 ? (
+              <div
+                style={{
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                  width: "100%",
+                  position: "relative",
+                }}
+              >
+                {rowVirtualizer.getVirtualItems().map((v) => (
+                  <div
+                    key={v.key}
+                    data-index={v.index}
+                    ref={rowVirtualizer.measureElement}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translate3d(0, ${v.start}px, 0)`,
+                      paddingBottom: "12px",
+                    }}
+                  >
+                    <LocalVideoCard
+                      video={filteredVideos[v.index]}
+                      isActive={selectedVideoId === filteredVideos[v.index].id}
+                      onPlay={handleLoadLocalVideo}
+                      onDelete={setDeleteTarget}
+                      onRepair={openRepairForVideo}
+                      isFavorite={favorites.has(filteredVideos[v.index].id)}
+                      onToggleFavorite={toggleFavorite}
+                      index={v.index}
+                      heat={(() => {
+                        const folder = deriveFolderFromUrl(filteredVideos[v.index].url);
+                        if (!folder) return "normal";
+                        return heatByFolder[folder] || "normal";
+                      })()}
+                      onOpenActor={onOpenActor}
+                    />
+                  </div>
+                ))}
               </div>
-              <p className="text-xs font-medium italic">未找到匹配视频</p>
-            </div>
-          )}
+            ) : (
+              <div className="flex flex-col items-center justify-center h-64 text-slate-300 gap-4 opacity-40">
+                <div className="w-16 h-16 rounded-full border-2 border-dashed border-slate-200 flex items-center justify-center">
+                  <FileVideo className="w-8 h-8" />
+                </div>
+                <p className="text-xs font-medium italic">未找到匹配视频</p>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {!isClassicLayout && !isZeroLayout && (
@@ -1934,7 +2057,7 @@ export function PlayerPage({
           onSeek={(sec) => {
             if (videoEl) {
               videoEl.currentTime = sec;
-              videoEl.play().catch(() => {});
+              videoEl.play().catch(() => { });
             }
           }}
           onClose={() => setChaptersDrawerOpen(false)}
@@ -2082,11 +2205,10 @@ function ZeroInterfaceLayer({
                 key={video.id}
                 type="button"
                 onClick={() => onChooseVideo(video, index)}
-                className={`group relative aspect-[2/3] overflow-hidden rounded-xl border text-left transition ${
-                  video.id === selectedVideoId
-                    ? "border-violet-300 ring-2 ring-violet-400/50"
-                    : "border-white/10 hover:-translate-y-1 hover:border-violet-300"
-                }`}
+                className={`group relative aspect-[2/3] overflow-hidden rounded-xl border text-left transition ${video.id === selectedVideoId
+                  ? "border-violet-300 ring-2 ring-violet-400/50"
+                  : "border-white/10 hover:-translate-y-1 hover:border-violet-300"
+                  }`}
               >
                 <div className="absolute inset-0 bg-slate-800">
                   {video.coverUrl && <img src={video.coverUrl} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />}
@@ -2159,11 +2281,10 @@ function PlayerLayoutRail({
             key={video.id}
             type="button"
             onClick={() => onPlay(video, index)}
-            className={`${cardClass} group relative overflow-hidden rounded-xl border text-left transition ${
-              video.id === selectedVideoId
-                ? "border-violet-400 ring-2 ring-violet-400/30"
-                : layout === "island" ? "border-white/10 hover:border-violet-300" : "border-slate-200 hover:border-violet-300"
-            }`}
+            className={`${cardClass} group relative overflow-hidden rounded-xl border text-left transition ${video.id === selectedVideoId
+              ? "border-violet-400 ring-2 ring-violet-400/30"
+              : layout === "island" ? "border-white/10 hover:border-violet-300" : "border-slate-200 hover:border-violet-300"
+              }`}
           >
             <div className="absolute inset-0 bg-slate-800">
               {video.coverUrl && <img src={video.coverUrl} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />}
@@ -2188,13 +2309,12 @@ const MiniPill: React.FC<{
 }> = ({ icon, label, onClick, active, primary }) => (
   <button
     onClick={onClick}
-    className={`h-6 px-2 rounded-md text-[10px] font-medium transition-colors flex items-center gap-1 ${
-      primary
-        ? "bg-amber-500 text-white hover:bg-amber-600"
-        : active
-          ? "bg-amber-500 text-white"
-          : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
-    }`}
+    className={`h-6 px-2 rounded-md text-[10px] font-medium transition-colors flex items-center gap-1 ${primary
+      ? "bg-amber-500 text-white hover:bg-amber-600"
+      : active
+        ? "bg-amber-500 text-white"
+        : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+      }`}
   >
     {icon}
     {label}
@@ -2228,11 +2348,10 @@ const FilterChip: React.FC<{
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className={`h-7 w-35 justify-between px-3 rounded-lg cursor-pointer text-[11px] font-semibold transition-all flex items-center gap-1.5 ${
-          isActive
-            ? "bg-amber-500 text-white shadow-md shadow-amber-500/30"
-            : "bg-white border border-slate-200 text-slate-600 hover:border-amber-400 hover:text-amber-600"
-        }`}
+        className={`h-7 w-35 justify-between px-3 rounded-lg cursor-pointer text-[11px] font-semibold transition-all flex items-center gap-1.5 ${isActive
+          ? "bg-amber-500 text-white shadow-md shadow-amber-500/30"
+          : "bg-white border border-slate-200 text-slate-600 hover:border-amber-400 hover:text-amber-600"
+          }`}
       >
         <span className="truncate">{displayText}</span>
         <ChevronDown
@@ -2249,11 +2368,10 @@ const FilterChip: React.FC<{
                 onChange(opt.value);
                 setOpen(false);
               }}
-              className={`w-full px-3 cursor-pointer py-2 text-left text-[11px] transition-colors flex items-center justify-between ${
-                opt.value === value
-                  ? "bg-amber-50 text-amber-700 font-semibold"
-                  : "text-slate-600 hover:bg-slate-50"
-              }`}
+              className={`w-full px-3 cursor-pointer py-2 text-left text-[11px] transition-colors flex items-center justify-between ${opt.value === value
+                ? "bg-amber-50 text-amber-700 font-semibold"
+                : "text-slate-600 hover:bg-slate-50"
+                }`}
             >
               <span>{opt.label}</span>
               {opt.value === value && (

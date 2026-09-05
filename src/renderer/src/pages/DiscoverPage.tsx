@@ -310,10 +310,29 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
     rowVirtualizer.measure();
   }, [rowHeight, colCount, rowCount, rowVirtualizer]);
 
-  if (loading || !config) return <PageLoader active label="加载发现" />;
+  if (loading || !config) {
+    return (
+      <div className="relative h-full flex flex-col cyber-page" aria-busy="true">
+        <div className="shrink-0 px-4 py-3 cyber-toolbar flex items-center justify-between">
+          <div className="h-7 w-28 rounded-lg bg-slate-700/20 animate-pulse" />
+          <div className="h-7 w-36 rounded-lg bg-slate-700/20 animate-pulse" />
+        </div>
+        <div className="grid flex-1 grid-cols-2 gap-4 p-4 md:grid-cols-4 xl:grid-cols-5">
+          {Array.from({ length: 10 }, (_, index) => (
+            <div key={index} className="overflow-hidden rounded-xl border border-slate-700/15 bg-slate-900/10">
+              <div className="aspect-[1.55] animate-pulse bg-slate-700/20" />
+              <div className="space-y-2 p-3"><div className="h-3 w-4/5 rounded bg-slate-700/20" /><div className="h-2 w-2/5 rounded bg-slate-700/15" /></div>
+            </div>
+          ))}
+        </div>
+        <PageLoader active label="加载发现" />
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full flex flex-col cyber-page">
+    <div className="relative h-full flex flex-col cyber-page">
+      <PageLoader active={loading} label="加载发现" />
       {/* 顶部工具栏 */}
       <div className="shrink-0 px-4 py-3 cyber-toolbar flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2">

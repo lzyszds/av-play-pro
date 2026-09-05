@@ -211,7 +211,7 @@ export function StarMapPage({ videoPath, onAddSystemLog }: Props) {
   const resetView = () => { setZoom(1); setPan({ x: 0, y: 0 }); };
 
   return (
-    <div className="h-full flex flex-col bg-[#0f172a] select-none">
+    <div className="relative h-full flex flex-col bg-[#0f172a] select-none">
       <PageLoader active={loading} label="构建星图" />
       <div className="flex items-center justify-between px-6 py-3 border-b border-slate-800 shrink-0">
         <div className="flex items-center gap-3">

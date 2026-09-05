@@ -114,6 +114,11 @@ interface LibraryVideo {
   id: string;
   name: string;
   size?: string;
+  resolution?: string;
+  coverUrl?: string;
+  title?: string;
+  duration?: string;
+  createdAt?: number;
 }
 
 interface StatsPageProps {
@@ -124,7 +129,7 @@ interface StatsPageProps {
   ) => void;
 }
 
-type TabType = "overview" | "rankings" | "habits" | "arousal" | "storage" | "achievements";
+type TabType = "overview" | "rankings" | "habits" | "arousal" | "storage" | "assets" | "achievements";
 
 const WEEKDAY_LABELS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
@@ -156,6 +161,11 @@ function formatDuration(sec: number): string {
   }
   if (h > 0) return `${h} 小时 ${m} 分钟`;
   return `${Math.max(1, m)} 分钟`;
+}
+
+function parseMinutes(value?: string): number {
+  const minutes = Number(String(value || "").match(/\d+/)?.[0] || 0);
+  return Number.isFinite(minutes) ? minutes : 0;
 }
 
 function formatTime(sec: number): string {
@@ -916,6 +926,41 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
     });
   }, [stats, days30]);
 
+  const [terrainFilter, setTerrainFilter] = useState<"all" | "ready" | "needsCover" | "unwatched">("all");
+  const terrainVideos = useMemo(() => {
+    return libraryVideos.map((video, index) => {
+      const playCount = stats?.videos?.[video.name]?.playCount || 0;
+      const hasCover = Boolean(video.coverUrl);
+      const hasMeta = Boolean(video.title);
+      const minutes = parseMinutes(video.duration);
+      const quality = (hasCover ? 1 : 0) + (hasMeta ? 1 : 0) + (video.resolution && video.resolution !== "local" ? 1 : 0);
+      return { video, index, playCount, hasCover, hasMeta, minutes, quality };
+    });
+  }, [libraryVideos, stats]);
+
+  const terrainVisible = useMemo(() => terrainVideos.filter((item) => {
+    if (terrainFilter === "ready") return item.quality >= 2;
+    if (terrainFilter === "needsCover") return !item.hasCover;
+    if (terrainFilter === "unwatched") return item.playCount === 0;
+    return true;
+  }), [terrainVideos, terrainFilter]);
+
+  const quarterReport = useMemo(() => {
+    const now = new Date();
+    const quarter = Math.floor(now.getMonth() / 3) + 1;
+    const start = new Date(now.getFullYear(), (quarter - 1) * 3, 1).getTime();
+    const days = Object.entries(stats?.daily || {}).filter(([day]) => new Date(`${day}T00:00:00`).getTime() >= start);
+    const activity = days.reduce((sum, [, bucket]) => ({
+      downloads: sum.downloads + bucket.downloads,
+      bytes: sum.bytes + bucket.downloadBytes,
+      plays: sum.plays + bucket.plays,
+      watchSec: sum.watchSec + bucket.watchSec,
+    }), { downloads: 0, bytes: 0, plays: 0, watchSec: 0 });
+    const added = terrainVideos.filter(({ video }) => (video.createdAt || 0) >= start).length;
+    const coverRate = terrainVideos.length ? Math.round((terrainVideos.filter((item) => item.hasCover).length / terrainVideos.length) * 100) : 0;
+    return { quarter, activity, added, coverRate, needsCare: terrainVideos.filter((item) => !item.hasCover || !item.hasMeta).length };
+  }, [stats, terrainVideos]);
+
   // 连续观影天数与高光
   const streakInfo = useMemo(() => {
     if (!stats) return { best: 0, current: 0, activeDays: 0, busiest: null };
@@ -1075,6 +1120,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
           { id: "habits", label: "观影时段规律", icon: Clock },
           { id: "arousal", label: "私密时刻", icon: Heart },
           { id: "storage", label: "存储与预测", icon: HardDrive },
+          { id: "assets", label: "质量地形与季报", icon: Layers },
           { id: "achievements", label: "成就殿堂", icon: Trophy },
         ].map((t) => {
           const Icon = t.icon;
@@ -1786,6 +1832,22 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                 </LineChart>
               </ResponsiveContainer>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "assets" && stats && (
+        <div className="space-y-5 anim-fade-in">
+          <div className="grid gap-4 lg:grid-cols-[1.4fr_0.9fr]">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">片库质量地形图</h3><p className="mt-1 text-[10px] text-slate-400">横向是片长，纵向是观看频率；颜色越暖，资料资产越完整。</p></div><div className="flex gap-1 rounded-lg bg-slate-100 p-1 text-[10px] dark:bg-slate-800">{[["all","全部"],["ready","完整"],["needsCover","缺封面"],["unwatched","未看"]].map(([id,label]) => <button key={id} type="button" onClick={() => setTerrainFilter(id as typeof terrainFilter)} className={`rounded-md px-2 py-1 font-bold ${terrainFilter === id ? "bg-white text-amber-600 shadow-sm dark:bg-slate-700" : "text-slate-500"}`}>{label}</button>)}</div></div>
+              <div className="relative mt-5 h-72 overflow-hidden rounded-xl border border-slate-100 bg-[linear-gradient(rgba(148,163,184,.12)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,.12)_1px,transparent_1px)] bg-[size:32px_32px] dark:border-slate-800">
+                {terrainVisible.map((item) => { const left = 4 + ((item.minutes || (item.index % 90) + 10) / 180) * 88; const bottom = 6 + Math.min(item.playCount, 12) / 12 * 78; const tone = item.quality >= 2 ? "bg-emerald-400" : item.hasCover ? "bg-amber-400" : "bg-rose-400"; return <button key={item.video.id} title={`${item.video.name} · ${item.playCount} 次播放 · ${item.quality}/3 资料完整`} className={`absolute h-3 w-3 -translate-x-1/2 translate-y-1/2 rounded-full ${tone} ring-4 ring-white/50 transition hover:scale-150 dark:ring-slate-900/50`} style={{ left: `${Math.min(left, 94)}%`, bottom: `${bottom}%` }} />; })}
+                {!terrainVisible.length && <div className="flex h-full items-center justify-center text-xs text-slate-400">当前筛选没有可展示的影片</div>}
+                <span className="absolute bottom-2 left-3 text-[9px] text-slate-400">短片</span><span className="absolute bottom-2 right-3 text-[9px] text-slate-400">长片</span><span className="absolute left-3 top-2 text-[9px] text-slate-400">常看</span><span className="absolute left-3 bottom-7 text-[9px] text-slate-400">未看</span>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-violet-200/70 bg-gradient-to-br from-violet-50 to-white p-5 shadow-sm dark:border-violet-900/50 dark:from-violet-950/30 dark:to-slate-900"><div className="text-[10px] font-bold tracking-[0.2em] text-violet-500">PRIVATE ASSET QUARTERLY</div><h3 className="mt-2 text-lg font-bold text-slate-800 dark:text-slate-100">{new Date().getFullYear()} · Q{quarterReport.quarter} 资源季报</h3><p className="mt-1 text-xs leading-5 text-slate-500">本季度新增 {quarterReport.added} 部资产，封面完备率 {quarterReport.coverRate}%，仍有 {quarterReport.needsCare} 部等待资料完善。</p><div className="mt-5 grid grid-cols-2 gap-2">{[["下载流量",formatBytes(quarterReport.activity.bytes)],["下载任务",`${quarterReport.activity.downloads} 次`],["播放次数",`${quarterReport.activity.plays} 次`],["观看投入",formatDuration(quarterReport.activity.watchSec)]].map(([label,value]) => <div key={label} className="rounded-xl bg-white/80 p-3 dark:bg-slate-800/70"><div className="text-[9px] text-slate-400">{label}</div><div className="mt-1 text-sm font-extrabold text-slate-800 dark:text-slate-100">{value}</div></div>)}</div><div className="mt-4 rounded-xl border border-violet-200/60 bg-violet-100/50 px-3 py-2 text-[10px] text-violet-700 dark:border-violet-800/60 dark:bg-violet-900/20 dark:text-violet-300">季报是本地实时计算，不上传片名、文件或观看记录。</div></div>
           </div>
         </div>
       )}

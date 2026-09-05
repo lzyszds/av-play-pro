@@ -69,6 +69,13 @@ function applyLoaderStyle(style: AppSettings["loaderStyle"]): void {
   document.documentElement.dataset.loader = style;
 }
 
+function applyWallpaperScene(background: AppSettings["downloadBackground"]): void {
+  document.documentElement.style.setProperty(
+    "--app-wallpaper-image",
+    `url("./${background ?? "1"}.webp")`,
+  );
+}
+
 function applyTheme(mode: AppSettings["theme"]): void {
   const isDark =
     mode === "dark" ||
@@ -319,6 +326,11 @@ export default function App() {
   useEffect(() => {
     applyLoaderStyle(settings.loaderStyle ?? "eq");
   }, [settings.loaderStyle]);
+
+  // 让设置里选中的壁纸成为加载、空态等全局场景的共同视觉来源。
+  useEffect(() => {
+    applyWallpaperScene(settings.downloadBackground ?? "1");
+  }, [settings.downloadBackground]);
 
   // 设置变更落盘（防抖 500ms）
   useEffect(() => {

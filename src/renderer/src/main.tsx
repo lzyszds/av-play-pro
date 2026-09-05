@@ -16,4 +16,7 @@ function renderWidget() {
   return <App />
 }
 
-root.render(<React.StrictMode>{renderWidget()}</React.StrictMode>)
+// 原生 webview 不适合被 StrictMode 的开发期“挂载→卸载→再挂载”检查包裹：
+// 每次重挂载都会重新发起一次真实网页请求，看起来像进入页面时自动刷新。
+// 页面自身仍通过事件清理和稳定的 sourceUrl 管理生命周期。
+root.render(renderWidget())

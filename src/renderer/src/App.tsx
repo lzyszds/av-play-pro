@@ -9,11 +9,9 @@ import { PlayerPage } from "./pages/PlayerPage";
 import { WebPage } from "./pages/WebPage";
 import { StatsPage } from "./pages/StatsPage";
 import { CommandCenterPage } from "./pages/CommandCenterPage";
-import { IntelPage } from "./pages/IntelPage";
 import { StarMapPage } from "./pages/StarMapPage";
 import { MosaicPage } from "./pages/MosaicPage";
 import { RssPage } from "./pages/RssPage";
-import { ActorsPage } from "./pages/ActorsPage";
 import { DiscoverPage } from "./pages/DiscoverPage";
 import { ScraperWebview } from "./components/ScraperWebview";
 import { AchievementToast } from "./components/achievements/AchievementToast";
@@ -62,10 +60,8 @@ const VALID_PAGES: Page[] = [
   "stats",
   "command",
   "starmap",
-  "intel",
   "mosaic",
   "rss",
-  "actors",
 ];
 
 function applyLoaderStyle(style: AppSettings["loaderStyle"]): void {
@@ -93,8 +89,6 @@ export default function App() {
   const [logs, setLogs] = useState<LogMessage[]>([]);
   // 「立即查看」目标
   const [pendingPlayName, setPendingPlayName] = useState<string | null>(null);
-  // 演员详情页打开目标（从卡片演员点击触发）
-  const [pendingActor, setPendingActor] = useState<string | null>(null);
   // 私密计时器
   const [arousalActive, setArousalActive] = useState(false);
   const [arousalElapsed, setArousalElapsed] = useState(0);
@@ -395,10 +389,6 @@ export default function App() {
             onActiveVideoChange={(name) => {
               currentPlayingFolderRef.current = name;
             }}
-            onOpenActor={(name) => {
-              setPendingActor(name);
-              setCurrentPage("actors");
-            }}
           />
         )}
         {currentPage === "discover" && (
@@ -421,9 +411,6 @@ export default function App() {
           />
         )}
 
-        {currentPage === "intel" && (
-          <IntelPage videoPath={settings.video_path} onAddSystemLog={addLog} />
-        )}
         {currentPage === "starmap" && (
           <StarMapPage videoPath={settings.video_path} onAddSystemLog={addLog} />
         )}
@@ -433,18 +420,7 @@ export default function App() {
         {currentPage === "rss" && (
           <RssPage videoPath={settings.video_path} onAddSystemLog={addLog} />
         )}
-        {currentPage === "actors" && (
-          <ActorsPage
-            videoPath={settings.video_path}
-            onAddSystemLog={addLog}
-            onPlayVideo={(name) => {
-              setPendingPlayName(name);
-              setCurrentPage("player");
-            }}
-            initialActorName={pendingActor}
-            onConsumeInitialActor={() => setPendingActor(null)}
-          />
-        )}
+
       </div>
 
       {/* 常驻隐藏抓取 webview（用于过盾抓取 missav 列表） */}

@@ -16,9 +16,7 @@ import {
   Monitor,
   Heart,
   Settings as SettingsIcon,
-  Newspaper,
   Gauge,
-  Users,
   Compass,
   Clock,
   RotateCcw,
@@ -34,10 +32,8 @@ export type Page =
   | "stats"
   | "command"
   | "starmap"
-  | "intel"
   | "mosaic"
   | "rss"
-  | "actors"
   | "discover";
 
 interface TitleBarProps {
@@ -91,12 +87,6 @@ const pages: Array<{
     icon: Compass,
   },
   {
-    key: "actors",
-    label: "演员",
-    desc: "女优演员档案、参演统计与关联作品",
-    icon: Users,
-  },
-  {
     key: "web",
     label: "网页",
     desc: "内置无痕网页嗅探器与资源捕获",
@@ -113,12 +103,6 @@ const pages: Array<{
     label: "统计",
     desc: "观影战斗力战报、时段规律与成就荣耀殿堂",
     icon: BarChart3,
-  },
-  {
-    key: "intel",
-    label: "情报",
-    desc: "发行片商资讯与近期业界动态",
-    icon: Newspaper,
   },
 ];
 
@@ -164,13 +148,18 @@ export const TitleBar: React.FC<TitleBarProps> = ({
     setArousalMenu({ x: e.clientX, y: e.clientY });
   };
 
+  // macOS 红绿灯按钮占据左侧约 72px，需要在 Logo 区域左侧留出空间
+  const isMac = navigator.userAgent.toLowerCase().includes("macintosh");
+
   return (
     <div
       className="h-9 bg-slate-900 flex items-center justify-between select-none shrink-0"
       style={drag}
     >
       <div className="flex items-center h-full min-w-0">
-        <div className="flex items-center gap-2 px-3 shrink-0">
+        {/* macOS：为红绿灯按钮留出约 72px 的安全间距 */}
+        {isMac && <div style={{ width: 72, minWidth: 72, ...drag as React.CSSProperties }} />}
+        <div className="flex items-center gap-2 px-3 shrink-0" style={noDrag}>
           <img
             src="./logo.png"
             alt="AVPlayPro"
@@ -199,6 +188,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
           ))}
         </div>
       </div>
+
 
       <div
         className="flex-1 h-full flex items-center justify-end min-w-0 px-4"
@@ -315,40 +305,44 @@ export const TitleBar: React.FC<TitleBarProps> = ({
 
         <div className="w-px h-4 bg-slate-700 mx-1" />
 
-        {/* 窗口控制按钮 */}
-        <Tooltip content="最小化窗口" placement="bottom">
-          <button
-            type="button"
-            onClick={() => trpc.window.minimize.mutate()}
-            title="最小化窗口"
-            aria-label="最小化窗口"
-            className="w-10 h-full flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
-          >
-            <Minus className="w-3.5 h-3.5" />
-          </button>
-        </Tooltip>
-        <Tooltip content="最大化 / 还原窗口" placement="bottom">
-          <button
-            type="button"
-            onClick={() => trpc.window.maximize.mutate()}
-            title="最大化 / 还原窗口"
-            aria-label="最大化窗口"
-            className="w-10 h-full flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
-          >
-            <Square className="w-3 h-3" />
-          </button>
-        </Tooltip>
-        <Tooltip content="关闭应用" placement="bottom">
-          <button
-            type="button"
-            onClick={() => trpc.window.close.mutate()}
-            title="关闭应用"
-            aria-label="关闭应用"
-            className="w-10 h-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-rose-600 transition cursor-pointer"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </Tooltip>
+        {/* 窗口控制按钮：macOS 由系统红绿灯提供，仅 Windows/Linux 显示 */}
+        {!isMac && (
+          <>
+            <Tooltip content="最小化窗口" placement="bottom">
+              <button
+                type="button"
+                onClick={() => trpc.window.minimize.mutate()}
+                title="最小化窗口"
+                aria-label="最小化窗口"
+                className="w-10 h-full flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+            </Tooltip>
+            <Tooltip content="最大化 / 还原窗口" placement="bottom">
+              <button
+                type="button"
+                onClick={() => trpc.window.maximize.mutate()}
+                title="最大化 / 还原窗口"
+                aria-label="最大化窗口"
+                className="w-10 h-full flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+              >
+                <Square className="w-3 h-3" />
+              </button>
+            </Tooltip>
+            <Tooltip content="关闭应用" placement="bottom">
+              <button
+                type="button"
+                onClick={() => trpc.window.close.mutate()}
+                title="关闭应用"
+                aria-label="关闭应用"
+                className="w-10 h-full flex items-center justify-center text-slate-400 hover:text-white hover:bg-rose-600 transition cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </Tooltip>
+          </>
+        )}
 
         {/* 私密计时右键菜单 (追溯补录/调整) */}
         {arousalMenu && (

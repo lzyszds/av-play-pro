@@ -79,23 +79,24 @@ const DiscoverCard = React.memo(function DiscoverCard({
       onMouseEnter={onEnter}
       onMouseLeave={onLeave}
       style={{ height: cardH }}
-      className="group bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden hover:shadow-md transition flex flex-col"
+      className="discover-card group cyber-shimmer flex flex-col"
     >
+      {/* 封面区 */}
       <div
         style={{ height: coverH }}
-        className="relative shrink-0 bg-slate-100 dark:bg-slate-800"
+        className="relative shrink-0 bg-slate-900/80 overflow-hidden"
       >
         {cover ? (
           <img
             src={cover}
             alt={item.title}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
             loading="lazy"
             decoding="async"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-slate-300">
-            <Compass className="w-6 h-6" />
+          <div className="w-full h-full flex items-center justify-center text-slate-600">
+            <Compass className="w-8 h-8 opacity-40" />
           </div>
         )}
         {playing && preview && (
@@ -109,27 +110,37 @@ const DiscoverCard = React.memo(function DiscoverCard({
             preload="none"
           />
         )}
+        {/* 底部遮罩渐变 */}
+        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
         {item.duration && (
-          <span className="absolute bottom-1.5 right-1.5 z-10 text-[10px] px-1.5 py-0.5 rounded bg-black/70 text-white">
+          <span className="absolute bottom-1.5 right-1.5 z-10 text-[9px] px-1.5 py-0.5 rounded-md bg-black/70 text-white/90 font-mono backdrop-blur-sm">
             {item.duration}
           </span>
         )}
         {preview && (
-          <span className="absolute top-1.5 left-1.5 z-10 text-[9px] px-1.5 py-0.5 rounded bg-black/50 text-white opacity-0 group-hover:opacity-100 transition">
-            预览
+          <span className="absolute top-1.5 left-1.5 z-10 text-[8px] px-1.5 py-0.5 rounded-md cyber-badge-cyan font-semibold tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            ▶ 预览
           </span>
         )}
+        {/* 播放 overlay */}
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center">
+            <ExternalLink className="w-4 h-4 text-white/80" />
+          </div>
+        </div>
       </div>
-      <div className="p-2.5 flex flex-col gap-1.5 flex-1 min-h-0">
+
+      {/* 信息区 */}
+      <div className="p-2.5 flex flex-col gap-1.5 flex-1 min-h-0 bg-gradient-to-b from-transparent to-black/20">
         <h3
-          className="text-[11px] font-semibold text-slate-800 dark:text-slate-200 line-clamp-2 leading-snug"
+          className="text-[11px] font-semibold text-slate-200 line-clamp-2 leading-snug"
           title={item.title}
         >
           {item.title || item.code}
         </h3>
         <div className="mt-auto flex items-center gap-1.5">
           {item.code && (
-            <span className="text-[9px] px-1.5 py-0.5 rounded truncate bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-mono">
+            <span className="cyber-badge cyber-badge-blue font-mono truncate max-w-[80px]">
               {item.code}
             </span>
           )}
@@ -139,7 +150,7 @@ const DiscoverCard = React.memo(function DiscoverCard({
                 <button
                   type="button"
                   onClick={() => onCopy(item.code!)}
-                  className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-blue-500 transition cursor-pointer"
+                  className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-cyan-400 hover:border-cyan-500/40 transition-all cursor-pointer"
                 >
                   <Copy className="w-3 h-3" />
                 </button>
@@ -149,7 +160,7 @@ const DiscoverCard = React.memo(function DiscoverCard({
               <button
                 type="button"
                 onClick={() => window.open(item.url, "_blank")}
-                className="w-6 h-6 flex items-center justify-center rounded-md bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-blue-500 transition cursor-pointer"
+                className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-blue-400 hover:border-blue-500/40 transition-all cursor-pointer"
               >
                 <ExternalLink className="w-3 h-3" />
               </button>
@@ -302,53 +313,60 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
   if (loading || !config) return <PageLoader active label="加载发现" />;
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col cyber-page">
       {/* 顶部工具栏 */}
-      <div className="shrink-0 px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
-          <Compass className="w-4 h-4 text-blue-500" />
-          <span className="text-sm font-bold">发现</span>
+      <div className="shrink-0 px-4 py-3 cyber-toolbar flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <div className="cyber-icon-glow cyber-icon-glow-blue w-7 h-7">
+            <Compass className="w-3.5 h-3.5" />
+          </div>
+          <span className="text-sm font-bold text-slate-200">发现</span>
         </div>
-        <span className="text-[11px] text-slate-400 flex items-center gap-1">
-          <Clock className="w-3 h-3" />
-          {formatTime(store?.updatedAt ?? 0)} · 共 {items.length} 条
+        <span className="text-[11px] text-slate-500 flex items-center gap-1.5">
+          <Clock className="w-3 h-3 text-slate-600" />
+          {formatTime(store?.updatedAt ?? 0)}
+          {items.length > 0 && (
+            <span className="cyber-badge cyber-badge-blue ml-1">{items.length} 条</span>
+          )}
         </span>
 
-        <input
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          placeholder="搜索标题 / 番号…"
-          className="ml-auto w-48 px-3 py-1.5 text-xs rounded-lg bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-blue-400 outline-none text-slate-700 dark:text-slate-200"
-        />
-        <Tooltip content="网络抓取配置" placement="top">
+        <div className="ml-auto flex items-center gap-2">
+          <input
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            placeholder="搜索标题 / 番号…"
+            className="cyber-input w-48 px-3 py-1.5 text-xs"
+          />
+          <Tooltip content="网络抓取配置" placement="top">
+            <button
+              type="button"
+              onClick={() => setShowConfig((v) => !v)}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg cyber-btn-ghost transition-all cursor-pointer ${showConfig ? "border-blue-500/50 text-blue-400" : ""}`}
+            >
+              <Settings2 className="w-4 h-4" />
+            </button>
+          </Tooltip>
           <button
             type="button"
-            onClick={() => setShowConfig((v) => !v)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-blue-500 transition cursor-pointer"
+            onClick={handleScrape}
+            disabled={running}
+            className="cyber-btn-primary flex items-center gap-1.5 px-4 py-1.5 text-xs"
           >
-            <Settings2 className="w-4 h-4" />
+            <Zap className={`w-3.5 h-3.5 ${running ? "animate-pulse" : ""}`} />
+            {running ? progress || "抓取中…" : "一键抓取"}
           </button>
-        </Tooltip>
-        <button
-          type="button"
-          onClick={handleScrape}
-          disabled={running}
-          className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-blue-500 hover:bg-blue-600 text-white transition cursor-pointer disabled:opacity-50"
-        >
-          <Zap className={`w-3.5 h-3.5 ${running ? "animate-pulse" : ""}`} />
-          {running ? progress || "抓取中…" : "一键抓取"}
-        </button>
+        </div>
       </div>
 
       {/* 配置面板 */}
       {showConfig && (
-        <div className="shrink-0 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 flex flex-wrap items-end gap-4">
+        <div className="shrink-0 px-4 py-3 flex flex-wrap items-end gap-4 border-b border-blue-500/20 bg-[#080f1e]/70 backdrop-blur-md anim-fade-in">
           <label className="flex flex-col gap-1 flex-1 min-w-[280px]">
             <span className="text-[11px] text-slate-500">列表地址（用 {"{page}"} 作页码占位）</span>
             <input
               value={config.baseUrl}
               onChange={(e) => saveConfig({ baseUrl: e.target.value })}
-              className="px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-blue-400 text-slate-700 dark:text-slate-200"
+              className="cyber-input px-2.5 py-1.5 text-xs w-full"
             />
           </label>
           <label className="flex flex-col gap-1 w-24">
@@ -360,7 +378,7 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
               onChange={(e) =>
                 saveConfig({ startPage: Number(e.target.value) || 1 })
               }
-              className="px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-blue-400 text-slate-700 dark:text-slate-200"
+              className="cyber-input px-2.5 py-1.5 text-xs w-full"
             />
           </label>
           <label className="flex flex-col gap-1 w-24">
@@ -372,10 +390,10 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
               onChange={(e) =>
                 saveConfig({ endPage: Number(e.target.value) || config.startPage })
               }
-              className="px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-blue-400 text-slate-700 dark:text-slate-200"
+              className="cyber-input px-2.5 py-1.5 text-xs w-full"
             />
           </label>
-          <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer pb-1.5">
+          <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer pb-1.5">
             <input
               type="checkbox"
               checked={config.autoOnStartup}
@@ -389,21 +407,33 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
 
       {/* 内容网格 */}
       {filtered.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-3">
-          <Compass className="w-10 h-10 opacity-40" />
+        <div className="flex-1 flex flex-col items-center justify-center gap-4">
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-900/40 to-purple-900/30 border border-blue-500/20 flex items-center justify-center">
+            <Compass className="w-9 h-9 text-blue-500/50" />
+          </div>
           {items.length === 0 ? (
-            <div className="text-center space-y-1.5">
-              <p className="text-sm">暂无内容</p>
-              <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
-                点击右上角「一键抓取」——会自动打开 missav 过盾并抓取。若弹出人机验证，直接点一下即可。
+            <div className="text-center space-y-2 max-w-xs">
+              <p className="text-sm font-semibold text-slate-400">暂无内容</p>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                点击右上角「一键抓取」，会自动打开 missav 过盾并抓取。
+                若弹出人机验证，直接点一下即可。
               </p>
+              <button
+                type="button"
+                onClick={handleScrape}
+                disabled={running}
+                className="cyber-btn-primary mt-2 px-5 py-2 text-xs inline-flex items-center gap-2"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                立即抓取
+              </button>
             </div>
           ) : (
-            <p className="text-sm">没有匹配的结果</p>
+            <p className="text-sm text-slate-500">没有匹配的结果</p>
           )}
         </div>
       ) : (
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto cyber-scroll p-4">
           <div
             style={{
               height: rowVirtualizer.getTotalSize(),

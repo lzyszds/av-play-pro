@@ -55,6 +55,7 @@ function writeCloseAction(action: "tray" | "quit"): void {
 
 export function createMainWindow(): void {
   const appIcon = resolveAppIcon();
+  const isMac = process.platform === "darwin";
   const window = new BrowserWindow({
     width: 1520,
     height: 860,
@@ -62,7 +63,9 @@ export function createMainWindow(): void {
     minHeight: 720,
     show: false,
     frame: false,
-    titleBarStyle: "hidden",
+    titleBarStyle: isMac ? "hiddenInset" : "hidden",
+    // macOS: 将红绿灯按钮定位到标题栏内部，避免与自定义 Logo 重叠
+    ...(isMac ? { trafficLightPosition: { x: 10, y: 10 } } : {}),
     ...(appIcon ? { icon: appIcon } : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),

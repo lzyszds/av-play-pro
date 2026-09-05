@@ -23,6 +23,8 @@ import {
   Minimize2,
   AlertTriangle,
   Users,
+  Sparkles,
+  FolderArchive,
 } from "lucide-react";
 import {
   Area,
@@ -36,6 +38,9 @@ import {
 } from "recharts";
 import { trpc } from "../lib/trpc";
 import { PageLoader } from "../components/PageLoader";
+import { AnnualReportModal } from "../components/stats/AnnualReportModal";
+import { ActivityHistoryModal } from "../components/stats/ActivityHistoryModal";
+import { OrganizerModal } from "../components/organizer/OrganizerModal";
 
 interface ActivityBucket {
   plays: number;
@@ -1317,6 +1322,9 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
     month: { hidden: false, expanded: false },
     ranking: { hidden: false, expanded: false },
   });
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showOrganizerModal, setShowOrganizerModal] = useState(false);
   const togglePanelHidden = (key: PanelKey) => {
     setPanelState((prev) => ({
       ...prev,
@@ -1531,7 +1539,31 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
             观影行为、下载活动、播放次数和视频盘空间的全景视图
           </p>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 items-center">
+          <button
+            onClick={() => setShowReportModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 hover:opacity-90 text-xs text-white font-black rounded-lg transition cursor-pointer shadow-sm shadow-amber-500/20"
+            title="查看我的 2026 观影战斗力年度报告与五维雷达图"
+          >
+            <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+            观影战力年报
+          </button>
+          <button
+            onClick={() => setShowHistoryModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-amber-50 dark:hover:bg-amber-500/10 text-xs text-slate-700 dark:text-slate-300 font-bold rounded-lg transition cursor-pointer"
+            title="查看操作与行为历史时间线"
+          >
+            <History className="w-3.5 h-3.5 text-amber-500" />
+            操作历史
+          </button>
+          <button
+            onClick={() => setShowOrganizerModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-blue-50 dark:hover:bg-blue-500/10 text-xs text-blue-600 dark:text-blue-400 font-bold rounded-lg transition cursor-pointer"
+            title="Emby/Plex 媒体库规范化软链接与 NFO 整理"
+          >
+            <FolderArchive className="w-3.5 h-3.5 text-blue-500" />
+            Emby软链接整理
+          </button>
           <button
             onClick={refresh}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-amber-50 dark:hover:bg-amber-500/10 text-xs text-slate-600 dark:text-slate-300 font-bold rounded-lg transition cursor-pointer"
@@ -1932,6 +1964,30 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
       <div className="pb-2 text-[10px] text-slate-400 dark:text-slate-500">
         播放统计会在播放器开始播放时记录次数，并在播放过程中周期性累计观看时长；下载统计会在任务成功完成时记录。
       </div>
+
+      {showReportModal && (
+        <AnnualReportModal
+          stats={stats}
+          rankings={rankings}
+          onClose={() => setShowReportModal(false)}
+          onAddSystemLog={onAddSystemLog}
+        />
+      )}
+
+      {showHistoryModal && (
+        <ActivityHistoryModal
+          onClose={() => setShowHistoryModal(false)}
+          onAddSystemLog={onAddSystemLog}
+        />
+      )}
+
+      {showOrganizerModal && (
+        <OrganizerModal
+          sourcePath={videoPath}
+          onClose={() => setShowOrganizerModal(false)}
+          onAddSystemLog={onAddSystemLog}
+        />
+      )}
     </div>
   );
 }

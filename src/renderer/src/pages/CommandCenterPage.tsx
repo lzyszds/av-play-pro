@@ -21,10 +21,12 @@ import {
   UserRound,
   Users,
   Wrench,
+  FolderArchive,
 } from "lucide-react";
 import { trpc } from "../lib/trpc";
 import { PageLoader } from "../components/PageLoader";
 import { CoverImage } from "../components/CoverImage";
+import { OrganizerModal } from "../components/organizer/OrganizerModal";
 
 interface Props {
   videoPath: string;
@@ -211,6 +213,7 @@ export function CommandCenterPage({ videoPath, tempPath, onAddSystemLog }: Props
   const [cleanupTotalLabel, setCleanupTotalLabel] = useState("0 B");
   const [cleanupScanning, setCleanupScanning] = useState(false);
   const [cleanupRunning, setCleanupRunning] = useState(false);
+  const [showOrganizerModal, setShowOrganizerModal] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!videoPath) return;
@@ -396,6 +399,15 @@ export function CommandCenterPage({ videoPath, tempPath, onAddSystemLog }: Props
           <button type="button" onClick={refresh} className="h-9 px-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[12px] font-bold text-slate-600 dark:text-slate-300 hover:text-amber-500 transition cursor-pointer">
             <RefreshCw className="w-3.5 h-3.5 inline mr-1" />
             刷新
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowOrganizerModal(true)}
+            className="h-9 px-3 rounded-lg bg-blue-600 text-white text-[12px] font-bold hover:bg-blue-700 transition cursor-pointer flex items-center gap-1.5"
+            title="Emby/Plex 媒体库规范化软链接与 NFO 整理"
+          >
+            <FolderArchive className="w-3.5 h-3.5" />
+            Emby软链接整理
           </button>
           <button type="button" onClick={openWidgetWindow} className="h-9 px-3 rounded-lg bg-amber-500 text-white text-[12px] font-bold hover:bg-amber-600 transition cursor-pointer">
             小组件窗口
@@ -682,6 +694,14 @@ export function CommandCenterPage({ videoPath, tempPath, onAddSystemLog }: Props
           ))}
         </div>
       </section>
+
+      {showOrganizerModal && (
+        <OrganizerModal
+          sourcePath={videoPath}
+          onClose={() => setShowOrganizerModal(false)}
+          onAddSystemLog={onAddSystemLog}
+        />
+      )}
     </div>
   );
 }

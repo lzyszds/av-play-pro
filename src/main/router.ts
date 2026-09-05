@@ -19,6 +19,8 @@ import { scenesRouter } from "./routers/scenesRouter";
 import { intelRouter } from "./routers/intelRouter";
 import { scrapeRouter } from "./routers/scrapeRouter";
 import { syncRouter } from "./routers/syncRouter";
+import { activityRouter } from "./routers/activityRouter";
+import { organizerRouter } from "./routers/organizerRouter";
 
 export const appRouter = t.router({
   download: downloadRouter,
@@ -41,6 +43,8 @@ export const appRouter = t.router({
   intel: intelRouter,
   scrape: scrapeRouter,
   sync: syncRouter,
+  activity: activityRouter,
+  organizer: organizerRouter,
 });
 
 export type AppRouter = typeof appRouter;

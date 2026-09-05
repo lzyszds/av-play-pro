@@ -4,6 +4,7 @@ import * as path from "path";
 import { z } from "zod";
 import { t } from "../trpc";
 import { log } from "../logger";
+import { recordActivity } from "./activityRouter";
 
 function getUserDataPath(...segments: string[]): string {
   return path.join(app.getPath("userData"), ...segments);
@@ -154,6 +155,8 @@ export const syncRouter = t.router({
       const timelinePath = getUserDataPath("timeline.json");
       const actorsPath = getUserDataPath("actors.json");
       const tagModelPath = getUserDataPath("tag-model.json");
+      const activityPath = getUserDataPath("activity-history.json");
+      const reportPath = getUserDataPath("annual-report.json");
 
       const localSettings = readJsonFile<Record<string, unknown>>(
         settingsPath,
@@ -171,6 +174,11 @@ export const syncRouter = t.router({
       const localTagModel = readJsonFile<Record<string, unknown>>(
         tagModelPath,
         {},
+      );
+      const localActivities = readJsonFile<unknown[]>(activityPath, []);
+      const localReport = readJsonFile<Record<string, unknown> | null>(
+        reportPath,
+        null,
       );
 
       // 计算统计概况
@@ -194,6 +202,8 @@ export const syncRouter = t.router({
           timeline: localTimeline,
           actors: localActors,
           tagModel: localTagModel,
+          activities: localActivities,
+          annualReport: localReport,
         },
       };
 
@@ -226,6 +236,12 @@ export const syncRouter = t.router({
         localSettings.cloudSyncLastSync = payload.exportedAt;
         writeJsonFile(settingsPath, localSettings);
 
+        recordActivity(
+          "SYNC",
+          "云端备份",
+          `成功将 ${videoCount} 部影片数据与 ${localActivities.length} 条操作历史备份至 Cloudflare KV`,
+        );
+
         log.info(
           `[syncRouter] Successfully pushed data to cloud: ${payload.exportedAt}`,
         );
@@ -248,6 +264,46 @@ export const syncRouter = t.router({
         };
       }
     }),
+
+  // 专门将年度战力报告保存到本地并上传至云端
+  pushAnnualReport: t.procedure
+    .input(
+      z.object({
+        endpoint: z.string(),
+        secretKey: z.string(),
+        report: z.record(z.unknown()),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const endpoint = normalizeUrl(input.endpoint);
+      if (!endpoint) return { success: false, error: "云同步端点不能为空" };
+
+      // 1. 保存到本地
+      const reportPath = getUserDataPath("annual-report.json");
+      writeJsonFile(reportPath, input.report);
+
+      // 2. 触发一次全量推送（带 report）
+      const pushRes = await syncRouter.createCaller({} as any).pushToCloud({
+        endpoint: input.endpoint,
+        secretKey: input.secretKey,
+      });
+
+      if (pushRes.success) {
+        recordActivity(
+          "SYNC",
+          "战力报告上云",
+          "成功将年度观影战斗力报告同步到 Cloudflare KV",
+        );
+      }
+
+      return pushRes;
+    }),
+
+  // 获取本地缓存的战力报告
+  getAnnualReport: t.procedure.query(() => {
+    const reportPath = getUserDataPath("annual-report.json");
+    return readJsonFile<Record<string, unknown> | null>(reportPath, null);
+  }),
 
   // 从云端拉取数据并恢复到本地
   pullFromCloud: t.procedure
@@ -302,6 +358,8 @@ export const syncRouter = t.router({
           "timeline.json",
           "actors.json",
           "tag-model.json",
+          "activity-history.json",
+          "annual-report.json",
         ];
 
         for (const f of filesToSync) {
@@ -327,6 +385,18 @@ export const syncRouter = t.router({
         }
         if (remoteData.tagModel) {
           writeJsonFile(getUserDataPath("tag-model.json"), remoteData.tagModel);
+        }
+        if (remoteData.activities) {
+          writeJsonFile(
+            getUserDataPath("activity-history.json"),
+            remoteData.activities,
+          );
+        }
+        if (remoteData.annualReport) {
+          writeJsonFile(
+            getUserDataPath("annual-report.json"),
+            remoteData.annualReport,
+          );
         }
 
         // 3. 合并设置（保留本地设备专属路径，如 video_path / temp_path / nm3u8dlPath，以及当前云端配置参数）
@@ -361,6 +431,12 @@ export const syncRouter = t.router({
 
         log.info(
           `[syncRouter] Successfully restored from cloud. Local backup saved to ${backupDir}`,
+        );
+
+        recordActivity(
+          "SYNC",
+          "云端恢复",
+          "成功从 Cloudflare KV 同步最新记录并完成本地镜像备份",
         );
 
         return {

@@ -3,6 +3,7 @@ import * as path from "path";
 import { app } from "electron";
 import { t } from "../trpc";
 import { log } from "../logger";
+import { recordActivity } from "./activityRouter";
 
 export interface ActivityBucket {
   plays: number;
@@ -320,6 +321,10 @@ export const statsRouter = t.router({
       if (!v.firstPlayedAt) v.firstPlayedAt = now.toISOString();
       addToAllBuckets(s, { plays: 1 }, now);
       await saveStatsAsync(s);
+      recordActivity("PLAY", "开始播放", `观看影片: ${folder}`, {
+        folder,
+        playCount: v.playCount,
+      });
       return { success: true, playCount: v.playCount };
     }),
 
@@ -346,6 +351,12 @@ export const statsRouter = t.router({
       const bytes = Math.max(0, Math.floor(input.bytes || 0));
       addToAllBuckets(s, { downloads: 1, downloadBytes: bytes });
       await saveStatsAsync(s);
+      recordActivity(
+        "DOWNLOAD",
+        "完成下载",
+        `任务下载完成，文件大小 ${(bytes / (1024 * 1024)).toFixed(1)} MB`,
+        { bytes },
+      );
       return { success: true };
     }),
 
@@ -414,6 +425,14 @@ export const statsRouter = t.router({
       s.arousal.totals.count += 1;
       s.arousal.totals.totalSec += durationSec;
       await saveStatsAsync(s);
+      const mm = Math.floor(durationSec / 60);
+      const ss = durationSec % 60;
+      recordActivity(
+        "AROUSAL",
+        "私密计时",
+        `记录专注体验: ${mm} 分 ${ss} 秒`,
+        { durationSec, videoFolder: input.videoFolder },
+      );
       return { success: true, totals: s.arousal.totals };
     }),
 

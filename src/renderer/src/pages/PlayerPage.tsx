@@ -1347,28 +1347,32 @@ export function PlayerPage({
       // 3. J / K 列表极速穿梭
       if (lower === "j") {
         event.preventDefault();
-        if (localVideos.length > 0) {
-          const nextIdx = (activeIdx + 1) % localVideos.length;
-          handlePlay(localVideos[nextIdx], nextIdx);
+        const vids = filteredVideos.length > 0 ? filteredVideos : localVideos;
+        if (vids.length > 0) {
+          const cur = selectedVideoIndex != null ? selectedVideoIndex : 0;
+          const nextIdx = (cur + 1) % vids.length;
+          handleLoadLocalVideo(vids[nextIdx], nextIdx);
           setHudEvent({
             id: String(Date.now()),
             icon: <FastForward className="w-4 h-4 text-sky-400" />,
             title: "下一个影片 (J)",
-            sub: localVideos[nextIdx].name.slice(0, 18),
+            sub: vids[nextIdx].name.slice(0, 18),
           });
         }
         return;
       }
       if (lower === "k") {
         event.preventDefault();
-        if (localVideos.length > 0) {
-          const prevIdx = (activeIdx - 1 + localVideos.length) % localVideos.length;
-          handlePlay(localVideos[prevIdx], prevIdx);
+        const vids = filteredVideos.length > 0 ? filteredVideos : localVideos;
+        if (vids.length > 0) {
+          const cur = selectedVideoIndex != null ? selectedVideoIndex : 0;
+          const prevIdx = (cur - 1 + vids.length) % vids.length;
+          handleLoadLocalVideo(vids[prevIdx], prevIdx);
           setHudEvent({
             id: String(Date.now()),
             icon: <Rewind className="w-4 h-4 text-sky-400" />,
             title: "上一个影片 (K)",
-            sub: localVideos[prevIdx].name.slice(0, 18),
+            sub: vids[prevIdx].name.slice(0, 18),
           });
         }
         return;
@@ -1503,10 +1507,12 @@ export function PlayerPage({
     isZeroLayout,
     zeroEdge,
     videoEl,
-    activeIdx,
+    selectedVideoIndex,
+    filteredVideos,
     localVideos,
     filterSettings,
     showHotkeyHelp,
+    handleLoadLocalVideo,
   ]);
 
   useEffect(() => {

@@ -15,6 +15,8 @@ import {
   Tag,
   Play,
   MoreHorizontal,
+  LayoutGrid,
+  Flame,
 } from "lucide-react";
 import type { VideoItem } from "../../pages/player/types";
 import { CoverImage } from "../CoverImage";
@@ -62,6 +64,45 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
 
   const previewSrc = video.previewUrl || video.url;
 
+  // B124: 极速片段九宫格透视与动态热力浮层
+  const [showMatrix, setShowMatrix] = useState(false);
+  const [scrubRatio, setScrubRatio] = useState<number | null>(null);
+  const coverRef = useRef<HTMLDivElement | null>(null);
+
+  const handleCoverPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!coverRef.current) return;
+    const rect = coverRef.current.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    setScrubRatio(ratio);
+    if (previewRef.current && previewRef.current.duration > 0) {
+      previewRef.current.currentTime = ratio * previewRef.current.duration;
+    }
+  };
+
+  const handleCoverPointerLeave = () => {
+    setScrubRatio(null);
+  };
+
+  const getEstimatedDurationSec = () => {
+    const raw = video.duration ? parseInt(video.duration.replace(/[^\d]/g, ""), 10) : 120;
+    return (Number.isFinite(raw) && raw > 0 ? raw : 120) * 60;
+  };
+
+  const formatScrubTime = (ratio: number) => {
+    const totalSec =
+      previewRef.current?.duration && previewRef.current.duration > 30
+        ? previewRef.current.duration
+        : getEstimatedDurationSec();
+    const currentSec = Math.floor(ratio * totalSec);
+    const h = Math.floor(currentSec / 3600);
+    const m = Math.floor((currentSec % 3600) / 60);
+    const s = currentSec % 60;
+    if (h > 0) {
+      return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+    }
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
+
   const handleEnter = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     // 延迟 220ms 挂载，避免列表快速划过时频繁解码
@@ -73,6 +114,8 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
   const handleLeave = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     setHovered(false);
+    setShowMatrix(false);
+    setScrubRatio(null);
     setIsPreviewPlaying(false);
     setPreviewProgress(0);
     if (previewRef.current) {
@@ -183,6 +226,9 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
     >
       {/* ===== 封面（承担主要视觉信息） ===== */}
       <div
+        ref={coverRef}
+        onPointerMove={handleCoverPointerMove}
+        onPointerLeave={handleCoverPointerLeave}
         className="relative aspect-video bg-slate-900 overflow-hidden cover-media cover-media-hover"
         style={{ transform: "translateZ(0)" }}
       >
@@ -206,7 +252,7 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
         )}
 
         {/* 微动视频播放状态条与徽标 */}
-        {isPreviewPlaying && (
+        {isPreviewPlaying && !scrubRatio && !showMatrix && (
           <>
             <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/60 z-20 overflow-hidden pointer-events-none">
               <div
@@ -221,6 +267,69 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
               </span>
             </div>
           </>
+        )}
+
+        {/* B124: 光标横向滑动极速透视与动态热力波形条 */}
+        {scrubRatio !== null && !showMatrix && (
+          <div className="absolute inset-x-0 bottom-0 z-30 pointer-events-none p-2 bg-gradient-to-t from-black/95 via-black/60 to-transparent animate-in fade-in duration-150">
+            {/* 动态热力微波形与进度条 */}
+            <div className="relative w-full h-1.5 bg-white/20 rounded-full overflow-hidden mb-1.5 backdrop-blur-xs">
+              {/* 高能黄金时段热力区 (60% ~ 85%) */}
+              <div className="absolute left-[58%] right-[15%] inset-y-0 bg-gradient-to-r from-amber-500/70 to-rose-500/90 rounded-full" />
+              {/* 实时定位光标条 */}
+              <div
+                className="absolute top-0 bottom-0 bg-gradient-to-r from-amber-400 to-amber-300 shadow-[0_0_8px_rgba(251,191,36,1)]"
+                style={{ width: `${(scrubRatio * 100).toFixed(1)}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[10px] font-mono text-white/95">
+              <span className="flex items-center gap-1 font-bold text-amber-300">
+                <Flame className="w-3 h-3 text-amber-400" />
+                <span>{formatScrubTime(scrubRatio)}</span>
+              </span>
+              <span className="text-white/75 font-semibold">
+                {(scrubRatio * 100).toFixed(0)}%
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* B124: 九宫格精彩时间切片矩阵 */}
+        {showMatrix && (
+          <div
+            className="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-md p-1.5 grid grid-cols-3 grid-rows-3 gap-1 animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].map((ratio, idx) => {
+              const timeLabel = formatScrubTime(ratio);
+              const isHighEnergy = ratio >= 0.6 && ratio <= 0.8;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setShowMatrix(false);
+                    onPlay(video, index);
+                  }}
+                  className={`relative rounded-md border flex flex-col items-center justify-center p-1 transition group/cell cursor-pointer ${
+                    isHighEnergy
+                      ? "bg-rose-500/15 border-rose-500/40 hover:bg-rose-500/30 hover:border-rose-400"
+                      : "bg-white/5 border-white/10 hover:bg-white/15 hover:border-white/25"
+                  }`}
+                >
+                  <span className="text-[9.5px] font-mono font-bold text-slate-200 group-hover/cell:text-amber-300 transition">
+                    {timeLabel}
+                  </span>
+                  <span className="text-[8px] font-mono text-slate-400 group-hover/cell:text-slate-300">
+                    {Math.round(ratio * 100)}%
+                  </span>
+                  {isHighEnergy && (
+                    <Flame className="absolute top-1 right-1 w-2.5 h-2.5 text-rose-400" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         )}
 
         {/* 顶部渐变 */}
@@ -249,6 +358,23 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {hovered && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowMatrix((prev) => !prev);
+                }}
+                title={showMatrix ? "收起九宫格透视" : "展开九宫格全片透视"}
+                className={`pointer-events-auto p-1 rounded backdrop-blur-md transition flex items-center justify-center cursor-pointer ${
+                  showMatrix
+                    ? "bg-amber-500 text-slate-950 font-bold shadow-md"
+                    : "bg-black/70 text-slate-300 hover:text-white hover:bg-black/90"
+                }`}
+              >
+                <LayoutGrid className="w-3 h-3" />
+              </button>
+            )}
             {typeof video.rating === "number" && video.rating > 0 && (
               <span className="inline-flex items-center gap-0.5 text-[11px] bg-amber-400/95 text-slate-900 px-1.5 py-0.5 rounded backdrop-blur-md font-extrabold shadow">
                 <Star className="w-2.5 h-2.5 fill-current" />

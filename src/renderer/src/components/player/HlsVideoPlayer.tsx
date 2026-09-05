@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import Hls from "hls.js";
 //@ts-ignore
 import Plyr from "plyr";
+import { Sun, Shield } from "lucide-react";
 import { PlayerHeatmap, recordUserSeekHeat } from "./PlayerHeatmap";
 
 interface Props {
@@ -14,6 +15,10 @@ interface Props {
   subtitleUrl?: string | null;
   bookmarks?: Array<{ currentTime: number; note?: string }>;
   filterStyle?: string;
+  /** 智能自适应黑场暗部补偿 (B125) */
+  autoShadowLift?: boolean;
+  /** 夜间防眩柔光保护 (B125) */
+  antiGlare?: boolean;
   onMeta?: (info: { width: number; height: number }) => void;
   /** 透传到 <video> 上的事件，外层挂播放/暂停统计 */
   onVideoEl?: (el: HTMLVideoElement) => void;
@@ -54,6 +59,8 @@ export const HlsVideoPlayer: React.FC<Props> = ({
   subtitleUrl,
   bookmarks = [],
   filterStyle = "none",
+  autoShadowLift = true,
+  antiGlare = true,
   onMeta,
   onVideoEl,
   onLog,
@@ -67,13 +74,72 @@ export const HlsVideoPlayer: React.FC<Props> = ({
   const [videoDuration, setVideoDuration] = useState<number>(0);
   const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
 
-  // 响应式应用画质滤镜
+  // APL 自适应黑场补偿与防眩目状态 (B125)
+  const [aplComfort, setAplComfort] = useState<{
+    mode: "shadow" | "glare" | "normal";
+    boost: number;
+  }>({ mode: "normal", boost: 1 });
+
+  // 定期采样画面平均亮度 (APL)
+  useEffect(() => {
+    if (!autoShadowLift && !antiGlare) {
+      setAplComfort({ mode: "normal", boost: 1 });
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = 16;
+    canvas.height = 16;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return;
+
+    let prevApl = 0.5;
+    const timer = setInterval(() => {
+      const video = containerRef.current?.querySelector("video");
+      if (!video || video.paused || video.ended || video.readyState < 2) return;
+      try {
+        ctx.drawImage(video, 0, 0, 16, 16);
+        const imgData = ctx.getImageData(0, 0, 16, 16);
+        const d = imgData.data;
+        let sum = 0;
+        for (let i = 0; i < d.length; i += 4) {
+          sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+        }
+        const currentApl = sum / (256 * 255);
+
+        // 1. 防眩目：从极暗突然切到高亮刺眼场景
+        if (antiGlare && currentApl > 0.72 && prevApl < 0.35) {
+          setAplComfort({ mode: "glare", boost: 0.86 });
+        }
+        // 2. 黑场暗部补偿：微光极暗场景智能提亮阴影
+        else if (autoShadowLift && currentApl < 0.18) {
+          const factor = Math.max(1.12, Math.min(1.26, 1 + (0.18 - currentApl) * 1.2));
+          setAplComfort({ mode: "shadow", boost: factor });
+        } else {
+          setAplComfort({ mode: "normal", boost: 1 });
+        }
+        prevApl = currentApl;
+      } catch {
+        /* ignore sampling errors */
+      }
+    }, 450);
+
+    return () => clearInterval(timer);
+  }, [autoShadowLift, antiGlare]);
+
+  // 响应式应用画质滤镜与自适应舒适度
   useEffect(() => {
     const video = containerRef.current?.querySelector("video");
     if (video) {
-      video.style.filter = filterStyle || "none";
+      let f = filterStyle && filterStyle !== "none" ? filterStyle : "";
+      if (aplComfort.mode === "shadow" && aplComfort.boost > 1) {
+        f = `${f} brightness(${aplComfort.boost.toFixed(2)}) contrast(1.04)`.trim();
+      } else if (aplComfort.mode === "glare" && aplComfort.boost < 1) {
+        f = `${f} brightness(0.88) contrast(0.96)`.trim();
+      }
+      video.style.transition = "filter 0.4s ease";
+      video.style.filter = f || "none";
     }
-  }, [filterStyle]);
+  }, [filterStyle, aplComfort]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -353,9 +419,10 @@ export const HlsVideoPlayer: React.FC<Props> = ({
 
   return (
     <div ref={containerRef} className="w-full h-full flex bg-black relative group/plyr">
-      {/* 隐藏的 CAS 超清卷积锐化 SVG 滤镜定义 */}
+      {/* 隐藏的 CAS 超清卷积锐化、Anime4K 微超分、动态 HDR SVG 滤镜定义 */}
       <svg className="hidden absolute" width="0" height="0" aria-hidden="true">
         <defs>
+          {/* 1. CAS 超清锐化 */}
           <filter id="avplay-cas-sharpen" x="0%" y="0%" width="100%" height="100%">
             <feConvolveMatrix
               order="3"
@@ -363,8 +430,43 @@ export const HlsVideoPlayer: React.FC<Props> = ({
               kernelMatrix="0 -1 0 -1 5 -1 0 -1 0"
             />
           </filter>
+          {/* 2. Anime4K 极清超分：发丝级微轮廓重建 */}
+          <filter id="avplay-anime4k-sr" x="0%" y="0%" width="100%" height="100%">
+            <feConvolveMatrix
+              order="3"
+              preserveAlpha="true"
+              kernelMatrix="-0.25 -0.5 -0.25 -0.5 4.0 -0.5 -0.25 -0.5 -0.25"
+            />
+          </filter>
+          {/* 3. 动态 HDR 映射：色调曲线与宽容度扩展 */}
+          <filter id="avplay-dynamic-hdr" x="0%" y="0%" width="100%" height="100%">
+            <feComponentTransfer>
+              <feFuncR type="gamma" amplitude="1.08" exponent="0.92" offset="0.02" />
+              <feFuncG type="gamma" amplitude="1.08" exponent="0.92" offset="0.02" />
+              <feFuncB type="gamma" amplitude="1.08" exponent="0.92" offset="0.02" />
+            </feComponentTransfer>
+            <feColorMatrix
+              type="matrix"
+              values="1.06 0 0 0 0  0 1.06 0 0 0  0 0 1.06 0 0  0 0 0 1 0"
+            />
+          </filter>
         </defs>
       </svg>
+
+      {/* APL 舒适度状态指示胶囊 */}
+      {aplComfort.mode === "shadow" && (
+        <div className="absolute top-4 right-4 z-20 pointer-events-none px-2.5 py-1 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[11px] font-medium backdrop-blur-md flex items-center gap-1.5 shadow-lg animate-in fade-in duration-300">
+          <Sun className="w-3.5 h-3.5 text-amber-400" />
+          <span>黑场提亮 +{Math.round((aplComfort.boost - 1) * 100)}%</span>
+        </div>
+      )}
+      {aplComfort.mode === "glare" && (
+        <div className="absolute top-4 right-4 z-20 pointer-events-none px-2.5 py-1 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300 text-[11px] font-medium backdrop-blur-md flex items-center gap-1.5 shadow-lg animate-in fade-in duration-300">
+          <Shield className="w-3.5 h-3.5 text-blue-400" />
+          <span>柔光防眩目</span>
+        </div>
+      )}
+
       {progressEl && videoDuration > 0 && createPortal(
         <PlayerHeatmap
           videoKey={url}

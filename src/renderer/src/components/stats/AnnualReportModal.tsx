@@ -28,6 +28,7 @@ import {
 import { trpc } from "../../lib/trpc";
 import { Tooltip } from "../common/Tooltip";
 import { Button, IconButton } from "../common/Button";
+import { HolographicCardModal } from "./HolographicCardModal";
 
 export interface AnnualReportModalProps {
   stats: any;
@@ -48,6 +49,7 @@ export function AnnualReportModal({
   const [syncingCloud, setSyncingCloud] = useState(false);
   const [cloudSynced, setCloudSynced] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showHolographic, setShowHolographic] = useState(false);
 
   // 1. 数据统计推算
   const totalWatchSec = stats?.totals?.watchSec || 0;
@@ -592,6 +594,15 @@ export function AnnualReportModal({
             >
               {copied ? "已复制战力卡片" : "复制战力总结"}
             </Button>
+
+            <Button
+              variant="accent"
+              size="md"
+              icon={<Sparkles className="w-3.5 h-3.5" />}
+              onClick={() => setShowHolographic(true)}
+            >
+              4K 全息战力卡
+            </Button>
           </div>
 
           <Button
@@ -603,6 +614,18 @@ export function AnnualReportModal({
           </Button>
         </div>
       </div>
+
+      {showHolographic && (
+        <HolographicCardModal
+          stats={stats}
+          rankings={rankings}
+          rankTitle={rank.title}
+          rankScore={combatScore}
+          peakHour={peakHour}
+          onClose={() => setShowHolographic(false)}
+          onAddSystemLog={onAddSystemLog}
+        />
+      )}
     </div>
   );
 }

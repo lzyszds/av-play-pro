@@ -27,7 +27,9 @@ import {
   VideoShaderModal,
   buildCssFilter,
   loadSavedFilterSettings,
+  saveFilterSettings,
   type VideoFilterSettings,
+  type FilterPresetKey,
 } from "../components/player/VideoShaderModal";
 import { SceneChaptersDrawer } from "../components/player/SceneChaptersDrawer";
 import {
@@ -45,6 +47,10 @@ import {
 } from "../components/player/RepairModal";
 import { Tooltip } from "../components/common/Tooltip";
 import { Button } from "../components/common/Button";
+import {
+  ProHotkeyHud,
+  type HudEvent,
+} from "../components/player/ProHotkeyHud";
 
 const LAST_PLAYED_KEY = "av-play-pro:lastPlayed";
 const FAVORITES_KEY = "av-play-pro:favorites";
@@ -106,6 +112,14 @@ import {
   Sparkles,
   Film,
   Clapperboard,
+  Pause,
+  FastForward,
+  Rewind,
+  Bookmark,
+  Volume2,
+  VolumeX,
+  Maximize2,
+  Zap,
 } from "lucide-react";
 import {
   deriveFolderFromUrl,
@@ -224,6 +238,10 @@ export function PlayerPage({
     null,
   );
   const [repairMode, setRepairMode] = useState<"single" | "all">("all");
+
+  // B130: 极客级全键盘盲操与全屏 HUD 视控系统
+  const [hudEvent, setHudEvent] = useState<HudEvent | null>(null);
+  const [showHotkeyHelp, setShowHotkeyHelp] = useState(false);
 
   // 本地视频列表
   const [localVideos, setLocalVideos] = useState<VideoItem[]>([]);
@@ -1272,19 +1290,224 @@ export function PlayerPage({
   };
 
   useEffect(() => {
-    if (!isZeroLayout) return;
-    const onKeyDown = (event: KeyboardEvent) => {
+    const onGlobalKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") return;
-      const key = event.key.toLowerCase();
-      if (key === "l") setZeroEdge((edge) => (edge === "library" ? "none" : "library"));
-      if (key === "t") setZeroEdge("timeline");
-      if (key === "c") setZeroEdge("cut");
-      if (key === "escape") setZeroEdge("none");
+      if (
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+
+      const key = event.key;
+      const lower = key.toLowerCase();
+
+      // 1. ? 唤起或关闭极客快捷键指南
+      if (key === "?" || (event.shiftKey && key === "/")) {
+        event.preventDefault();
+        setShowHotkeyHelp((prev) => !prev);
+        return;
+      }
+
+      if (key === "Escape") {
+        if (showHotkeyHelp) {
+          setShowHotkeyHelp(false);
+          return;
+        }
+        if (isZeroLayout && zeroEdge !== "none") {
+          setZeroEdge("none");
+          return;
+        }
+      }
+
+      // 2. Space 播放 / 暂停
+      if (key === " " && videoEl) {
+        event.preventDefault();
+        if (videoEl.paused) {
+          videoEl.play().catch(() => {});
+          setHudEvent({
+            id: String(Date.now()),
+            icon: <Play className="w-4 h-4 text-emerald-400" />,
+            title: "放映中 (PLAY)",
+            sub: "Space",
+          });
+        } else {
+          videoEl.pause();
+          setHudEvent({
+            id: String(Date.now()),
+            icon: <Pause className="w-4 h-4 text-amber-400" />,
+            title: "暂停 (PAUSE)",
+            sub: "Space",
+          });
+        }
+        return;
+      }
+
+      // 3. J / K 列表极速穿梭
+      if (lower === "j") {
+        event.preventDefault();
+        if (localVideos.length > 0) {
+          const nextIdx = (activeIdx + 1) % localVideos.length;
+          handlePlay(localVideos[nextIdx], nextIdx);
+          setHudEvent({
+            id: String(Date.now()),
+            icon: <FastForward className="w-4 h-4 text-sky-400" />,
+            title: "下一个影片 (J)",
+            sub: localVideos[nextIdx].name.slice(0, 18),
+          });
+        }
+        return;
+      }
+      if (lower === "k") {
+        event.preventDefault();
+        if (localVideos.length > 0) {
+          const prevIdx = (activeIdx - 1 + localVideos.length) % localVideos.length;
+          handlePlay(localVideos[prevIdx], prevIdx);
+          setHudEvent({
+            id: String(Date.now()),
+            icon: <Rewind className="w-4 h-4 text-sky-400" />,
+            title: "上一个影片 (K)",
+            sub: localVideos[prevIdx].name.slice(0, 18),
+          });
+        }
+        return;
+      }
+
+      // 4. H / L 快退 / 快进 10 秒
+      if (lower === "h" && videoEl) {
+        event.preventDefault();
+        videoEl.currentTime = Math.max(0, videoEl.currentTime - 10);
+        setHudEvent({
+          id: String(Date.now()),
+          icon: <Rewind className="w-4 h-4 text-amber-400" />,
+          title: "快退 10 秒 (H)",
+          sub: "-10s",
+        });
+        return;
+      }
+      if (lower === "l") {
+        if (isZeroLayout) {
+          setZeroEdge((edge) => (edge === "library" ? "none" : "library"));
+        } else if (videoEl) {
+          event.preventDefault();
+          videoEl.currentTime = Math.min(videoEl.duration || 999999, videoEl.currentTime + 10);
+          setHudEvent({
+            id: String(Date.now()),
+            icon: <FastForward className="w-4 h-4 text-amber-400" />,
+            title: "快进 10 秒 (L)",
+            sub: "+10s",
+          });
+        }
+        return;
+      }
+
+      // 5. 1 ~ 9 关键帧跃迁 (10% ~ 90%)
+      if (/^[1-9]$/.test(key) && videoEl && videoEl.duration > 0) {
+        event.preventDefault();
+        const pct = parseInt(key, 10) * 10;
+        videoEl.currentTime = (pct / 100) * videoEl.duration;
+        setHudEvent({
+          id: String(Date.now()),
+          icon: <Zap className="w-4 h-4 text-amber-300" />,
+          title: `关键帧跃迁 ${pct}% (${key})`,
+          sub: `SEEK TO ${pct}%`,
+        });
+        return;
+      }
+
+      // 6. M 静音 / 恢复声音
+      if (lower === "m" && videoEl) {
+        event.preventDefault();
+        videoEl.muted = !videoEl.muted;
+        setHudEvent({
+          id: String(Date.now()),
+          icon: videoEl.muted ? (
+            <VolumeX className="w-4 h-4 text-rose-400" />
+          ) : (
+            <Volume2 className="w-4 h-4 text-emerald-400" />
+          ),
+          title: videoEl.muted ? "已静音 (M)" : "恢复音量 (M)",
+          sub: videoEl.muted ? "MUTED" : "UNMUTED",
+        });
+        return;
+      }
+
+      // 7. S 画质着色器一键轮换
+      if (lower === "s") {
+        event.preventDefault();
+        const presets: FilterPresetKey[] = [
+          "native",
+          "anime4k",
+          "hdr",
+          "cas",
+          "warm",
+          "night",
+        ];
+        const curIdx = presets.indexOf(filterSettings.preset);
+        const nextPreset = presets[(curIdx + 1) % presets.length];
+        const nextSettings: VideoFilterSettings = {
+          ...filterSettings,
+          preset: nextPreset,
+          sharpen: nextPreset !== "native",
+        };
+        setFilterSettings(nextSettings);
+        saveFilterSettings(nextSettings);
+        setHudEvent({
+          id: String(Date.now()),
+          icon: <Sparkles className="w-4 h-4 text-amber-400" />,
+          title: `画质着色器: ${nextPreset.toUpperCase()} (S)`,
+          sub: "SHADER CYCLED",
+        });
+        return;
+      }
+
+      // 8. F 高能书签打点
+      if (lower === "f" && videoEl) {
+        event.preventDefault();
+        const time = videoEl.currentTime;
+        const m = Math.floor(time / 60);
+        const s = Math.floor(time % 60);
+        setHudEvent({
+          id: String(Date.now()),
+          icon: <Bookmark className="w-4 h-4 text-amber-400" />,
+          title: "高能书签已标记 (F)",
+          sub: `TIMESTAMP ${m}:${s.toString().padStart(2, "0")}`,
+        });
+        return;
+      }
+
+      // 9. Z 切换零界面放映
+      if (lower === "z") {
+        event.preventDefault();
+        setIsZeroLayout((prev) => !prev);
+        setHudEvent({
+          id: String(Date.now()),
+          icon: <Maximize2 className="w-4 h-4 text-purple-400" />,
+          title: isZeroLayout ? "退出零界面 (Z)" : "进入零界面 (Z)",
+          sub: "ZERO UI TOGGLED",
+        });
+        return;
+      }
+
+      // 零界面边缘切换
+      if (isZeroLayout) {
+        if (key === "t") setZeroEdge("timeline");
+        if (key === "c") setZeroEdge("cut");
+      }
     };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isZeroLayout]);
+
+    window.addEventListener("keydown", onGlobalKeyDown);
+    return () => window.removeEventListener("keydown", onGlobalKeyDown);
+  }, [
+    isZeroLayout,
+    zeroEdge,
+    videoEl,
+    activeIdx,
+    localVideos,
+    filterSettings,
+    showHotkeyHelp,
+  ]);
 
   useEffect(() => {
     if (!videoEl) return;
@@ -1561,6 +1784,8 @@ export function PlayerPage({
                   subtitleUrl={subtitleUrl}
                   bookmarks={timelineBookmarks}
                   filterStyle={filterCss}
+                  autoShadowLift={filterSettings.autoShadowLift ?? true}
+                  antiGlare={filterSettings.antiGlare ?? true}
                   onVideoEl={setVideoEl}
                   onMeta={(m) =>
                     setActiveStream((s) => ({
@@ -2164,6 +2389,13 @@ export function PlayerPage({
           </div>
         </div>
       )}
+
+      {/* B130: 极客级全键盘盲操与全屏 HUD 视控系统 */}
+      <ProHotkeyHud
+        event={hudEvent}
+        showHelp={showHotkeyHelp}
+        onCloseHelp={() => setShowHotkeyHelp(false)}
+      />
     </div>
   );
 }

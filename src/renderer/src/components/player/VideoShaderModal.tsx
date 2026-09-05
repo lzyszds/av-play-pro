@@ -14,6 +14,8 @@ import { Tooltip } from "../common/Tooltip";
 
 export type FilterPresetKey =
   | "native"
+  | "anime4k"
+  | "hdr"
   | "cas"
   | "warm"
   | "night"
@@ -25,7 +27,10 @@ export interface VideoFilterSettings {
   brightness: number; // 70 ~ 150, default 100
   contrast: number; // 70 ~ 150, default 100
   saturation: number; // 50 ~ 180, default 100
-  sharpen: boolean; // 是否叠加 CAS 卷积锐化
+  sharpen: boolean; // 是否叠加锐化卷积核
+  autoShadowLift?: boolean; // 智能黑场暗部补偿 (B125)
+  antiGlare?: boolean; // 夜间防眩柔光保护 (B125)
+  superResStrength?: number; // Anime4K 超分辨率锐化强度 (1~3)
 }
 
 export const DEFAULT_FILTER_SETTINGS: VideoFilterSettings = {
@@ -34,6 +39,9 @@ export const DEFAULT_FILTER_SETTINGS: VideoFilterSettings = {
   contrast: 100,
   saturation: 100,
   sharpen: false,
+  autoShadowLift: true,
+  antiGlare: true,
+  superResStrength: 2,
 };
 
 const PRESET_CONFIGS: Record<
@@ -46,6 +54,7 @@ const PRESET_CONFIGS: Record<
     contrast: number;
     saturation: number;
     sharpen: boolean;
+    shaderId?: string;
     extraCss?: string;
   }
 > = {
@@ -58,6 +67,26 @@ const PRESET_CONFIGS: Record<
     saturation: 100,
     sharpen: false,
   },
+  anime4k: {
+    name: "Anime4K 极清超分",
+    desc: "发丝级边缘重建与微超分，极度适合 720p/1080p 提质",
+    badge: "超分",
+    brightness: 102,
+    contrast: 112,
+    saturation: 108,
+    sharpen: true,
+    shaderId: "avplay-anime4k-sr",
+  },
+  hdr: {
+    name: "动态 HDR 映射",
+    desc: "拓展高光与暗部动态宽容度，高反差电影级色彩",
+    badge: "D-HDR",
+    brightness: 106,
+    contrast: 122,
+    saturation: 115,
+    sharpen: true,
+    shaderId: "avplay-dynamic-hdr",
+  },
   cas: {
     name: "CAS 超清锐化",
     desc: "强化轮廓发丝边缘，模拟 2K/4K 晶体级解析度",
@@ -66,6 +95,7 @@ const PRESET_CONFIGS: Record<
     contrast: 114,
     saturation: 108,
     sharpen: true,
+    shaderId: "avplay-cas-sharpen",
   },
   warm: {
     name: "温暖电影胶片",
@@ -80,11 +110,12 @@ const PRESET_CONFIGS: Record<
   night: {
     name: "夜景暗部增强",
     desc: "智能提亮暗部阴影与微光场景，夜晚车内轮廓尽显",
-    badge: "HDR",
+    badge: "夜景",
     brightness: 118,
     contrast: 118,
     saturation: 110,
     sharpen: true,
+    shaderId: "avplay-cas-sharpen",
   },
   vivid: {
     name: "赛博高饱和",
@@ -103,6 +134,7 @@ const PRESET_CONFIGS: Record<
     contrast: 108,
     saturation: 106,
     sharpen: true,
+    shaderId: "avplay-cas-sharpen",
     extraCss: "hue-rotate(8deg)",
   },
 };
@@ -150,14 +182,14 @@ export function buildCssFilter(settings: VideoFilterSettings): string {
     parts.push(`saturate(${settings.saturation / 100})`);
   }
 
-  const presetExtra = PRESET_CONFIGS[settings.preset]?.extraCss;
-  if (presetExtra) {
-    parts.push(presetExtra);
+  const presetConfig = PRESET_CONFIGS[settings.preset];
+  if (presetConfig?.extraCss) {
+    parts.push(presetConfig.extraCss);
   }
 
   if (settings.sharpen) {
-    // 叠加 SVG 卷积锐化滤镜
-    parts.push("url(#avplay-cas-sharpen)");
+    const shaderId = presetConfig?.shaderId || "avplay-cas-sharpen";
+    parts.push(`url(#${shaderId})`);
   }
 
   return parts.length > 0 ? parts.join(" ") : "none";
@@ -418,6 +450,101 @@ export const VideoShaderModal: React.FC<Props> = ({
                 }
                 className="w-full accent-amber-500 cursor-pointer"
               />
+            </div>
+          </div>
+
+          {/* 智能环境舒适度与自适应调光 (B125) */}
+          <div className="p-4 bg-slate-50/80 dark:bg-slate-800/30 border border-slate-200/80 dark:border-slate-800 rounded-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                智能自适应舒适度 (True-Black & Anti-Glare)
+              </span>
+              <span className="text-[10px] font-mono bg-slate-200/60 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded">
+                APL 毫秒采样
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              {/* 暗部补偿 */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = {
+                    ...localSettings,
+                    autoShadowLift: !localSettings.autoShadowLift,
+                  };
+                  setLocalSettings(next);
+                  onChange(next);
+                  saveFilterSettings(next);
+                }}
+                className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex items-start gap-2.5 ${
+                  localSettings.autoShadowLift
+                    ? "bg-amber-500/10 border-amber-500/40 text-slate-800 dark:text-slate-100"
+                    : "bg-white dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-400"
+                }`}
+              >
+                <div
+                  className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${
+                    localSettings.autoShadowLift
+                      ? "bg-amber-500 text-white"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-400"
+                  }`}
+                >
+                  <Sun className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold flex items-center gap-1.5">
+                    <span>黑场暗部细节补偿</span>
+                    {localSettings.autoShadowLift && (
+                      <Check className="w-3 h-3 text-amber-500" />
+                    )}
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                    极暗场景自动抬升 Gamma 曲线，车内与微光细节毕现
+                  </div>
+                </div>
+              </button>
+
+              {/* 防眩目柔光 */}
+              <button
+                type="button"
+                onClick={() => {
+                  const next = {
+                    ...localSettings,
+                    antiGlare: !localSettings.antiGlare,
+                  };
+                  setLocalSettings(next);
+                  onChange(next);
+                  saveFilterSettings(next);
+                }}
+                className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex items-start gap-2.5 ${
+                  localSettings.antiGlare
+                    ? "bg-amber-500/10 border-amber-500/40 text-slate-800 dark:text-slate-100"
+                    : "bg-white dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-400"
+                }`}
+              >
+                <div
+                  className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${
+                    localSettings.antiGlare
+                      ? "bg-amber-500 text-white"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-400"
+                  }`}
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold flex items-center gap-1.5">
+                    <span>夜间防眩柔光保护</span>
+                    {localSettings.antiGlare && (
+                      <Check className="w-3 h-3 text-amber-500" />
+                    )}
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5 leading-relaxed">
+                    暗场骤切高亮白光时微秒级抑制强光，护眼不刺痛
+                  </div>
+                </div>
+              </button>
             </div>
           </div>
         </div>

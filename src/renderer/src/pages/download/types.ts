@@ -62,6 +62,8 @@ export type LoaderStyle =
   | "pulse"
   | "scan";
 
+export type PlayerLayout = "classic" | "zero" | "island" | "runway" | "focus";
+
 export interface AppSettings {
   video_path: string;
   temp_path: string;
@@ -109,6 +111,8 @@ export interface AppSettings {
   cloudSyncAutoSync?: boolean;
   /** 播放视频时是否自动开启私密计时 */
   autoArousalOnPlay?: boolean;
+  /** 播放页与片库列表的组合布局 */
+  playerLayout?: PlayerLayout;
 }
 
 export interface DownloadPageProps {

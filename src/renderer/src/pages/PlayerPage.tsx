@@ -30,8 +30,13 @@ import {
   type VideoFilterSettings,
 } from "../components/player/VideoShaderModal";
 import { SceneChaptersDrawer } from "../components/player/SceneChaptersDrawer";
+import {
+  DirectorCutDrawer,
+  type DirectorCutClip,
+} from "../components/player/DirectorCutDrawer";
 import { WhisperPanel } from "../components/whisper/WhisperPanel";
 import type { PlayerPageProps, VideoItem } from "./player/types";
+import type { PlayerLayout } from "./download/types";
 import { PageLoader } from "../components/PageLoader";
 import { ResumePrompt } from "../components/player/ResumePrompt";
 import {
@@ -44,6 +49,7 @@ const LAST_PLAYED_KEY = "av-play-pro:lastPlayed";
 const FAVORITES_KEY = "av-play-pro:favorites";
 const FILTER_COLLAPSED_KEY = "av-play-pro:filterCollapsed";
 const HLS_EXPANDED_KEY = "av-play-pro:hlsExpanded";
+const AMBIENT_LIGHT_KEY = "av-play-pro:ambientLight";
 
 function loadFavorites(): Set<string> {
   try {
@@ -98,6 +104,7 @@ import {
   XCircle,
   Sparkles,
   Film,
+  Clapperboard,
 } from "lucide-react";
 import {
   deriveFolderFromUrl,
@@ -115,16 +122,65 @@ function toSubtitleMediaUrl(srtPath: string): string {
   return `${pathToLocalMediaUrl(srtPath)}?t=${Date.now()}`;
 }
 
+function fallbackAmbientColor(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  }
+  return `hsl(${Math.abs(hash) % 360} 52% 38%)`;
+}
+
+function sampleVideoAmbientColor(video: HTMLVideoElement): string | null {
+  if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) return null;
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 24;
+    canvas.height = 14;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return null;
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    let red = 0;
+    let green = 0;
+    let blue = 0;
+    let count = 0;
+    for (let i = 0; i < pixels.length; i += 4) {
+      const brightness = pixels[i] + pixels[i + 1] + pixels[i + 2];
+      if (brightness < 24 || brightness > 720) continue;
+      red += pixels[i];
+      green += pixels[i + 1];
+      blue += pixels[i + 2];
+      count += 1;
+    }
+    if (!count) return null;
+    return `rgb(${Math.round(red / count)} ${Math.round(green / count)} ${Math.round(blue / count)})`;
+  } catch {
+    // 部分远端流禁止 Canvas 取样；由封面/稳定色回退保证效果可用。
+    return null;
+  }
+}
+
 export function PlayerPage({
   videoPath,
+  layout = "classic",
   onAddSystemLog,
   pendingPlayName,
   onConsumePendingPlay,
   onActiveVideoChange,
   onOpenActor,
 }: PlayerPageProps) {
+  const isClassicLayout = layout === "classic";
+  const isZeroLayout = layout === "zero";
   // 当前激活的 <video> 元素（由 HlsVideoPlayer 通过 onVideoEl 回调暴露给统计逻辑）
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+  const [ambientEnabled, setAmbientEnabled] = useState(() => {
+    try {
+      return localStorage.getItem(AMBIENT_LIGHT_KEY) !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const [ambientColor, setAmbientColor] = useState("hsl(265 52% 38%)");
   // 当前缩略图 VTT 路径（异步解析后再传给播放器）
   const [previewVttUrl, setPreviewVttUrl] = useState<string | null>(null);
   // 当前字幕 URL（whisper 生成的 video.srt 自动加载）
@@ -531,6 +587,13 @@ export function PlayerPage({
   const handledSubtitleJobIdsRef = useRef<Set<string>>(new Set());
   const [timelineBookmarks, setTimelineBookmarks] = useState<TimelineBookmark[]>([]);
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const [directorCutOpen, setDirectorCutOpen] = useState(false);
+  const [zeroEdge, setZeroEdge] = useState<
+    "none" | "continue" | "library" | "timeline" | "cut"
+  >("none");
+  const [directorCutClips, setDirectorCutClips] = useState<DirectorCutClip[]>([]);
+  const [directorCutPlayingIndex, setDirectorCutPlayingIndex] = useState<number | null>(null);
+  const pendingDirectorCutSeekRef = useRef<number | null>(null);
 
   const recordPlayStats = useCallback((folder: string, url: string) => {
     if (!folder || !url || statsPlayedUrlRef.current === url) return;
@@ -585,6 +648,36 @@ export function PlayerPage({
   }, [activeStream.url, userInitiated]);
 
   useEffect(() => {
+    setAmbientColor(fallbackAmbientColor(activeStream.url || activeStream.name));
+    if (!ambientEnabled || !videoEl) return;
+    let cancelled = false;
+    const updateAmbient = () => {
+      const color = sampleVideoAmbientColor(videoEl);
+      if (!cancelled && color) setAmbientColor(color);
+    };
+    updateAmbient();
+    videoEl.addEventListener("loadeddata", updateAmbient);
+    const interval = window.setInterval(updateAmbient, 5000);
+    return () => {
+      cancelled = true;
+      videoEl.removeEventListener("loadeddata", updateAmbient);
+      window.clearInterval(interval);
+    };
+  }, [activeStream.name, activeStream.url, ambientEnabled, videoEl]);
+
+  const toggleAmbientLight = () => {
+    setAmbientEnabled((enabled) => {
+      const next = !enabled;
+      try {
+        localStorage.setItem(AMBIENT_LIGHT_KEY, String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
     if (!videoEl || !activeStream.url) return;
     const folder = activeStream.name;
     const series = inferSeriesName(folder);
@@ -635,6 +728,32 @@ export function PlayerPage({
     void loadTimelineBookmarks();
   }, [loadTimelineBookmarks]);
 
+  const loadDirectorCut = useCallback(async () => {
+    try {
+      const clips = await trpc.library.directorCut.query();
+      setDirectorCutClips(clips as DirectorCutClip[]);
+    } catch {
+      setDirectorCutClips([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDirectorCut();
+  }, [loadDirectorCut]);
+
+  const saveDirectorCut = useCallback(
+    async (clips: DirectorCutClip[]) => {
+      setDirectorCutClips(clips);
+      try {
+        await trpc.library.saveDirectorCut.mutate({ clips });
+      } catch (err: any) {
+        onAddSystemLog(`导演剪辑台保存失败: ${err?.message || err}`, "ERROR");
+        void loadDirectorCut();
+      }
+    },
+    [loadDirectorCut, onAddSystemLog],
+  );
+
   const seekToTimelineBookmark = useCallback(
     (bookmark: TimelineBookmark) => {
       if (activeStream.url === bookmark.videoUrl && videoEl) {
@@ -663,6 +782,38 @@ export function PlayerPage({
     [activeStream.url, videoEl, filteredVideos, recordPlayStats],
   );
 
+  const playDirectorCutClip = useCallback(
+    (index: number) => {
+      const clip = directorCutClips[index];
+      if (!clip) return;
+      setDirectorCutPlayingIndex(index);
+      if (activeStream.url === clip.videoUrl && videoEl) {
+        videoEl.currentTime = clip.currentTime;
+        void videoEl.play().catch(() => {});
+        return;
+      }
+      const video = localVideos.find(
+        (item) => item.url === clip.videoUrl || item.name === clip.videoName,
+      );
+      if (!video) {
+        onAddSystemLog(`剪辑片段无法定位视频: ${clip.videoName}`, "WARNING");
+        setDirectorCutPlayingIndex(null);
+        return;
+      }
+      pendingDirectorCutSeekRef.current = clip.currentTime;
+      setUserInitiated(true);
+      recordPlayStats(video.name, video.url);
+      setActiveStream({
+        name: video.name,
+        url: video.url,
+        resolution: video.resolution,
+        encryptionType: video.encryptionType || "检测中",
+        referer: "",
+      });
+    },
+    [activeStream.url, directorCutClips, localVideos, onAddSystemLog, recordPlayStats, videoEl],
+  );
+
   useEffect(() => {
     if (!videoEl || pendingTimelineSeekRef.current == null) return;
     const target = pendingTimelineSeekRef.current;
@@ -675,6 +826,41 @@ export function PlayerPage({
     else videoEl.addEventListener("loadedmetadata", jump, { once: true });
     return () => videoEl.removeEventListener("loadedmetadata", jump);
   }, [videoEl, activeStream.url]);
+
+  useEffect(() => {
+    if (!videoEl || pendingDirectorCutSeekRef.current == null) return;
+    const target = pendingDirectorCutSeekRef.current;
+    const jump = () => {
+      videoEl.currentTime = target;
+      pendingDirectorCutSeekRef.current = null;
+      void videoEl.play().catch(() => {});
+    };
+    if (videoEl.readyState >= 1) jump();
+    else videoEl.addEventListener("loadedmetadata", jump, { once: true });
+    return () => videoEl.removeEventListener("loadedmetadata", jump);
+  }, [videoEl, activeStream.url]);
+
+  useEffect(() => {
+    if (directorCutPlayingIndex == null || !videoEl) return;
+    const clip = directorCutClips[directorCutPlayingIndex];
+    if (!clip || clip.videoUrl !== activeStream.url) return;
+    const endAt = clip.currentTime + (clip.clipDuration || 20);
+    let advanced = false;
+    const advance = () => {
+      if (advanced) return;
+      if (!videoEl.ended && videoEl.currentTime < endAt) return;
+      advanced = true;
+      const next = directorCutPlayingIndex + 1;
+      if (next < directorCutClips.length) playDirectorCutClip(next);
+      else setDirectorCutPlayingIndex(null);
+    };
+    videoEl.addEventListener("timeupdate", advance);
+    videoEl.addEventListener("ended", advance);
+    return () => {
+      videoEl.removeEventListener("timeupdate", advance);
+      videoEl.removeEventListener("ended", advance);
+    };
+  }, [activeStream.url, directorCutClips, directorCutPlayingIndex, playDirectorCutClip, videoEl]);
 
   const handleResume = useCallback(() => {
     if (!resumePrompt) return;
@@ -980,6 +1166,73 @@ export function PlayerPage({
     }
   };
 
+  const addBookmarkToDirectorCut = (bookmark: TimelineBookmark) => {
+    if (directorCutClips.some((clip) => clip.id === bookmark.id)) {
+      onAddSystemLog("该书签已在导演剪辑轨道中", "WARNING");
+      return;
+    }
+    const next: DirectorCutClip[] = [
+      ...directorCutClips,
+      { ...bookmark, clipDuration: 20 },
+    ];
+    void saveDirectorCut(next);
+    setDirectorCutOpen(true);
+    onAddSystemLog(`已加入导演剪辑: ${bookmark.videoName}`, "SUCCESS");
+  };
+
+  const moveDirectorCutClip = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= directorCutClips.length) return;
+    const next = [...directorCutClips];
+    [next[index], next[target]] = [next[target], next[index]];
+    void saveDirectorCut(next);
+    if (directorCutPlayingIndex === index) setDirectorCutPlayingIndex(target);
+    else if (directorCutPlayingIndex === target) setDirectorCutPlayingIndex(index);
+  };
+
+  const removeDirectorCutClip = (index: number) => {
+    const next = directorCutClips.filter((_, clipIndex) => clipIndex !== index);
+    void saveDirectorCut(next);
+    if (directorCutPlayingIndex === index) setDirectorCutPlayingIndex(null);
+    else if (directorCutPlayingIndex != null && directorCutPlayingIndex > index)
+      setDirectorCutPlayingIndex(directorCutPlayingIndex - 1);
+  };
+
+  const coverByVideoUrl = useMemo(
+    () =>
+      Object.fromEntries(
+        localVideos.map((video) => [video.url, video.coverUrl]),
+      ) as Record<string, string | undefined>,
+    [localVideos],
+  );
+
+  const handleZeroEdgeMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!isZeroLayout) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    if (x >= rect.width - 86) setZeroEdge("library");
+    else if (x <= 76) setZeroEdge("continue");
+    else if (y >= rect.height - 72) setZeroEdge("timeline");
+    else if (y <= 54) setZeroEdge("cut");
+    else setZeroEdge("none");
+  };
+
+  useEffect(() => {
+    if (!isZeroLayout) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA") return;
+      const key = event.key.toLowerCase();
+      if (key === "l") setZeroEdge((edge) => (edge === "library" ? "none" : "library"));
+      if (key === "t") setZeroEdge("timeline");
+      if (key === "c") setZeroEdge("cut");
+      if (key === "escape") setZeroEdge("none");
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isZeroLayout]);
+
   const [enrichProgress, setEnrichProgress] = useState(0); // 0=未开始, 1=轻量已就绪, 2=完整已就绪
 
   // 两阶段加载：先轻量首屏（毫秒级），再后台拉取完整数据（构建缓存后秒回）
@@ -1066,7 +1319,14 @@ export function PlayerPage({
   };
 
   return (
-    <div className="relative flex-1 flex overflow-hidden bg-[#fdf5f3] h-full font-sans select-none">
+    <div
+      className={`relative flex-1 overflow-hidden bg-[#fdf5f3] h-full font-sans select-none ${
+        layout === "runway" ? "flex flex-col" : "flex"
+      }`}
+    >
+      {layout === "island" && (
+        <LibraryBackdrop videos={filteredVideos} />
+      )}
       <PageLoader
         active={isLoadingVideos && localVideos.length === 0}
         label="加载视频库"
@@ -1082,7 +1342,18 @@ export function PlayerPage({
       )}
 
       {/* MAIN CONTENT: PLAYER */}
-      <div className="flex-1 flex flex-col min-w-0 p-6">
+      <div
+        className={`relative flex min-w-0 flex-col ${
+          layout === "runway"
+            ? "min-h-0 flex-1 p-4"
+            : layout === "zero"
+              ? "z-10 flex-1 p-0"
+            : layout === "island"
+              ? "z-10 flex-1 p-9 pr-80"
+              : "flex-1 p-6"
+        }`}
+      >
+        {!isZeroLayout && (
         <div className="mb-4 flex items-center justify-between shrink-0 px-1">
           <h3 className="text-[15px] font-bold text-slate-900 truncate flex items-center gap-2.5 max-w-[75%]">
             <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.5)]"></span>
@@ -1104,6 +1375,20 @@ export function PlayerPage({
                 {filterSettings.preset !== "native" && (
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                 )}
+              </button>
+            </Tooltip>
+            <Tooltip content={ambientEnabled ? "关闭影院呼吸灯，切回纯黑播放器外圈" : "开启影院呼吸灯，按画面主色营造低亮度环境光"} placement="bottom">
+              <button
+                type="button"
+                onClick={toggleAmbientLight}
+                className={`h-7 px-2.5 rounded-md border text-[11px] font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  ambientEnabled
+                    ? "bg-fuchsia-500/10 border-fuchsia-300 text-fuchsia-700"
+                    : "bg-white border-slate-200 text-slate-500 hover:text-fuchsia-600 hover:border-fuchsia-300"
+                }`}
+              >
+                <span className={`h-2 w-2 rounded-full ${ambientEnabled ? "animate-pulse bg-fuchsia-400 shadow-[0_0_8px_rgba(232,121,249,0.9)]" : "bg-slate-300"}`} />
+                呼吸灯
               </button>
             </Tooltip>
             <Tooltip content="剧情分幕大纲与 9 宫格微速览：按起承转合快速掌握节奏与秒级跳转" placement="bottom">
@@ -1139,12 +1424,37 @@ export function PlayerPage({
                 跳转书签 {timelineBookmarks.length}
               </button>
             </Tooltip>
+            <Tooltip content="把不同影片的书签拼成一条连续播放的本地高光片段轨道" placement="bottom">
+              <button
+                type="button"
+                onClick={() => setDirectorCutOpen(true)}
+                className="h-7 px-3 rounded-md bg-violet-50 border border-violet-200 text-[11px] font-bold text-violet-700 hover:bg-violet-100 hover:border-violet-300 transition cursor-pointer"
+              >
+                <Clapperboard className="w-3.5 h-3.5 inline mr-1" />
+                导演剪辑 {directorCutClips.length}
+              </button>
+            </Tooltip>
             <span className="text-[11px] bg-slate-900 text-white px-3 py-1 rounded-full font-mono font-bold shadow-sm ring-1 ring-white/10">
               {activeStream.resolution}
             </span>
           </div>
         </div>
-        <div className="relative flex-1 bg-black rounded-lg overflow-hidden shadow-[0_32px_64px_-16px_rgba(0,0,0,0.3)] border border-slate-200/60 ring-1 ring-black/5">
+        )}
+        <div
+          className="relative flex-1"
+          onMouseMove={isZeroLayout ? handleZeroEdgeMove : undefined}
+          onMouseLeave={isZeroLayout ? () => setZeroEdge("none") : undefined}
+        >
+          {ambientEnabled && (
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -inset-7 rounded-[2rem] opacity-60 blur-3xl transition-[background-color,opacity] duration-[1800ms]"
+              style={{
+                background: `radial-gradient(ellipse at 50% 45%, ${ambientColor} 0%, transparent 68%)`,
+              }}
+            />
+          )}
+          <div className="relative h-full bg-black rounded-lg overflow-hidden shadow-[0_32px_64px_-16px_rgba(0,0,0,0.3)] border border-slate-200/60 ring-1 ring-black/5">
           {activeStream.url ? (
             <HlsVideoPlayer
               key={activeStream.url}
@@ -1219,6 +1529,24 @@ export function PlayerPage({
                             <XCircle className="w-3.5 h-3.5" />
                           </button>
                         </Tooltip>
+                        <Tooltip
+                          content={
+                            directorCutClips.some((clip) => clip.id === item.id)
+                              ? "已加入导演剪辑台"
+                              : "加入导演剪辑台"
+                          }
+                          placement="left"
+                        >
+                          <button
+                            type="button"
+                            disabled={directorCutClips.some((clip) => clip.id === item.id)}
+                            onClick={() => addBookmarkToDirectorCut(item)}
+                            className="mt-0.5 rounded p-1 text-violet-300/70 hover:text-violet-200 hover:bg-violet-500/20 disabled:opacity-30 transition cursor-pointer"
+                            aria-label="加入导演剪辑台"
+                          >
+                            <Clapperboard className="w-3.5 h-3.5" />
+                          </button>
+                        </Tooltip>
                       </div>
                     );
                   })}
@@ -1226,10 +1554,47 @@ export function PlayerPage({
               )}
             </div>
           )}
+          {directorCutOpen && (
+            <DirectorCutDrawer
+              clips={directorCutClips}
+              coverByVideoUrl={coverByVideoUrl}
+              activeIndex={directorCutPlayingIndex}
+              onClose={() => setDirectorCutOpen(false)}
+              onPlay={playDirectorCutClip}
+              onMove={moveDirectorCutClip}
+              onRemove={removeDirectorCutClip}
+              onClear={() => {
+                void saveDirectorCut([]);
+                setDirectorCutPlayingIndex(null);
+              }}
+            />
+          )}
+          {isZeroLayout && (
+            <ZeroInterfaceLayer
+              edge={zeroEdge}
+              videos={filteredVideos}
+              selectedVideoId={selectedVideoId}
+              onChooseVideo={(video, index) => {
+                handleLoadLocalVideo(video, index);
+                setZeroEdge("none");
+              }}
+              onContinue={() => void videoEl?.play().catch(() => {})}
+              onOpenTimeline={() => {
+                setTimelineOpen(true);
+                setZeroEdge("none");
+              }}
+              onOpenCut={() => {
+                setDirectorCutOpen(true);
+                setZeroEdge("none");
+              }}
+            />
+          )}
+        </div>
         </div>
       </div>
 
       {/* SIDEBAR: PRO DASHBOARD */}
+      {isClassicLayout && (
       <div className="w-[340px]  bg-[#fdf5f3] border-l border-slate-200/80 flex flex-col shrink-0 h-full overflow-hidden z-20 relative">
         {tonightPicks.length > 0 && selectedVideoIndex == null && (
           <div className="px-2 pt-2">
@@ -1527,6 +1892,16 @@ export function PlayerPage({
           )}
         </div>
       </div>
+      )}
+
+      {!isClassicLayout && !isZeroLayout && (
+        <PlayerLayoutRail
+          layout={layout}
+          videos={filteredVideos}
+          selectedVideoId={selectedVideoId}
+          onPlay={handleLoadLocalVideo}
+        />
+      )}
 
       {/* Modals */}
       {luckyOpen && (
@@ -1622,6 +1997,185 @@ export function PlayerPage({
         </div>
       )}
     </div>
+  );
+}
+
+function LibraryBackdrop({ videos }: { videos: VideoItem[] }) {
+  return (
+    <div className="pointer-events-none absolute inset-0 grid grid-cols-6 gap-3 overflow-hidden bg-slate-950 p-5 opacity-20 blur-[1px]">
+      {videos.slice(0, 24).map((video) => (
+        <div key={video.id} className="min-h-28 overflow-hidden rounded-xl bg-slate-800">
+          {video.coverUrl ? (
+            <img src={video.coverUrl} alt="" className="h-full w-full object-cover" />
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ZeroInterfaceLayer({
+  edge,
+  videos,
+  selectedVideoId,
+  onChooseVideo,
+  onContinue,
+  onOpenTimeline,
+  onOpenCut,
+}: {
+  edge: "none" | "continue" | "library" | "timeline" | "cut";
+  videos: VideoItem[];
+  selectedVideoId: string | null;
+  onChooseVideo: (video: VideoItem, index: number) => void;
+  onContinue: () => void;
+  onOpenTimeline: () => void;
+  onOpenCut: () => void;
+}) {
+  return (
+    <>
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center p-3 text-[10px] font-medium tracking-[0.2em] text-white/35">
+        C 剪辑　·　L 片库　·　T 时间轴　·　ESC 收起
+      </div>
+      {edge === "continue" && (
+        <button
+          type="button"
+          onClick={onContinue}
+          className="absolute inset-y-0 left-0 z-30 flex w-60 items-center bg-gradient-to-r from-black/75 to-transparent px-6 text-left text-white backdrop-blur-[2px]"
+        >
+          <span>
+            <span className="block text-[10px] tracking-[0.2em] text-violet-300">CONTINUE</span>
+            <span className="mt-2 block text-base font-bold">继续当前放映</span>
+            <span className="mt-1 block text-[11px] text-white/55">点击恢复播放</span>
+          </span>
+        </button>
+      )}
+      {edge === "cut" && (
+        <button
+          type="button"
+          onClick={onOpenCut}
+          className="absolute inset-x-0 top-0 z-30 flex h-20 items-center justify-center bg-gradient-to-b from-black/80 to-transparent text-[11px] font-bold text-violet-100"
+        >
+          <Clapperboard className="mr-2 h-4 w-4" /> 打开导演剪辑台
+        </button>
+      )}
+      {edge === "timeline" && (
+        <button
+          type="button"
+          onClick={onOpenTimeline}
+          className="absolute inset-x-0 bottom-0 z-30 flex h-24 items-center justify-center bg-gradient-to-t from-black/85 to-transparent text-[11px] font-bold text-amber-100"
+        >
+          <ListChecks className="mr-2 h-4 w-4" /> 浏览时间轴书签
+        </button>
+      )}
+      {edge === "library" && (
+        <div className="absolute inset-y-0 right-0 z-30 flex w-[min(34rem,70%)] flex-col border-l border-white/15 bg-slate-950/90 p-4 shadow-2xl backdrop-blur-xl">
+          <div className="mb-3 flex items-center justify-between text-white">
+            <div>
+              <div className="text-[10px] font-bold tracking-[0.22em] text-violet-300">FINGER LIBRARY</div>
+              <div className="mt-1 text-sm font-bold">向下滚动，点一部即换片</div>
+            </div>
+            <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] text-white/60">{videos.length}</span>
+          </div>
+          <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3">
+            {videos.slice(0, 36).map((video, index) => (
+              <button
+                key={video.id}
+                type="button"
+                onClick={() => onChooseVideo(video, index)}
+                className={`group relative aspect-[2/3] overflow-hidden rounded-xl border text-left transition ${
+                  video.id === selectedVideoId
+                    ? "border-violet-300 ring-2 ring-violet-400/50"
+                    : "border-white/10 hover:-translate-y-1 hover:border-violet-300"
+                }`}
+              >
+                <div className="absolute inset-0 bg-slate-800">
+                  {video.coverUrl && <img src={video.coverUrl} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />}
+                </div>
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pb-2 pt-8">
+                  <div className="truncate text-[10px] font-bold text-white">{video.name}</div>
+                  <div className="mt-0.5 text-[9px] text-white/60">{video.resolution}</div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function PlayerLayoutRail({
+  layout,
+  videos,
+  selectedVideoId,
+  onPlay,
+}: {
+  layout: PlayerLayout;
+  videos: VideoItem[];
+  selectedVideoId: string | null;
+  onPlay: (video: VideoItem, index: number) => void;
+}) {
+  const selected = videos.find((video) => video.id === selectedVideoId);
+  const railClass =
+    layout === "runway"
+      ? "h-52 w-full shrink-0 border-t border-slate-200 bg-[#fdf5f3] px-5 py-3"
+      : layout === "island"
+        ? "absolute right-5 top-5 bottom-5 z-20 w-68 overflow-hidden rounded-2xl border border-white/20 bg-slate-950/88 p-3 shadow-2xl backdrop-blur-xl"
+        : "order-first h-full w-72 shrink-0 overflow-hidden border-r border-slate-200 bg-[#fdf5f3] p-4";
+  const cardClass =
+    layout === "runway"
+      ? "h-full w-34 shrink-0"
+      : layout === "island"
+        ? "h-24 w-full"
+        : "h-24 w-full";
+
+  return (
+    <aside className={railClass} aria-label="替代片库列表">
+      <div className={`mb-2 flex items-center justify-between ${layout === "island" ? "text-slate-100" : "text-slate-700"}`}>
+        <div>
+          <div className="text-[11px] font-bold">
+            {layout === "runway" ? "胶片跑道" : layout === "island" ? "片库浮层" : "当前影片"}
+          </div>
+          <div className={`mt-0.5 text-[9px] ${layout === "island" ? "text-slate-400" : "text-slate-400"}`}>
+            {layout === "focus" && selected ? selected.name : `${videos.length} 部影片`}
+          </div>
+        </div>
+        <span className="rounded-full bg-violet-500/15 px-2 py-1 text-[9px] font-bold text-violet-500">{layout === "runway" ? "滚动切换" : "点击播放"}</span>
+      </div>
+      {layout === "focus" && selected && (
+        <div className="mb-3 rounded-xl bg-slate-900 p-2 text-white shadow-sm">
+          <div className="aspect-[16/9] overflow-hidden rounded-lg bg-slate-800">
+            {selected.coverUrl && <img src={selected.coverUrl} alt="" className="h-full w-full object-cover" />}
+          </div>
+          <div className="mt-2 truncate text-[10px] font-bold">{selected.name}</div>
+          <div className="mt-1 flex gap-1 text-[9px] text-slate-400">
+            <span>{selected.resolution}</span><span>·</span><span>{selected.duration || "本地影片"}</span>
+          </div>
+        </div>
+      )}
+      <div className={`flex gap-2 ${layout === "runway" ? "h-[calc(100%-34px)] overflow-x-auto pb-1" : "max-h-[calc(100%-43px)] flex-col overflow-y-auto pr-1"}`}>
+        {videos.slice(0, layout === "runway" ? 18 : 12).map((video, index) => (
+          <button
+            key={video.id}
+            type="button"
+            onClick={() => onPlay(video, index)}
+            className={`${cardClass} group relative overflow-hidden rounded-xl border text-left transition ${
+              video.id === selectedVideoId
+                ? "border-violet-400 ring-2 ring-violet-400/30"
+                : layout === "island" ? "border-white/10 hover:border-violet-300" : "border-slate-200 hover:border-violet-300"
+            }`}
+          >
+            <div className="absolute inset-0 bg-slate-800">
+              {video.coverUrl && <img src={video.coverUrl} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />}
+            </div>
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pb-1.5 pt-7">
+              <div className="truncate text-[10px] font-bold text-white">{video.name}</div>
+              <div className="text-[9px] text-slate-300">{video.resolution}</div>
+            </div>
+          </button>
+        ))}
+      </div>
+    </aside>
   );
 }
 

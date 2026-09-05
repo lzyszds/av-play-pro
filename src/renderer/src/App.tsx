@@ -49,6 +49,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   cloudSyncLastSync: "",
   cloudSyncAutoSync: true,
   autoArousalOnPlay: true,
+  playerLayout: "classic",
 };
 
 // 合法的页面 key，用于校验持久化的 lastPage
@@ -383,6 +384,7 @@ export default function App() {
         {currentPage === "player" && (
           <PlayerPage
             videoPath={settings.video_path}
+            layout={settings.playerLayout ?? "classic"}
             onAddSystemLog={addLog}
             pendingPlayName={pendingPlayName}
             onConsumePendingPlay={() => setPendingPlayName(null)}

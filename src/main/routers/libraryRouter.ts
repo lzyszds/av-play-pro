@@ -95,7 +95,12 @@ function loadStats(): any {
 }
 
 function loadTimelineStore(): any {
-  return readJson(path.join(app.getPath("userData"), "timeline.json")) || { bookmarks: [] };
+  return (
+    readJson(path.join(app.getPath("userData"), "timeline.json")) || {
+      bookmarks: [],
+      directorCut: [],
+    }
+  );
 }
 
 async function scanLibrary(rootPath: string): Promise<LibraryVideo[]> {
@@ -497,6 +502,50 @@ export const libraryRouter = t.router({
         })
         .slice()
         .reverse();
+    }),
+
+  directorCut: t.procedure.query(() => {
+    const store = loadTimelineStore();
+    return Array.isArray(store.directorCut) ? store.directorCut : [];
+  }),
+
+  saveDirectorCut: t.procedure
+    .input(
+      (input: unknown) =>
+        input as {
+          clips: Array<{
+            id: string;
+            videoName: string;
+            videoUrl: string;
+            currentTime: number;
+            note?: string;
+            createdAt?: string;
+            clipDuration?: number;
+          }>;
+        },
+    )
+    .mutation(async ({ input }) => {
+      const file = path.join(app.getPath("userData"), "timeline.json");
+      const store = loadTimelineStore();
+      const seen = new Set<string>();
+      store.directorCut = (Array.isArray(input.clips) ? input.clips : [])
+        .filter((clip) => {
+          if (!clip?.id || !clip.videoUrl || seen.has(clip.id)) return false;
+          seen.add(clip.id);
+          return true;
+        })
+        .slice(0, 100)
+        .map((clip) => ({
+          ...clip,
+          currentTime: Math.max(0, Math.floor(Number(clip.currentTime) || 0)),
+          clipDuration: Math.min(
+            120,
+            Math.max(5, Math.floor(Number(clip.clipDuration) || 20)),
+          ),
+        }));
+      await fs.promises.mkdir(path.dirname(file), { recursive: true });
+      await fs.promises.writeFile(file, JSON.stringify(store, null, 2), "utf8");
+      return { success: true, clips: store.directorCut };
     }),
 
   /** 扫描删除失败残留 / 空目录 / 临时目录垃圾 */

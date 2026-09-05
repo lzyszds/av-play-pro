@@ -546,6 +546,8 @@ export const syncRouter = t.router({
           downloadBackground:
             remoteSettings.downloadBackground ??
             localSettings.downloadBackground,
+          playerLayout:
+            remoteSettings.playerLayout ?? localSettings.playerLayout,
           privacyScreenEnabled:
             remoteSettings.privacyScreenEnabled ??
             localSettings.privacyScreenEnabled,

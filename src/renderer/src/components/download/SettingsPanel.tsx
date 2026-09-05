@@ -31,6 +31,7 @@ import type {
   CloseAction,
   DownloadBackground,
   LoaderStyle,
+  PlayerLayout,
   ThemeMode,
 } from "../../pages/download/types";
 import { CoverLoader } from "../CoverLoader";
@@ -87,6 +88,9 @@ export function SettingsPanel({
   const [speedLimit, setSpeedLimit] = useState(settings.globalSpeedLimit || "");
   const [isInstallingExtension, setIsInstallingExtension] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(settings.theme);
+  const [playerLayout, setPlayerLayout] = useState<PlayerLayout>(
+    settings.playerLayout ?? "classic",
+  );
   const [closeAction, setCloseAction] = useState<CloseAction>(
     settings.closeAction,
   );
@@ -340,6 +344,7 @@ export function SettingsPanel({
       cloudSyncAutoSync,
       cloudSyncLastSync,
       autoArousalOnPlay,
+      playerLayout,
     });
     onAddSystemLog("Electron 核心: 系统配置已更新。", "SUCCESS");
   };
@@ -699,6 +704,34 @@ export function SettingsPanel({
                   <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 tracking-wide uppercase">
                     外观与提示
                   </h3>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+                    播放页布局
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(
+                      [
+                        { v: "zero", l: "零界面放映", d: "边缘唤出操作与片库" },
+                        { v: "classic", l: "经典右栏", d: "播放器 + 完整片库" },
+                      ] as Array<{ v: PlayerLayout; l: string; d: string }>
+                    ).map(({ v, l, d }) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setPlayerLayout(v)}
+                        className={`rounded-xl border p-3 text-left transition cursor-pointer ${
+                          playerLayout === v
+                            ? "border-violet-400 bg-violet-500/10 text-violet-700 dark:text-violet-300"
+                            : "border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300 hover:border-violet-300"
+                        }`}
+                      >
+                        <span className="block text-[11px] font-bold">{l}</span>
+                        <span className="mt-1 block text-[10px] text-slate-400 dark:text-slate-500">{d}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="space-y-2">

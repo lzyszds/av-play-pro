@@ -27,6 +27,7 @@ export interface VideoItem {
 
 export interface PlayerPageProps {
   videoPath: string;
+  layout?: PlayerLayout;
   onAddSystemLog: (
     text: string,
     level: "INFO" | "WARNING" | "SUCCESS" | "ERROR",
@@ -39,3 +40,4 @@ export interface PlayerPageProps {
   /** 点击演员名跳转到「演员」页详情 */
   onOpenActor?: (name: string) => void;
 }
+import type { PlayerLayout } from "../download/types";

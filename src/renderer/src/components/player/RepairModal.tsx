@@ -17,6 +17,7 @@ import { trpc } from "../../lib/trpc";
 import { thumbnailQueue } from "../../lib/thumbnailQueue";
 import type { VideoItem } from "../../pages/player/types";
 import { Tooltip } from "../common/Tooltip";
+import { Button } from "../common/Button";
 
 export interface RepairTarget {
   name: string;
@@ -559,33 +560,36 @@ export function RepairModal({
         </div>
 
         <div className="flex gap-2 px-5 py-3 border-t border-slate-100 dark:border-slate-800">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="md"
+            className="flex-1"
             disabled={running}
             onClick={onClose}
-            className="flex-1 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition cursor-pointer disabled:opacity-40"
           >
             关闭
-          </button>
+          </Button>
           {running ? (
-            <button
-              type="button"
-              onClick={handleStop}
+            <Button
+              variant="danger"
+              size="md"
+              className="flex-1"
+              icon={<Square className="w-3 h-3" />}
               disabled={stopping}
-              className="flex-1 py-2 text-xs font-bold text-white bg-rose-500 hover:bg-rose-600 rounded-lg transition cursor-pointer disabled:opacity-60 flex items-center justify-center gap-1.5"
+              onClick={handleStop}
             >
-              <Square className="w-3 h-3" />
               {stopping ? "停止中..." : "停止"}
-            </button>
+            </Button>
           ) : (
-            <button
-              type="button"
+            <Button
+              variant="primary"
+              size="md"
+              className="flex-1"
+              icon={<Wrench className="w-3 h-3" />}
               onClick={handleRun}
-              className="flex-1 py-2 text-xs font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5"
             >
-              <Wrench className="w-3 h-3" />
               {isSingle ? "开始修复" : `修复 ${total} 个`}
-            </button>
+            </Button>
           )}
         </div>
       </div>

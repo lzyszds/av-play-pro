@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { AchievementsPanel } from "../components/stats/AchievementsPanel";
 import { triggerAchievementToast } from "../components/achievements/AchievementToast";
+import { Button } from "../components/common/Button";
 import {
   Area,
   AreaChart,
@@ -1054,61 +1055,62 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
   const lastSnapshot = stats?.diskSnapshots?.slice(-1)[0];
 
   return (
-    <div className="relative h-full overflow-y-auto bg-slate-50/50 dark:bg-slate-950 p-6 space-y-5">
+    <div className="relative h-full overflow-y-auto bg-slate-50/50 dark:bg-slate-950 p-6 space-y-6 text-slate-800 dark:text-slate-100">
       <PageLoader active={!stats} label="正在汇聚多维数据中心..." />
 
       {/* ================= 1. 顶部 Header & 工具栏 ================= */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-1 border-b border-slate-200/80 dark:border-slate-800">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-              <BarChart3 className="w-5 h-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800/80 shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shadow-xs shrink-0">
+            <BarChart3 className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
                 数据洞察中心
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium">
-                  {libraryVideos.length} 部片库
-                </span>
               </h2>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                实时聚合观影习惯、时段偏好、深度榜单与磁盘空间全景
-              </p>
+              <span className="text-[10px] font-bold font-mono uppercase px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                {libraryVideos.length} 部片库
+              </span>
             </div>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+              实时聚合观影习惯、时段偏好、深度榜单与磁盘空间全景
+            </p>
           </div>
         </div>
 
         {/* 顶部三大高能入口与功能按钮 */}
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
-          <button
-            type="button"
+          <Button
+            variant="primary"
+            size="md"
+            icon={<Sparkles className="w-3.5 h-3.5 animate-pulse" />}
             onClick={() => setShowReportModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 hover:opacity-90 text-white rounded-xl text-xs font-bold transition shadow-sm shadow-amber-500/20 cursor-pointer"
             title="生成赛博朋克观影战斗力年度档案"
           >
-            <Sparkles className="w-3.5 h-3.5 animate-pulse" />
             观影战力年报
-          </button>
+          </Button>
 
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="md"
+            icon={<History className="w-3.5 h-3.5 text-amber-500" />}
             onClick={() => setShowHistoryModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-bold transition cursor-pointer"
             title="查看完整操作时间线"
           >
-            <History className="w-3.5 h-3.5 text-amber-500" />
             操作历史
-          </button>
+          </Button>
 
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="md"
+            icon={<FolderArchive className="w-3.5 h-3.5 text-blue-500" />}
             onClick={() => setShowOrganizerModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 rounded-xl text-xs font-bold transition cursor-pointer"
+            className="text-blue-600 dark:text-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/20"
             title="Emby/Plex 媒体库软链接归档"
           >
-            <FolderArchive className="w-3.5 h-3.5 text-blue-500" />
             Emby软链接
-          </button>
+          </Button>
         </div>
       </div>
 

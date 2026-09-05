@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { trpc } from "../../lib/trpc";
 import { Tooltip } from "../common/Tooltip";
+import { Button } from "../common/Button";
 
 export interface OrganizerModalProps {
   sourcePath: string;
@@ -321,24 +322,23 @@ export function OrganizerModal({
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="md"
               onClick={onClose}
-              className="px-4 py-2 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition rounded-lg text-xs font-semibold cursor-pointer"
             >
               取消
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
               onClick={handleRunOrganize}
               disabled={organizing || items.length === 0 || !targetPath.trim()}
-              className="flex items-center gap-1.5 px-5 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-xs text-white font-bold rounded-lg shadow-sm shadow-blue-500/10 transition cursor-pointer disabled:opacity-50"
+              loading={organizing}
+              icon={<FolderArchive className="w-3.5 h-3.5" />}
             >
-              <FolderArchive
-                className={`w-3.5 h-3.5 ${organizing ? "animate-spin" : ""}`}
-              />
               {organizing ? "正在生成软链接与 NFO..." : "一键开始归档整理"}
-            </button>
+            </Button>
           </div>
         </div>
       </div>

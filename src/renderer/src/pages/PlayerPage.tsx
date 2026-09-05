@@ -44,6 +44,7 @@ import {
   type RepairTarget,
 } from "../components/player/RepairModal";
 import { Tooltip } from "../components/common/Tooltip";
+import { Button } from "../components/common/Button";
 
 const LAST_PLAYED_KEY = "av-play-pro:lastPlayed";
 const FAVORITES_KEY = "av-play-pro:favorites";
@@ -1436,76 +1437,81 @@ export function PlayerPage({
             </h3>
             <div className="flex items-center gap-2">
               <Tooltip content="画质增强滤镜：CAS超清锐化、温暖胶片、夜景暗部增强HDR、饱和度微调" placement="bottom">
-                <button
-                  type="button"
+                <Button
+                  variant={filterSettings.preset !== "native" ? "subtle" : "secondary"}
+                  size="sm"
+                  icon={<Sparkles className="w-3.5 h-3.5 text-amber-500" />}
                   onClick={() => setShaderModalOpen(true)}
-                  className={`h-7 px-2.5 rounded-md border text-[11px] font-bold transition cursor-pointer flex items-center gap-1.5 ${filterSettings.preset !== "native"
-                    ? "bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400"
-                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:text-amber-600 hover:border-amber-300"
-                    }`}
+                  className="font-bold"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                   <span>画质增强</span>
                   {filterSettings.preset !== "native" && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 ml-1" />
                   )}
-                </button>
+                </Button>
               </Tooltip>
+
               <Tooltip content={ambientEnabled ? "关闭影院呼吸灯，切回纯黑播放器外圈" : "开启影院呼吸灯，按画面主色营造低亮度环境光"} placement="bottom">
-                <button
-                  type="button"
+                <Button
+                  variant={ambientEnabled ? "accent" : "secondary"}
+                  size="sm"
+                  icon={<span className={`h-2 w-2 rounded-full ${ambientEnabled ? "animate-pulse bg-fuchsia-400 shadow-[0_0_8px_rgba(232,121,249,0.9)]" : "bg-slate-300"}`} />}
                   onClick={toggleAmbientLight}
-                  className={`h-7 px-2.5 rounded-md border text-[11px] font-bold transition cursor-pointer flex items-center gap-1.5 ${ambientEnabled
-                    ? "bg-fuchsia-500/10 border-fuchsia-300 text-fuchsia-700"
-                    : "bg-white border-slate-200 text-slate-500 hover:text-fuchsia-600 hover:border-fuchsia-300"
-                    }`}
+                  className="font-bold"
                 >
-                  <span className={`h-2 w-2 rounded-full ${ambientEnabled ? "animate-pulse bg-fuchsia-400 shadow-[0_0_8px_rgba(232,121,249,0.9)]" : "bg-slate-300"}`} />
                   呼吸灯
-                </button>
+                </Button>
               </Tooltip>
+
               <Tooltip content="剧情分幕大纲与 9 宫格微速览：按起承转合快速掌握节奏与秒级跳转" placement="bottom">
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Film className="w-3.5 h-3.5 text-sky-500" />}
                   onClick={() => setChaptersDrawerOpen(true)}
                   disabled={!activeStream.url}
-                  className="h-7 px-2.5 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-300 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer flex items-center gap-1.5"
+                  className="font-bold"
                 >
-                  <Film className="w-3.5 h-3.5 text-sky-500" />
-                  <span>剧情分幕</span>
-                </button>
+                  剧情分幕
+                </Button>
               </Tooltip>
+
               <Tooltip content="在当前秒数添加高能书签，自动提升进度条热力峰值" placement="bottom">
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<BookmarkPlus className="w-3.5 h-3.5" />}
                   onClick={handleAddTimelineBookmark}
                   disabled={!videoEl || !activeStream.url}
-                  className="h-7 px-3 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-slate-600 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer"
+                  className="font-bold"
                 >
-                  <BookmarkPlus className="w-3.5 h-3.5 inline mr-1" />
                   加时间点
-                </button>
+                </Button>
               </Tooltip>
+
               <Tooltip content="展开或折叠本片所有已标记的高能时间轴书签列表" placement="bottom">
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<ListChecks className="w-3.5 h-3.5" />}
                   onClick={() => setTimelineOpen((v) => !v)}
                   disabled={!activeStream.url}
-                  className="h-7 px-3 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-slate-600 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer"
+                  className="font-bold"
                 >
-                  <ListChecks className="w-3.5 h-3.5 inline mr-1" />
                   跳转书签 {timelineBookmarks.length}
-                </button>
+                </Button>
               </Tooltip>
+
               <Tooltip content="把不同影片的书签拼成一条连续播放的本地高光片段轨道" placement="bottom">
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Clapperboard className="w-3.5 h-3.5 text-violet-500" />}
                   onClick={() => setDirectorCutOpen(true)}
-                  className="h-7 px-3 rounded-md bg-violet-50 border border-violet-200 text-[11px] font-bold text-violet-700 hover:bg-violet-100 hover:border-violet-300 transition cursor-pointer"
+                  className="font-bold text-violet-600 dark:text-violet-400 hover:border-violet-300 dark:hover:border-violet-700"
                 >
-                  <Clapperboard className="w-3.5 h-3.5 inline mr-1" />
                   导演剪辑 {directorCutClips.length}
-                </button>
+                </Button>
               </Tooltip>
               <span className="text-[11px] bg-slate-900 text-white px-3 py-1 rounded-full font-mono font-bold shadow-sm ring-1 ring-white/10">
                 {activeStream.resolution}
@@ -1712,8 +1718,47 @@ export function PlayerPage({
               </div>
             )}
             {playbackBusy && <div className="pointer-events-none absolute inset-0 z-40 grid place-items-center bg-black/20"><div className="rounded-full border border-white/15 bg-slate-950/75 px-4 py-2 text-[11px] text-white backdrop-blur"><span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-violet-300" />{playbackNotice}</div></div>}
-            {!playbackBusy && playbackNotice && <div className="pointer-events-none absolute left-4 top-4 z-40 rounded-full bg-slate-950/75 px-3 py-1.5 text-[10px] text-white/75 backdrop-blur">{playbackNotice}</div>}
-            {showEndSheet && <div className="absolute inset-0 z-40 flex items-end justify-center bg-gradient-to-t from-black/90 via-black/25 to-transparent pb-10"><div className="flex gap-2"><button onClick={() => { if (videoEl) { videoEl.currentTime = 0; void videoEl.play(); } setShowEndSheet(false); }} className="rounded-full bg-white px-4 py-2 text-xs font-bold text-slate-900">重看</button><button onClick={() => { setDirectorCutOpen(true); setShowEndSheet(false); }} className="rounded-full border border-white/30 px-4 py-2 text-xs font-bold text-white">导演剪辑</button><button onClick={() => setShowEndSheet(false)} className="rounded-full border border-white/30 px-4 py-2 text-xs font-bold text-white">退出</button></div></div>}
+            {showEndSheet && (
+              <div className="absolute inset-0 z-40 flex items-end justify-center bg-gradient-to-t from-black/90 via-black/25 to-transparent pb-10">
+                <div className="flex gap-2">
+                  <Button
+                    variant="primary"
+                    size="md"
+                    pill
+                    onClick={() => {
+                      if (videoEl) {
+                        videoEl.currentTime = 0;
+                        void videoEl.play();
+                      }
+                      setShowEndSheet(false);
+                    }}
+                  >
+                    重看
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="md"
+                    pill
+                    className="border-white/30 text-white hover:bg-white/10"
+                    onClick={() => {
+                      setDirectorCutOpen(true);
+                      setShowEndSheet(false);
+                    }}
+                  >
+                    导演剪辑
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="md"
+                    pill
+                    className="border-white/30 text-white hover:bg-white/10"
+                    onClick={() => setShowEndSheet(false)}
+                  >
+                    退出
+                  </Button>
+                </div>
+              </div>
+            )}
             <div className="pointer-events-none absolute inset-1 rounded-lg border border-violet-300/25" style={{ clipPath: `inset(0 ${Math.max(0, 100 - playProgress)}% 0 0 round 8px)` }} />
           </div>
         </div>

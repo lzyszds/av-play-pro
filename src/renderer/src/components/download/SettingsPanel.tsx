@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Tooltip } from "../common/Tooltip";
+import { Button } from "../common/Button";
 import {
   X,
   Folder,
@@ -1300,20 +1301,21 @@ export function SettingsPanel({
             <span className="text-[10px]">基于 N_m3u8DL-RE 流媒体核心引擎</span>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
+            <Button
+              variant="secondary"
+              size="md"
               onClick={onClose}
-              className="px-4 py-2 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 transition rounded-lg text-xs font-semibold cursor-pointer"
             >
               取消
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
+              size="md"
               type="submit"
-              className="flex items-center gap-1.5 px-5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-xs text-white font-bold rounded-lg shadow-sm shadow-amber-500/10 transition cursor-pointer"
+              icon={<Save className="w-3.5 h-3.5" />}
             >
-              <Save className="w-3.5 h-3.5" />
               保存配置
-            </button>
+            </Button>
           </div>
         </div>
       </form>

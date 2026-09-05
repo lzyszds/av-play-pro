@@ -24,6 +24,7 @@ import { TaskCard } from "../components/download/TaskCard";
 import { TaskDetailCard } from "../components/download/TaskDetailCard";
 import { DownloadFloatingBall } from "../components/download/DownloadFloatingBall";
 import { Tooltip } from "../components/common/Tooltip";
+import { Button, IconButton } from "../components/common/Button";
 import { PageLoader } from "../components/PageLoader";
 import type {
   AppSettings,
@@ -1470,111 +1471,104 @@ export function DownloadPage({
                   placeholder="搜索任务/链接..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-40 sm:w-48 bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:w-56 focus:border-amber-500 transition-all shadow-sm"
+                  className="w-40 sm:w-48 h-9 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-3 text-xs text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:w-56 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all shadow-2xs"
                 />
-                <Search className="w-3.5 h-3.5 text-black absolute left-2.5 top-2.5" />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3" />
               </div>
 
-              <button
-                type="button"
+              <Button
+                variant="primary"
+                size="md"
+                icon={<Plus className="w-3.5 h-3.5" />}
                 onClick={() => setShowNewTaskModal(true)}
                 title="新建 M3U8 下载任务"
                 aria-label="新建任务"
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-xs text-white font-bold rounded-lg transition cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" />
                 新建任务
-              </button>
+              </Button>
 
               <Tooltip content="立即开启隐私屏保，遮住下载内容" placement="bottom">
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="md"
+                  icon={<EyeOff className="w-3.5 h-3.5" />}
                   onClick={showPrivacyScreen}
                   aria-label="隐私屏保"
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
                 >
-                  <EyeOff className="w-3.5 h-3.5" />
                   隐私屏保
-                </button>
+                </Button>
               </Tooltip>
 
               {/* 队列下载开关 */}
-              <button
+              <Button
+                variant={queueEnabled ? "primary" : "secondary"}
+                size="md"
                 onClick={handleToggleQueue}
                 title={
                   queueEnabled
                     ? "点击关闭队列下载"
                     : "点击开启队列下载（完成自动下一个）"
                 }
-                className={`flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] w-28 font-bold rounded-lg border transition cursor-pointer ${
-                  queueEnabled
-                    ? "bg-amber-500 border-amber-500 text-white shadow-sm"
-                    : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
               >
                 <span
                   className={`w-1.5 h-1.5 rounded-full ${
-                    queueEnabled ? "bg-white" : "bg-slate-300"
+                    queueEnabled ? "bg-white" : "bg-slate-400"
                   }`}
                 />
                 队列下载 {queueEnabled ? "ON" : "OFF"}
-              </button>
+              </Button>
 
               <Tooltip content={widgetOpen ? "关闭桌面下载小组件" : "打开桌面下载小组件（屏幕右下角悬浮球）"} placement="bottom">
-                <button
-                  type="button"
+                <Button
+                  variant={widgetOpen ? "primary" : "secondary"}
+                  size="md"
+                  icon={<Move className="w-3.5 h-3.5" />}
                   onClick={handleToggleWidget}
                   aria-label="桌面小组件"
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border transition cursor-pointer ${
-                    widgetOpen
-                      ? "bg-amber-500 border-amber-500 text-white shadow-sm"
-                      : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
                 >
-                  <Move className="w-3.5 h-3.5" />
                   {widgetOpen ? "组件 ON" : "桌面组件"}
-                </button>
+                </Button>
               </Tooltip>
 
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="md"
                 onClick={handleStartAll}
                 title="全部开始下载"
                 aria-label="全部开始"
-                className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
               >
                 全部开始
-              </button>
+              </Button>
 
-              <button
-                type="button"
+              <Button
+                variant="secondary"
+                size="md"
                 onClick={handlePauseAll}
                 title="全部暂停下载"
                 aria-label="全部暂停"
-                className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
               >
                 全部暂停
-              </button>
+              </Button>
 
               {taskCounts.completed > 0 && (
-                <button
+                <Button
+                  variant="danger-subtle"
+                  size="md"
                   onClick={handleClearCompleted}
-                  className="px-2.5 py-1.5 bg-white hover:bg-rose-50 border border-rose-200 text-[11px] text-rose-600 font-semibold rounded-lg transition cursor-pointer"
                   title="从列表中清空已完成任务"
                 >
                   清空已完成
-                </button>
+                </Button>
               )}
 
               <Tooltip content="下载与全局系统设置" placement="bottom">
-                <button
-                  type="button"
+                <IconButton
+                  variant="secondary"
+                  size="md"
+                  icon={<Settings className="w-3.5 h-3.5" />}
                   onClick={() => setShowSettingsModal(true)}
-                  className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-[11px] text-slate-600 font-semibold rounded-lg transition cursor-pointer"
                   aria-label="系统设置"
-                >
-                  <Settings className="w-3.5 h-3.5" />
-                </button>
+                />
               </Tooltip>
             </div>
           </div>

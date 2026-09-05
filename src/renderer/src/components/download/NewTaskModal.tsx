@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Tooltip } from "../common/Tooltip";
+import { Button } from "../common/Button";
 import {
   Plus,
   Play,
@@ -563,20 +564,23 @@ export function NewTaskModal({
         </form>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-white">
-          <button
-            type="button"
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <Button
+            variant="secondary"
+            size="md"
+            className="flex-1"
             onClick={onClose}
-            className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-500 transition rounded-lg text-xs font-semibold cursor-pointer"
           >
             取消
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
+            className="flex-1"
             onClick={handleSubmit}
-            className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold transition rounded-lg text-xs cursor-pointer"
           >
             创建任务
-          </button>
+          </Button>
         </div>
       </div>
     </div>

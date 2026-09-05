@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { VideoItem } from "../../pages/player/types";
 import { CoverImage } from "../CoverImage";
+import { Tooltip } from "../common/Tooltip";
 
 interface LocalVideoCardProps {
   video: VideoItem;
@@ -48,27 +49,73 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
   onOpenActor,
 }) => {
   const [hovered, setHovered] = useState(false);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [previewProgress, setPreviewProgress] = useState(0);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewRef = useRef<HTMLVideoElement | null>(null);
+  const previewStartRef = useRef<number>(0);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuTokenRef = useRef(
     `${video.id || video.name}-${Math.random().toString(36).slice(2)}`,
   );
 
+  const previewSrc = video.previewUrl || video.url;
+
   const handleEnter = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
-    // 延迟挂载，避免快速划过时频繁加载预览
-    hoverTimer.current = setTimeout(() => setHovered(true), 150);
+    // 延迟 220ms 挂载，避免列表快速划过时频繁解码
+    hoverTimer.current = setTimeout(() => {
+      setHovered(true);
+    }, 220);
   };
 
   const handleLeave = () => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current);
     setHovered(false);
+    setIsPreviewPlaying(false);
+    setPreviewProgress(0);
+    if (previewRef.current) {
+      try {
+        previewRef.current.pause();
+      } catch {
+        /* ignore */
+      }
+    }
   };
 
   const handlePreviewReady = () => {
-    previewRef.current?.play().catch(() => {});
+    const el = previewRef.current;
+    if (!el) return;
+    if (!video.previewUrl && el.duration > 30) {
+      // 本地无专属 preview 文件的视频，截取正片 22% 处（黄金剧情段）
+      const start = Math.min(Math.floor(el.duration * 0.22), 300);
+      previewStartRef.current = start;
+      el.currentTime = start;
+    }
+    el.play()
+      .then(() => setIsPreviewPlaying(true))
+      .catch(() => setIsPreviewPlaying(false));
+  };
+
+  const handlePreviewTimeUpdate = () => {
+    const el = previewRef.current;
+    if (!el) return;
+    if (video.previewUrl) {
+      if (el.duration > 0) {
+        setPreviewProgress((el.currentTime / el.duration) * 100);
+      }
+    } else {
+      const start = previewStartRef.current;
+      const elapsed = el.currentTime - start;
+      const loopDuration = 5.0; // 5 秒精彩循环切片
+      if (elapsed >= loopDuration || el.currentTime < start) {
+        el.currentTime = start;
+        setPreviewProgress(0);
+      } else {
+        setPreviewProgress(Math.max(0, Math.min(100, (elapsed / loopDuration) * 100)));
+      }
+    }
   };
 
   React.useEffect(() => {
@@ -141,17 +188,39 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
       >
         <CoverImage src={video.coverUrl} alt={video.name} logoSize={48} />
 
-        {hovered && video.previewUrl && (
+        {hovered && previewSrc && (
           <video
             ref={previewRef}
-            src={video.previewUrl}
+            src={previewSrc}
             muted
-            loop
+            loop={!!video.previewUrl}
             playsInline
             preload="auto"
             onLoadedData={handlePreviewReady}
-            className="absolute inset-0 w-full h-full object-cover bg-black animate-[fadeIn_0.3s_ease]"
+            onTimeUpdate={handlePreviewTimeUpdate}
+            onError={() => setIsPreviewPlaying(false)}
+            className={`absolute inset-0 w-full h-full object-cover bg-black transition-opacity duration-300 ${
+              isPreviewPlaying ? "opacity-100" : "opacity-0 pointer-events-none"
+            }`}
           />
+        )}
+
+        {/* 微动视频播放状态条与徽标 */}
+        {isPreviewPlaying && (
+          <>
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/60 z-20 overflow-hidden pointer-events-none">
+              <div
+                className="h-full bg-gradient-to-r from-amber-400 via-rose-500 to-amber-300 transition-all duration-100 ease-linear shadow-[0_0_8px_rgba(245,158,11,0.8)]"
+                style={{ width: `${previewProgress}%` }}
+              />
+            </div>
+            <div className="absolute top-9 left-2 z-20 pointer-events-none animate-in fade-in zoom-in-95">
+              <span className="inline-flex items-center gap-1 text-[9px] bg-black/80 text-amber-300 px-1.5 py-0.5 rounded font-mono font-bold tracking-wider backdrop-blur-md ring-1 ring-amber-400/40 shadow-lg">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                PREVIEW
+              </span>
+            </div>
+          </>
         )}
 
         {/* 顶部渐变 */}
@@ -407,13 +476,14 @@ const CardIconBtn: React.FC<{
   title: string;
   children: React.ReactNode;
 }> = ({ onClick, title, children }) => (
-  <button
-    onClick={onClick}
-    title={title}
-    className="p-1.5 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
-  >
-    {children}
-  </button>
+  <Tooltip content={title} placement="top" delay={150}>
+    <button
+      onClick={onClick}
+      className="p-1.5 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
+    >
+      {children}
+    </button>
+  </Tooltip>
 );
 
 /**

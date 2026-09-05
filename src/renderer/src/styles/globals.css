@@ -137,6 +137,11 @@ body {
   border: none !important;
 }
 
+.plyr__progress,
+.plyr__controls {
+  overflow: visible !important;
+}
+
 /* Plyr progress bar 去掉 focus 时的虚线边框 */
 .plyr__progress__container:focus-visible,
 .plyr__progress input[type="range"]:focus-visible,

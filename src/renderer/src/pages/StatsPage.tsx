@@ -30,7 +30,10 @@ import {
   Flame,
   Award,
   Zap,
+  Trophy,
 } from "lucide-react";
+import { AchievementsPanel } from "../components/stats/AchievementsPanel";
+import { triggerAchievementToast } from "../components/achievements/AchievementToast";
 import {
   Area,
   AreaChart,
@@ -119,7 +122,7 @@ interface StatsPageProps {
   ) => void;
 }
 
-type TabType = "overview" | "rankings" | "habits" | "arousal" | "storage";
+type TabType = "overview" | "rankings" | "habits" | "arousal" | "storage" | "achievements";
 
 const WEEKDAY_LABELS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
 
@@ -453,6 +456,27 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
       setRankings(rankData);
       setDiskPrediction(predictData);
       setLibraryOverview(overviewData);
+
+      // 后台静默检测并触发新成就跳杯
+      void trpc.achievements.checkAndUnlock
+        .mutate({
+          totalVideos: Array.isArray(videos) ? videos.length : 0,
+          actorCount: Array.isArray(rankData?.actors) ? rankData.actors.length : 0,
+        })
+        .then((res) => {
+          if (res?.newlyUnlocked && res.newlyUnlocked.length > 0) {
+            for (const ach of res.newlyUnlocked) {
+              triggerAchievementToast({
+                id: ach.id,
+                title: ach.title,
+                desc: ach.desc,
+                tier: ach.tier,
+                icon: ach.icon,
+              });
+            }
+          }
+        })
+        .catch(() => {});
     } catch (err: any) {
       onAddSystemLog(`统计加载失败: ${err?.message || err}`, "ERROR");
     }
@@ -700,6 +724,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
           { id: "habits", label: "观影时段规律", icon: Clock },
           { id: "arousal", label: "私密时刻", icon: Heart },
           { id: "storage", label: "存储与预测", icon: HardDrive },
+          { id: "achievements", label: "成就殿堂", icon: Trophy },
         ].map((t) => {
           const Icon = t.icon;
           const active = activeTab === t.id;
@@ -1413,6 +1438,9 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
           </div>
         </div>
       )}
+
+      {/* 成就殿堂选项卡 */}
+      {activeTab === "achievements" && <AchievementsPanel />}
 
       {/* ================= 4. 浮层弹窗 ================= */}
       {showReportModal && (

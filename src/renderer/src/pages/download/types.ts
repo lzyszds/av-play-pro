@@ -107,6 +107,8 @@ export interface AppSettings {
   cloudSyncLastSync?: string;
   /** 是否开启自动同步 */
   cloudSyncAutoSync?: boolean;
+  /** 播放视频时是否自动开启私密计时 */
+  autoArousalOnPlay?: boolean;
 }
 
 export interface DownloadPageProps {

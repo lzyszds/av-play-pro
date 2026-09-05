@@ -21,6 +21,7 @@ import { scrapeRouter } from "./routers/scrapeRouter";
 import { syncRouter } from "./routers/syncRouter";
 import { activityRouter } from "./routers/activityRouter";
 import { organizerRouter } from "./routers/organizerRouter";
+import { achievementsRouter } from "./routers/achievementsRouter";
 
 export const appRouter = t.router({
   download: downloadRouter,
@@ -45,6 +46,7 @@ export const appRouter = t.router({
   sync: syncRouter,
   activity: activityRouter,
   organizer: organizerRouter,
+  achievements: achievementsRouter,
 });
 
 export type AppRouter = typeof appRouter;

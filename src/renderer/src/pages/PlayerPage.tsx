@@ -31,6 +31,7 @@ import {
   RepairModal,
   type RepairTarget,
 } from "../components/player/RepairModal";
+import { Tooltip } from "../components/common/Tooltip";
 
 const LAST_PLAYED_KEY = "av-play-pro:lastPlayed";
 const FAVORITES_KEY = "av-play-pro:favorites";
@@ -1047,26 +1048,28 @@ export function PlayerPage({
             {activeStream.name}
           </h3>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleAddTimelineBookmark}
-              disabled={!videoEl || !activeStream.url}
-              className="h-7 px-3 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-slate-600 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer"
-              title="保存当前播放时间点"
-            >
-              <BookmarkPlus className="w-3.5 h-3.5 inline mr-1" />
-              加时间点
-            </button>
-            <button
-              type="button"
-              onClick={() => setTimelineOpen((v) => !v)}
-              disabled={!activeStream.url}
-              className="h-7 px-3 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-slate-600 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer"
-              title="查看并跳转时间轴书签"
-            >
-              <ListChecks className="w-3.5 h-3.5 inline mr-1" />
-              跳转书签 {timelineBookmarks.length}
-            </button>
+            <Tooltip content="在当前秒数添加高能书签，自动提升进度条热力峰值" placement="bottom">
+              <button
+                type="button"
+                onClick={handleAddTimelineBookmark}
+                disabled={!videoEl || !activeStream.url}
+                className="h-7 px-3 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-slate-600 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer"
+              >
+                <BookmarkPlus className="w-3.5 h-3.5 inline mr-1" />
+                加时间点
+              </button>
+            </Tooltip>
+            <Tooltip content="展开或折叠本片所有已标记的高能时间轴书签列表" placement="bottom">
+              <button
+                type="button"
+                onClick={() => setTimelineOpen((v) => !v)}
+                disabled={!activeStream.url}
+                className="h-7 px-3 rounded-md bg-white border border-slate-200 text-[11px] font-bold text-slate-600 hover:text-amber-600 hover:border-amber-300 disabled:opacity-40 transition cursor-pointer"
+              >
+                <ListChecks className="w-3.5 h-3.5 inline mr-1" />
+                跳转书签 {timelineBookmarks.length}
+              </button>
+            </Tooltip>
             <span className="text-[11px] bg-slate-900 text-white px-3 py-1 rounded-full font-mono font-bold shadow-sm ring-1 ring-white/10">
               {activeStream.resolution}
             </span>
@@ -1081,6 +1084,7 @@ export function PlayerPage({
               referer={activeStream.referer}
               previewVttUrl={previewVttUrl}
               subtitleUrl={subtitleUrl}
+              bookmarks={timelineBookmarks}
               onVideoEl={setVideoEl}
               onMeta={(m) =>
                 setActiveStream((s) => ({
@@ -1233,50 +1237,61 @@ export function PlayerPage({
 
             {/* 操作按钮行 */}
             <div className="grid grid-cols-4 gap-1.5">
-              <button
-                onClick={() => setLuckyOpen(true)}
-                className="flex-1 h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-gradient-to-br from-pink-500 to-amber-500 text-white text-[10px] font-bold cursor-pointer hover:opacity-90 transition shadow-sm"
-              >
-                <Gift className="w-3 h-3 fill-current" />
-                抽奖
-              </button>
-              <button
-                onClick={() =>
-                  setRepairTargets(
-                    localVideos.map((v) => ({
-                      name: v.name,
-                      folderPath: deriveFolderFromUrl(v.url) || "",
-                      videoFilePath: "",
-                    })),
-                  )
-                }
-                className="flex-1 h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition"
-              >
-                <Wrench className="w-3 h-3" />
-                修复
-              </button>
-              <button
-                onClick={handleBackfillMeta}
-                className="flex-1 h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition"
-              >
-                <RefreshCw
-                  className={`w-3 h-3 ${isLoadingVideos ? "animate-spin" : ""}`}
-                />
-                刷新
-              </button>
-              <button
-                onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
-                className={`h-7 flex items-center justify-center gap-1 rounded-md cursor-pointer text-[11px] font-semibold transition-colors ${
-                  showOnlyFavorites
-                    ? "bg-amber-500 text-white shadow-sm shadow-amber-500/20"
-                    : "bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50"
-                }`}
-              >
-                <Heart
-                  className={`w-3 h-3 ${showOnlyFavorites ? "fill-current" : ""}`}
-                />
-                心爱
-              </button>
+              <Tooltip content="命运轮盘：今晚看啥？智能结合观影偏好随机抽取一部，拯救选片困难症" placement="bottom">
+                <button
+                  onClick={() => setLuckyOpen(true)}
+                  className="w-full h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-gradient-to-br from-pink-500 to-amber-500 text-white text-[10px] font-bold cursor-pointer hover:opacity-90 transition shadow-sm"
+                >
+                  <Gift className="w-3 h-3 fill-current" />
+                  抽奖
+                </button>
+              </Tooltip>
+
+              <Tooltip content="片库体检修复：为本地视频补全封面海报、生成微动预览切片与元数据" placement="bottom">
+                <button
+                  onClick={() =>
+                    setRepairTargets(
+                      localVideos.map((v) => ({
+                        name: v.name,
+                        folderPath: deriveFolderFromUrl(v.url) || "",
+                        videoFilePath: "",
+                      })),
+                    )
+                  }
+                  className="w-full h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition"
+                >
+                  <Wrench className="w-3 h-3" />
+                  修复
+                </button>
+              </Tooltip>
+
+              <Tooltip content="重新扫描本地硬盘目录，实时更新最新下载或拷入的影片" placement="bottom">
+                <button
+                  onClick={handleBackfillMeta}
+                  className="w-full h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50 text-[10px] font-bold cursor-pointer transition"
+                >
+                  <RefreshCw
+                    className={`w-3 h-3 ${isLoadingVideos ? "animate-spin" : ""}`}
+                  />
+                  刷新
+                </button>
+              </Tooltip>
+
+              <Tooltip content="心爱筛选器：一键仅展示标记过红心收藏的心仪影片" placement="bottom">
+                <button
+                  onClick={() => setShowOnlyFavorites(!showOnlyFavorites)}
+                  className={`w-full h-7 flex items-center justify-center gap-1 rounded-md cursor-pointer text-[11px] font-semibold transition-colors ${
+                    showOnlyFavorites
+                      ? "bg-amber-500 text-white shadow-sm shadow-amber-500/20"
+                      : "bg-white border border-slate-200 text-slate-600 hover:border-amber-300 hover:text-amber-600 hover:bg-amber-50"
+                  }`}
+                >
+                  <Heart
+                    className={`w-3 h-3 ${showOnlyFavorites ? "fill-current" : ""}`}
+                  />
+                  心爱
+                </button>
+              </Tooltip>
             </div>
 
             {/* 解析成功横幅 */}

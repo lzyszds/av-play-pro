@@ -16,6 +16,7 @@ import { RssPage } from "./pages/RssPage";
 import { ActorsPage } from "./pages/ActorsPage";
 import { DiscoverPage } from "./pages/DiscoverPage";
 import { ScraperWebview } from "./components/ScraperWebview";
+import { AchievementToast } from "./components/achievements/AchievementToast";
 import { trpc } from "./lib/trpc";
 import type { AppSettings, LogMessage } from "./pages/download/types";
 
@@ -49,6 +50,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   cloudSyncSecret: "MySecretToken_2026",
   cloudSyncLastSync: "",
   cloudSyncAutoSync: false,
+  autoArousalOnPlay: true,
 };
 
 // 合法的页面 key，用于校验持久化的 lastPage
@@ -249,6 +251,45 @@ export default function App() {
     }
   }, [arousalActive, addLog]);
 
+  // 允许回溯补录时间（例如已经看了5分钟、15分钟才想起来开启）
+  const handleAdjustArousal = useCallback((retroactiveSeconds = 0) => {
+    const now = Date.now();
+    const newStart = now - retroactiveSeconds * 1000;
+    arousalStartRef.current = newStart;
+    setArousalElapsed(retroactiveSeconds);
+    setArousalActive(true);
+    if (retroactiveSeconds > 0) {
+      const mm = Math.floor(retroactiveSeconds / 60);
+      addLog(`💗 私密计时已启动（已追溯回推 ${mm} 分钟前开始）`, "INFO");
+    } else {
+      addLog("💗 私密计时已启动", "INFO");
+    }
+  }, [addLog]);
+
+  // 视频开播时自动开启私密计时
+  useEffect(() => {
+    const onVideoPlaying = (e: Event) => {
+      const detail = (e as CustomEvent<{ url?: string; currentTime?: number }>).detail;
+      if (settings.autoArousalOnPlay !== false && !arousalActive) {
+        const offsetSec =
+          detail?.currentTime && detail.currentTime > 5
+            ? Math.floor(detail.currentTime)
+            : 0;
+        arousalStartRef.current = Date.now() - offsetSec * 1000;
+        setArousalElapsed(offsetSec);
+        setArousalActive(true);
+        addLog(
+          offsetSec > 0
+            ? `💗 检测到视频播放，已自动开启私密计时（已对齐视频播放进度 ${offsetSec}秒）`
+            : "💗 检测到视频开播，已自动开启私密计时",
+          "INFO",
+        );
+      }
+    };
+    window.addEventListener("avplay:video-playing", onVideoPlaying);
+    return () => window.removeEventListener("avplay:video-playing", onVideoPlaying);
+  }, [settings.autoArousalOnPlay, arousalActive, addLog]);
+
   // 主题
   useEffect(() => {
     applyTheme(settings.theme);
@@ -304,6 +345,7 @@ export default function App() {
         arousalActive={arousalActive}
         arousalElapsed={arousalElapsed}
         onToggleArousal={handleToggleArousal}
+        onAdjustArousal={handleAdjustArousal}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
@@ -433,6 +475,9 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 全局成就解锁跳杯提示 */}
+      <AchievementToast />
     </div>
   );
 }

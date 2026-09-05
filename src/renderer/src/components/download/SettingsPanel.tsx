@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   Database,
   Check,
+  Heart,
 } from "lucide-react";
 import { trpc } from "../../lib/trpc";
 import type {
@@ -99,6 +100,9 @@ export function SettingsPanel({
     useState<DownloadBackground>(settings.downloadBackground ?? "1");
   const [privacyScreenEnabled, setPrivacyScreenEnabled] = useState(
     settings.privacyScreenEnabled ?? true,
+  );
+  const [autoArousalOnPlay, setAutoArousalOnPlay] = useState(
+    settings.autoArousalOnPlay ?? true,
   );
   const [privacyScreenIdleSeconds, setPrivacyScreenIdleSeconds] = useState(
     settings.privacyScreenIdleSeconds ?? 60,
@@ -322,6 +326,7 @@ export function SettingsPanel({
       cloudSyncSecret: cloudSyncSecret.trim(),
       cloudSyncAutoSync,
       cloudSyncLastSync,
+      autoArousalOnPlay,
     });
     onAddSystemLog("Electron 核心: 系统配置已更新。", "SUCCESS");
   };
@@ -706,6 +711,22 @@ export function SettingsPanel({
                   <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
                     隐私屏保
                   </label>
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80 rounded-xl mb-2.5">
+                    <div>
+                      <div className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                        <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
+                        视频开播自动开启私密计时
+                      </div>
+                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                        无需每次手动点击，视频开始播放即自动启动计时并对齐进度，结束后自动存入战报
+                      </p>
+                    </div>
+                    <Toggle
+                      on={autoArousalOnPlay}
+                      onToggle={() => setAutoArousalOnPlay(!autoArousalOnPlay)}
+                    />
+                  </div>
+
                   <div className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80 rounded-xl">
                     <div>
                       <div className="text-xs font-bold text-slate-800 dark:text-slate-200">

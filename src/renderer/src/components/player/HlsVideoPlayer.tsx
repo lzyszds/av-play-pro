@@ -1,7 +1,9 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Hls from "hls.js";
 //@ts-ignore
 import Plyr from "plyr";
+import { PlayerHeatmap, recordUserSeekHeat } from "./PlayerHeatmap";
 
 interface Props {
   url: string;
@@ -10,6 +12,7 @@ interface Props {
   previewVttUrl?: string | null;
   /** 字幕文件的 local-media://... URL（srt 或 vtt） */
   subtitleUrl?: string | null;
+  bookmarks?: Array<{ currentTime: number; note?: string }>;
   onMeta?: (info: { width: number; height: number }) => void;
   /** 透传到 <video> 上的事件，外层挂播放/暂停统计 */
   onVideoEl?: (el: HTMLVideoElement) => void;
@@ -48,6 +51,7 @@ export const HlsVideoPlayer: React.FC<Props> = ({
   referer,
   previewVttUrl,
   subtitleUrl,
+  bookmarks = [],
   onMeta,
   onVideoEl,
   onLog,
@@ -56,6 +60,10 @@ export const HlsVideoPlayer: React.FC<Props> = ({
   const plyrRef = useRef<Plyr | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const subtitleBlobRef = useRef<string | null>(null);
+
+  const [progressEl, setProgressEl] = useState<HTMLElement | null>(null);
+  const [videoDuration, setVideoDuration] = useState<number>(0);
+  const [videoCurrentTime, setVideoCurrentTime] = useState<number>(0);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -116,10 +124,37 @@ export const HlsVideoPlayer: React.FC<Props> = ({
     const plyr = new Plyr(video, plyrOption);
     plyrRef.current = plyr;
 
+    plyr.on("ready", () => {
+      const pEl = container.querySelector(".plyr__progress") as HTMLElement | null;
+      if (pEl) setProgressEl(pEl);
+    });
+
     const onLoadedMeta = () => {
+      setVideoDuration(video.duration || 0);
       onMeta?.({ width: video.videoWidth, height: video.videoHeight });
     };
     video.addEventListener("loadedmetadata", onLoadedMeta);
+
+    const onTimeUpdate = () => {
+      setVideoCurrentTime(video.currentTime || 0);
+    };
+    video.addEventListener("timeupdate", onTimeUpdate);
+
+    const onSeeking = () => {
+      if (video.duration > 0) {
+        recordUserSeekHeat(url, video.currentTime, video.duration);
+      }
+    };
+    video.addEventListener("seeking", onSeeking);
+
+    const onPlayEvent = () => {
+      window.dispatchEvent(
+        new CustomEvent("avplay:video-playing", {
+          detail: { url, currentTime: video.currentTime || 0 },
+        }),
+      );
+    };
+    video.addEventListener("play", onPlayEvent);
 
     const tryPlay = () => {
       if (!autoPlay) return;
@@ -178,6 +213,10 @@ export const HlsVideoPlayer: React.FC<Props> = ({
 
     return () => {
       video.removeEventListener("loadedmetadata", onLoadedMeta);
+      video.removeEventListener("timeupdate", onTimeUpdate);
+      video.removeEventListener("seeking", onSeeking);
+      video.removeEventListener("play", onPlayEvent);
+      setProgressEl(null);
       try {
         video.pause();
         // 显式卸掉 src，否则 Windows 上 local-media 文件句柄可能一直占着，导致删不掉
@@ -299,5 +338,17 @@ export const HlsVideoPlayer: React.FC<Props> = ({
     };
   }, [subtitleUrl, onLog]);
 
-  return <div ref={containerRef} className="w-full h-full flex bg-black" />;
+  return (
+    <div ref={containerRef} className="w-full h-full flex bg-black relative group/plyr">
+      {progressEl && videoDuration > 0 && createPortal(
+        <PlayerHeatmap
+          videoKey={url}
+          duration={videoDuration}
+          currentTime={videoCurrentTime}
+          bookmarks={bookmarks}
+        />,
+        progressEl
+      )}
+    </div>
+  );
 };

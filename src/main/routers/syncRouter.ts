@@ -35,70 +35,104 @@ function normalizeUrl(urlStr: string): string {
   return cleaned.replace(/\/+$/, "");
 }
 
+import { getMainWindow } from "../windowState";
+
+let isExecutingCloudPush = false;
+
 // 执行上传/推送本地数据至云端 KV 核心逻辑
-async function executePushToCloud(rawEndpoint: string, secretKey: string) {
-  const endpoint = normalizeUrl(rawEndpoint);
-  if (!endpoint) return { success: false as const, error: "云同步端点不能为空" };
+export async function executePushToCloud(
+  rawEndpoint: string,
+  secretKey: string,
+  reason: "startup" | "exit" | "tray_hide" | "interval" | "manual" = "manual",
+) {
+  if (isExecutingCloudPush) {
+    if (reason === "exit") {
+      log.info("[syncRouter] Push already in progress, waiting for it to finish for exit...");
+      const start = Date.now();
+      while (isExecutingCloudPush && Date.now() - start < 4000) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return {
+        success: true as const,
+        updatedAt: new Date().toISOString(),
+        stats: { videoCount: 0, timelineCount: 0, actorCount: 0 },
+        message: "已等待正在进行的备份完成",
+      };
+    }
+    log.warn("[syncRouter] Another cloud backup is already in progress, skipping");
+    return { success: false as const, error: "已有正在进行的云端同步任务" };
+  }
 
-  // 读取本地核心文件
-  const settingsPath = getUserDataPath("settings.json");
-  const statsPath = getUserDataPath("stats.json");
-  const timelinePath = getUserDataPath("timeline.json");
-  const actorsPath = getUserDataPath("actors.json");
-  const tagModelPath = getUserDataPath("tag-model.json");
-  const activityPath = getUserDataPath("activity-history.json");
-  const reportPath = getUserDataPath("annual-report.json");
-
-  const localSettings = readJsonFile<Record<string, unknown>>(
-    settingsPath,
-    {},
-  );
-  const localStats = readJsonFile<Record<string, unknown>>(statsPath, {});
-  const localTimeline = readJsonFile<Record<string, unknown>>(
-    timelinePath,
-    {},
-  );
-  const localActors = readJsonFile<unknown[] | Record<string, unknown>>(
-    actorsPath,
-    [],
-  );
-  const localTagModel = readJsonFile<Record<string, unknown>>(
-    tagModelPath,
-    {},
-  );
-  const localActivities = readJsonFile<unknown[]>(activityPath, []);
-  const localReport = readJsonFile<Record<string, unknown> | null>(
-    reportPath,
-    null,
-  );
-
-  // 计算统计概况
-  const videoCount = localStats?.videos
-    ? Object.keys(localStats.videos as object).length
-    : 0;
-  const timelineCount = Array.isArray((localTimeline as any)?.bookmarks)
-    ? (localTimeline as any).bookmarks.length
-    : 0;
-  const actorCount = Array.isArray(localActors)
-    ? localActors.length
-    : Object.keys(localActors || {}).length;
-
-  const payload = {
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    clientVersion: app.getVersion(),
-    data: {
-      settings: localSettings,
-      stats: localStats,
-      timeline: localTimeline,
-      actors: localActors,
-      tagModel: localTagModel,
-      activities: localActivities,
-      annualReport: localReport,
-    },
-  };
+  isExecutingCloudPush = true;
 
   try {
+    const endpoint = normalizeUrl(rawEndpoint);
+    if (!endpoint) return { success: false as const, error: "云同步端点不能为空" };
+
+    // 读取本地核心文件
+    const settingsPath = getUserDataPath("settings.json");
+    const statsPath = getUserDataPath("stats.json");
+    const timelinePath = getUserDataPath("timeline.json");
+    const actorsPath = getUserDataPath("actors.json");
+    const tagModelPath = getUserDataPath("tag-model.json");
+    const activityPath = getUserDataPath("activity-history.json");
+    const reportPath = getUserDataPath("annual-report.json");
+    const achievementsPath = getUserDataPath("achievements.json");
+
+    const localSettings = readJsonFile<Record<string, unknown>>(
+      settingsPath,
+      {},
+    );
+    const localStats = readJsonFile<Record<string, unknown>>(statsPath, {});
+    const localTimeline = readJsonFile<Record<string, unknown>>(
+      timelinePath,
+      {},
+    );
+    const localActors = readJsonFile<unknown[] | Record<string, unknown>>(
+      actorsPath,
+      [],
+    );
+    const localTagModel = readJsonFile<Record<string, unknown>>(
+      tagModelPath,
+      {},
+    );
+    const localActivities = readJsonFile<unknown[]>(activityPath, []);
+    const localReport = readJsonFile<Record<string, unknown> | null>(
+      reportPath,
+      null,
+    );
+    const localAchievements = readJsonFile<Record<string, unknown>>(
+      achievementsPath,
+      {},
+    );
+
+    // 计算统计概况
+    const videoCount = localStats?.videos
+      ? Object.keys(localStats.videos as object).length
+      : 0;
+    const timelineCount = Array.isArray((localTimeline as any)?.bookmarks)
+      ? (localTimeline as any).bookmarks.length
+      : 0;
+    const actorCount = Array.isArray(localActors)
+      ? localActors.length
+      : Object.keys(localActors || {}).length;
+
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      clientVersion: app.getVersion(),
+      data: {
+        settings: localSettings,
+        stats: localStats,
+        timeline: localTimeline,
+        actors: localActors,
+        tagModel: localTagModel,
+        activities: localActivities,
+        annualReport: localReport,
+        achievements: localAchievements,
+      },
+    };
+
     const res = await fetch(`${endpoint}/api/sync`, {
       method: "POST",
       headers: {
@@ -107,7 +141,7 @@ async function executePushToCloud(rawEndpoint: string, secretKey: string) {
         "User-Agent": "AVPlayPro-Electron",
       },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(10000),
     });
 
     if (res.status === 401) {
@@ -121,21 +155,49 @@ async function executePushToCloud(rawEndpoint: string, secretKey: string) {
       };
     }
 
-    const resData: any = await res.json();
-
     // 将最新同步时间保存到本地 settings.json
     localSettings.cloudSyncLastSync = payload.exportedAt;
     writeJsonFile(settingsPath, localSettings);
 
+    const reasonTitle =
+      reason === "startup"
+        ? "进入应用自动备份"
+        : reason === "exit"
+        ? "退出应用自动备份"
+        : reason === "tray_hide"
+        ? "最小化托盘自动备份"
+        : reason === "interval"
+        ? "定时自动备份"
+        : "云端备份";
+
     recordActivity(
       "SYNC",
-      "云端备份",
+      reasonTitle,
       `成功将 ${videoCount} 部影片数据与 ${localActivities.length} 条操作历史备份至 Cloudflare KV`,
     );
 
     log.info(
-      `[syncRouter] Successfully pushed data to cloud: ${payload.exportedAt}`,
+      `[syncRouter] Successfully pushed data to cloud (${reason}): ${payload.exportedAt}`,
     );
+
+    // 通知渲染进程主窗口（若存在且未销毁）
+    try {
+      const win = getMainWindow();
+      if (win && !win.isDestroyed()) {
+        win.webContents.send("cloud-sync:status", {
+          reason,
+          updatedAt: payload.exportedAt,
+          success: true,
+          stats: {
+            videoCount,
+            timelineCount,
+            actorCount,
+          },
+        });
+      }
+    } catch (sendErr) {
+      log.warn("[syncRouter] Failed to send cloud-sync:status to window:", sendErr);
+    }
 
     return {
       success: true as const,
@@ -148,11 +210,63 @@ async function executePushToCloud(rawEndpoint: string, secretKey: string) {
       message: "数据已成功备份到 Cloudflare KV！",
     };
   } catch (err: any) {
-    log.error("[syncRouter] Failed to push to cloud:", err);
+    log.error(`[syncRouter] Failed to push to cloud (${reason}):`, err);
     return {
       success: false as const,
       error: `上传异常: ${err?.message || String(err)}`,
     };
+  } finally {
+    isExecutingCloudPush = false;
+  }
+}
+
+// 供主进程在启动、退出、托盘最小化或定时调用的自动化备份函数
+export async function triggerAutoCloudBackup(
+  reason: "startup" | "exit" | "tray_hide" | "interval" = "startup",
+): Promise<boolean> {
+  try {
+    const settingsPath = getUserDataPath("settings.json");
+    const settings = readJsonFile<Record<string, any>>(settingsPath, {});
+
+    // 如果用户显式关闭了自动同步（默认开启），则跳过
+    if (settings.cloudSyncAutoSync === false) {
+      log.info(
+        `[syncRouter] Auto cloud backup skipped (${reason}): cloudSyncAutoSync is false`,
+      );
+      return false;
+    }
+
+    const endpoint =
+      (settings.cloudSyncEndpoint as string)?.trim() ||
+      "https://avplay-sync.1024327189.workers.dev";
+    const secretKey =
+      (settings.cloudSyncSecret as string)?.trim() || "MySecretToken_2026";
+
+    if (!endpoint || !secretKey) {
+      log.info(
+        `[syncRouter] Auto cloud backup skipped (${reason}): endpoint or secret is missing`,
+      );
+      return false;
+    }
+
+    log.info(
+      `[syncRouter] Auto cloud backup triggering (${reason}) -> ${endpoint}...`,
+    );
+    const res = await executePushToCloud(endpoint, secretKey, reason);
+    if (res.success) {
+      log.info(
+        `[syncRouter] Auto cloud backup (${reason}) succeeded: ${res.updatedAt}`,
+      );
+      return true;
+    } else {
+      log.warn(
+        `[syncRouter] Auto cloud backup (${reason}) failed: ${res.error}`,
+      );
+      return false;
+    }
+  } catch (err: any) {
+    log.error(`[syncRouter] Auto cloud backup (${reason}) exception:`, err);
+    return false;
   }
 }
 
@@ -367,6 +481,7 @@ export const syncRouter = t.router({
           "tag-model.json",
           "activity-history.json",
           "annual-report.json",
+          "achievements.json",
         ];
 
         for (const f of filesToSync) {
@@ -403,6 +518,12 @@ export const syncRouter = t.router({
           writeJsonFile(
             getUserDataPath("annual-report.json"),
             remoteData.annualReport,
+          );
+        }
+        if (remoteData.achievements) {
+          writeJsonFile(
+            getUserDataPath("achievements.json"),
+            remoteData.achievements,
           );
         }
 

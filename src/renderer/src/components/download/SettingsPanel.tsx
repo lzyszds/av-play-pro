@@ -163,11 +163,23 @@ export function SettingsPanel({
     settings.cloudSyncSecret || "MySecretToken_2026",
   );
   const [cloudSyncAutoSync, setCloudSyncAutoSync] = useState(
-    settings.cloudSyncAutoSync ?? false,
+    settings.cloudSyncAutoSync ?? true,
   );
   const [cloudSyncLastSync, setCloudSyncLastSync] = useState(
     settings.cloudSyncLastSync || "",
   );
+
+  useEffect(() => {
+    if (settings.cloudSyncLastSync) {
+      setCloudSyncLastSync(settings.cloudSyncLastSync);
+    }
+  }, [settings.cloudSyncLastSync]);
+
+  useEffect(() => {
+    if (settings.cloudSyncAutoSync !== undefined) {
+      setCloudSyncAutoSync(settings.cloudSyncAutoSync);
+    }
+  }, [settings.cloudSyncAutoSync]);
   // 鉴权密钥明文直接显示，无需遮掩
   const [showSecret, setShowSecret] = useState(false);
   const [testingConnection, setTestingConnection] = useState(false);
@@ -1004,6 +1016,41 @@ export function SettingsPanel({
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* 自动化备份开关卡片 */}
+                <div className="flex items-center justify-between p-3.5 bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/20 dark:border-amber-500/30 rounded-xl transition">
+                  <div className="space-y-0.5 max-w-[80%]">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                        <UploadCloud className="w-3.5 h-3.5 text-amber-500" />
+                        应用启动与退出时自动备份
+                      </span>
+                      <span className="text-[10px] bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold px-1.5 py-0.5 rounded">
+                        全自动静默
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                      开启后，每次进入应用时、彻底退出应用前或最小化到托盘时，系统都会在后台自动静默将观影记录、打点书签、演员库与成就殿堂推送到 Cloudflare KV，彻底告别手动备份。
+                    </p>
+                  </div>
+                  <Toggle
+                    on={cloudSyncAutoSync}
+                    onToggle={() => {
+                      const next = !cloudSyncAutoSync;
+                      setCloudSyncAutoSync(next);
+                      onSaveSettings({
+                        ...settings,
+                        cloudSyncAutoSync: next,
+                        cloudSyncEndpoint: cloudSyncEndpoint.trim(),
+                        cloudSyncSecret: cloudSyncSecret.trim(),
+                      });
+                      onAddSystemLog(
+                        `已${next ? "开启" : "关闭"}应用启动与退出自动备份`,
+                        "INFO",
+                      );
+                    }}
+                  />
                 </div>
 
                 {/* 同步与备份操作区 */}

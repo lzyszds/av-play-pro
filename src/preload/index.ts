@@ -57,4 +57,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('whisper:install-error', h)
     },
   },
+  sync: {
+    onSyncStatus: (callback: (data: any) => void) => {
+      const handler = (_event: any, data: any) => callback(data)
+      ipcRenderer.on('cloud-sync:status', handler)
+      return () => ipcRenderer.removeListener('cloud-sync:status', handler)
+    },
+  },
 })

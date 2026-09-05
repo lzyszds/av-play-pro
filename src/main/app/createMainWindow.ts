@@ -7,6 +7,7 @@ import { setMainWindow } from "../windowState";
 import { setScrapeImpl } from "../postprocess/queue";
 import { setupTray, getIsQuitting, markQuitting } from "../tray";
 import { log } from "../logger";
+import { triggerAutoCloudBackup } from "../routers/syncRouter";
 
 function resolveAppIcon(): string | undefined {
   const candidates = [
@@ -114,6 +115,7 @@ export function createMainWindow(): void {
     if (action === "tray") {
       event.preventDefault();
       window.hide();
+      void triggerAutoCloudBackup("tray_hide");
       return;
     }
     // quit

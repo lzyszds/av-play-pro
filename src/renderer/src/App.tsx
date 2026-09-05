@@ -49,7 +49,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   cloudSyncEndpoint: "https://avplay-sync.1024327189.workers.dev",
   cloudSyncSecret: "MySecretToken_2026",
   cloudSyncLastSync: "",
-  cloudSyncAutoSync: false,
+  cloudSyncAutoSync: true,
   autoArousalOnPlay: true,
 };
 
@@ -289,6 +289,26 @@ export default function App() {
     window.addEventListener("avplay:video-playing", onVideoPlaying);
     return () => window.removeEventListener("avplay:video-playing", onVideoPlaying);
   }, [settings.autoArousalOnPlay, arousalActive, addLog]);
+
+  // 监听主进程发来的自动云端备份状态更新（启动自动备份、定时备份、托盘隐藏备份等）
+  useEffect(() => {
+    const unlisten = window.electronAPI?.sync?.onSyncStatus?.((data: any) => {
+      if (data?.updatedAt) {
+        setSettings((s) => ({ ...s, cloudSyncLastSync: data.updatedAt }));
+        const timeStr = new Date(data.updatedAt).toLocaleTimeString();
+        if (data.reason === "startup") {
+          addLog(`☁️ 云端同步：进入应用自动备份成功 (${timeStr})`, "SUCCESS");
+        } else if (data.reason === "interval") {
+          addLog(`☁️ 云端同步：定时自动备份成功 (${timeStr})`, "SUCCESS");
+        } else if (data.reason === "tray_hide") {
+          addLog(`☁️ 云端同步：后台自动备份成功 (${timeStr})`, "SUCCESS");
+        }
+      }
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, [addLog]);
 
   // 主题
   useEffect(() => {

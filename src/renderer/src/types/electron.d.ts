@@ -25,6 +25,20 @@ export interface ElectronAPI {
       ) => void,
     ) => () => void;
   };
+  sync?: {
+    onSyncStatus: (
+      callback: (data: {
+        reason: string;
+        updatedAt: string;
+        success: boolean;
+        stats?: {
+          videoCount: number;
+          timelineCount: number;
+          actorCount: number;
+        };
+      }) => void,
+    ) => () => void;
+  };
 }
 
 declare global {

@@ -19,6 +19,7 @@ import { scenesRouter } from "./routers/scenesRouter";
 import { intelRouter } from "./routers/intelRouter";
 import { scrapeRouter } from "./routers/scrapeRouter";
 import { syncRouter } from "./routers/syncRouter";
+import { snapshotRouter } from "./routers/snapshotRouter";
 import { activityRouter } from "./routers/activityRouter";
 import { organizerRouter } from "./routers/organizerRouter";
 import { achievementsRouter } from "./routers/achievementsRouter";
@@ -44,6 +45,7 @@ export const appRouter = t.router({
   intel: intelRouter,
   scrape: scrapeRouter,
   sync: syncRouter,
+  snapshot: snapshotRouter,
   activity: activityRouter,
   organizer: organizerRouter,
   achievements: achievementsRouter,

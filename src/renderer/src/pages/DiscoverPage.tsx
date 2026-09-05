@@ -3,7 +3,12 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { PageLoader } from "../components/PageLoader";
 import { Tooltip } from "../components/common/Tooltip";
 import { trpc } from "../lib/trpc";
-import { runScraper, type ScrapedItem } from "../lib/scraperControl";
+import {
+  runScraper,
+  cancelScrape,
+  isScrapeAbortError,
+  type ScrapedItem,
+} from "../lib/scraperControl";
 import { toCdnImg } from "../lib/cdn";
 import {
   Compass,
@@ -214,6 +219,12 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
     [config, onAddSystemLog],
   );
 
+  const handleStopScrape = useCallback(() => {
+    cancelScrape();
+    setProgress("正在停止…");
+    onAddSystemLog("正在停止抓取…", "INFO");
+  }, [onAddSystemLog]);
+
   // 一键抓取：弹出 webview 过盾 → 逐页抓取 → 落库 → 刷新
   const handleScrape = useCallback(async () => {
     if (!config) return;
@@ -241,6 +252,10 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
       setStore(saved);
       onAddSystemLog(`抓取完成，已保存 ${saved.items.length} 条`, "SUCCESS");
     } catch (error) {
+      if (isScrapeAbortError(error)) {
+        onAddSystemLog("抓取已取消", "INFO");
+        return;
+      }
       onAddSystemLog(`抓取失败: ${(error as Error)?.message}`, "ERROR");
     } finally {
       setRunning(false);
@@ -367,12 +382,12 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
           </Tooltip>
           <button
             type="button"
-            onClick={handleScrape}
-            disabled={running}
-            className="cyber-btn-primary flex items-center gap-1.5 px-4 py-1.5 text-xs"
+            onClick={running ? handleStopScrape : handleScrape}
+            disabled={!config}
+            className={`flex items-center gap-1.5 px-4 py-1.5 text-xs ${running ? "rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25 transition cursor-pointer" : "cyber-btn-primary"}`}
           >
             <Zap className={`w-3.5 h-3.5 ${running ? "animate-pulse" : ""}`} />
-            {running ? progress || "抓取中…" : "一键抓取"}
+            {running ? progress || "停止抓取" : "一键抓取"}
           </button>
         </div>
       </div>
@@ -439,12 +454,12 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
               </p>
               <button
                 type="button"
-                onClick={handleScrape}
-                disabled={running}
-                className="cyber-btn-primary mt-2 px-5 py-2 text-xs inline-flex items-center gap-2"
+                onClick={running ? handleStopScrape : handleScrape}
+                disabled={!config}
+                className={`mt-2 px-5 py-2 text-xs inline-flex items-center gap-2 ${running ? "rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25 transition cursor-pointer" : "cyber-btn-primary"}`}
               >
                 <Zap className="w-3.5 h-3.5" />
-                立即抓取
+                {running ? "停止抓取" : "立即抓取"}
               </button>
             </div>
           ) : (

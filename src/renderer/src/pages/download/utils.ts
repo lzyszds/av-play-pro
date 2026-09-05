@@ -15,16 +15,23 @@ export function extractVideoCode(text?: string): string | null {
   return match ? match[0].toUpperCase() : null;
 }
 
+const CDN_PROXY_BASE = "http://127.0.0.1:39528/m";
+
 export function getCoverUrlFromName(name: string): string | undefined {
   const code = extractVideoCode(name)?.toLowerCase();
   if (!code) return undefined;
-  return `cdn://fourhoi.com/${code}-uncensored-leak/cover-n.jpg`;
+  // cover-t.jpg 是 missav 缩略图，几乎一定存在；代理服务器 404 时会自动尝试 cover-n/cover
+  const target = `https://fourhoi.com/${code}-uncensored-leak/cover-t.jpg`;
+  const proxy = new URL(CDN_PROXY_BASE);
+  proxy.searchParams.set("u", target);
+  proxy.searchParams.set("r", `https://missav.ai/cn/${code}-uncensored-leak`);
+  return proxy.toString();
 }
 
 export function toProxiedAssetUrl(url?: string): string | undefined {
   if (!url) return undefined;
   if (
-    url.startsWith("cdn://") ||
+    url.startsWith("http://127.0.0.1:39528/") ||
     url.startsWith("local-media://") ||
     url.startsWith("file://")
   ) {
@@ -32,7 +39,12 @@ export function toProxiedAssetUrl(url?: string): string | undefined {
   }
 
   try {
-    const parsed = new URL(url);
+    // 兼容旧的 cdn:// 协议地址，先转回 https://
+    let normalized = url;
+    if (normalized.startsWith("cdn://")) {
+      normalized = "https://" + normalized.slice(6);
+    }
+    const parsed = new URL(normalized);
     const host = parsed.hostname.toLowerCase();
     const shouldProxy =
       host === "fourhoi.com" ||
@@ -44,22 +56,35 @@ export function toProxiedAssetUrl(url?: string): string | undefined {
 
     if (!shouldProxy) return url;
 
-    return `cdn://${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
+    const proxy = new URL(CDN_PROXY_BASE);
+    proxy.searchParams.set("u", normalized);
+    // 从路径推导 referer
+    const match = parsed.pathname.match(/\/([a-z0-9]+-\d+)(?:-([a-z0-9-]+))?\//i);
+    if (match) {
+      const full = match[2] ? `${match[1]}-${match[2]}` : match[1];
+      proxy.searchParams.set("r", `https://missav.ai/cn/${full}`);
+    }
+    return proxy.toString();
   } catch {
     return url;
   }
 }
 
-/** 任务封面：优先用任务自带地址；禁止臆造 CDN 兜底（会在本地播放时偷偷打网） */
+/** 任务封面：优先用任务自带地址；为空时从任务名推导 CDN 封面兜底 */
 export function resolveTaskCoverUrl(
   task: { coverUrl?: string; name?: string },
   options?: { allowRemote?: boolean },
 ): string | undefined {
   const allowRemote = options?.allowRemote !== false;
-  const proxied = toProxiedAssetUrl(task.coverUrl);
+  // 1. 优先用任务自带的 coverUrl
+  let proxied = toProxiedAssetUrl(task.coverUrl);
+  // 2. 为空时从任务名推导 fourhoi 封面（cover-n.jpg）
+  if (!proxied && task.name) {
+    proxied = getCoverUrlFromName(task.name);
+  }
   if (!proxied) return undefined;
   const isRemote =
-    proxied.startsWith("cdn://") ||
+    proxied.startsWith("http://127.0.0.1:39528/") ||
     proxied.startsWith("https://") ||
     proxied.startsWith("http://");
   if (isRemote && !allowRemote) return undefined;

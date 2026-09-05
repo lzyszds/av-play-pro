@@ -9,8 +9,9 @@ export function setupCdnProxyProtocol(): void {
   const REFERER_PARAM = "__avp_referer";
   const m3u8Cache = new Map<string, { body: string; type: string; t: number }>();
   const cdnSession = session.fromPartition(MISSAV_WEB_PARTITION);
+  // Electron 39 内置 Chromium 142，UA 必须与 TLS 指纹一致，否则 Cloudflare 会判定为伪造
   const FULL_UA =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36";
 
   const httpsAgent = new https.Agent({
     keepAlive: true,
@@ -35,76 +36,99 @@ export function setupCdnProxyProtocol(): void {
   };
 
   // Electron net + WebView 会话：Chromium TLS 指纹 + cf_clearance，封面/小文件主力通道
+  // 先尝试 missav 分区会话（可能含 cf_clearance），失败则回退到默认会话（纯净 Chromium 栈）
   const fetchWithSession = (
     target: URL,
     referer: string,
     rangeHeader?: string,
-  ): Promise<UpstreamResult> =>
-    new Promise((resolve, reject) => {
-      const origin = getOriginFromReferer(referer);
-      const upstream = net.request({
-        method: "GET",
-        url: target.href,
-        redirect: "follow",
-        session: cdnSession,
-        useSessionCookies: true,
-      });
-      upstream.setHeader("User-Agent", FULL_UA);
-      upstream.setHeader("Referer", referer);
-      if (origin) upstream.setHeader("Origin", origin);
-      upstream.setHeader(
-        "Accept",
-        "image/avif,image/webp,image/apng,image/svg+xml,image/*,video/*,application/vnd.apple.mpegurl,application/x-mpegURL,*/*;q=0.8",
-      );
-      upstream.setHeader("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
-      upstream.setHeader("Sec-Fetch-Site", "cross-site");
-      upstream.setHeader("Sec-Fetch-Mode", "cors");
-      upstream.setHeader(
-        "Sec-Fetch-Dest",
-        /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?|$)/i.test(target.pathname)
-          ? "image"
-          : "empty",
-      );
-      if (rangeHeader) upstream.setHeader("Range", rangeHeader);
-
-      const timer = setTimeout(() => {
-        try {
-          upstream.abort();
-        } catch {
-          /* ignore */
-        }
-        reject(new Error("timeout"));
-      }, UPSTREAM_TIMEOUT);
-
-      upstream.on("response", (res) => {
-        clearTimeout(timer);
-        const chunks: Buffer[] = [];
-        res.on("data", (c: Buffer) => chunks.push(c));
-        res.on("end", () =>
-          resolve({
-            status: res.statusCode || 200,
-            contentType:
-              (res.headers["content-type"] as string) ||
-              "application/octet-stream",
-            body: Buffer.concat(chunks),
-            headers: res.headers as Record<
-              string,
-              string | string[] | undefined
-            >,
-          }),
+  ): Promise<UpstreamResult> => {
+    const doRequest = (sess: Electron.Session): Promise<UpstreamResult> =>
+      new Promise((resolve, reject) => {
+        const origin = getOriginFromReferer(referer);
+        const upstream = net.request({
+          method: "GET",
+          url: target.href,
+          redirect: "follow",
+          session: sess,
+          useSessionCookies: true,
+          referrerPolicy: "unsafe-url",
+        });
+        upstream.setHeader("User-Agent", FULL_UA);
+        upstream.setHeader("Referer", referer);
+        if (origin) upstream.setHeader("Origin", origin);
+        upstream.setHeader(
+          "Accept",
+          "image/avif,image/webp,image/apng,image/svg+xml,image/*,video/*,application/vnd.apple.mpegurl,application/x-mpegURL,*/*;q=0.8",
         );
-        res.on("error", reject);
+        upstream.setHeader("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
+        upstream.setHeader("Sec-Fetch-Site", "cross-site");
+        upstream.setHeader("Sec-Fetch-Mode", "cors");
+        upstream.setHeader(
+          "Sec-Fetch-Dest",
+          /\.(jpe?g|png|webp|gif|avif|bmp|svg)(\?|$)/i.test(target.pathname)
+            ? "image"
+            : "empty",
+        );
+        if (rangeHeader) upstream.setHeader("Range", rangeHeader);
+
+        const timer = setTimeout(() => {
+          try {
+            upstream.abort();
+          } catch {
+            /* ignore */
+          }
+          reject(new Error("timeout"));
+        }, UPSTREAM_TIMEOUT);
+
+        upstream.on("response", (res) => {
+          clearTimeout(timer);
+          const chunks: Buffer[] = [];
+          res.on("data", (c: Buffer) => chunks.push(c));
+          res.on("end", () =>
+            resolve({
+              status: res.statusCode || 200,
+              contentType:
+                (res.headers["content-type"] as string) ||
+                "application/octet-stream",
+              body: Buffer.concat(chunks),
+              headers: res.headers as Record<
+                string,
+                string | string[] | undefined
+              >,
+            }),
+          );
+          res.on("error", reject);
+        });
+        upstream.on("error", (err: Error) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+        upstream.on("abort", () => {
+          clearTimeout(timer);
+          reject(new Error("aborted"));
+        });
+        upstream.end();
       });
-      upstream.on("error", (err: Error) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-      upstream.on("abort", () => {
-        clearTimeout(timer);
-        reject(new Error("aborted"));
-      });
-      upstream.end();
-    });
+
+    // 先用 missav 分区会话（含 cf_clearance），失败（抛错或 403/502）则回退默认会话
+    return doRequest(cdnSession).then(
+      (res) => {
+        if (res.status === 403 || res.status === 502) {
+          console.warn(
+            `[CDN-session] missav 会话返回 ${res.status}，回退默认会话`,
+          );
+          return doRequest(session.defaultSession);
+        }
+        return res;
+      },
+      (err) => {
+        console.warn(
+          `[CDN-session] missav 会话失败，回退默认会话: ${err?.message || err}`,
+        );
+        return doRequest(session.defaultSession);
+      },
+    );
+  };
 
   // Node https 兜底（无 CF 会话时偶发仍可用；主力已改为 fetchWithSession）
   const fetchWithNode = (
@@ -397,14 +421,20 @@ export function setupCdnProxyProtocol(): void {
 
     // 用 Electron net.request：Chromium 网络栈，自带 HTTP/2 / QUIC / 连接池
     return new Promise<Response>((resolve) => {
-      const openUpstream = (refererIndex: number) => {
+      const sessions = [cdnSession, session.defaultSession];
+      const openUpstream = (
+        refererIndex: number,
+        sessionIndex = 0,
+      ) => {
       const referer = refererCandidates[refererIndex] || refererCandidates[0];
+      const sess = sessions[sessionIndex] || cdnSession;
       const upstream = net.request({
         method: "GET",
         url: parsedUrl.href,
         redirect: "follow",
-        session: cdnSession,
+        session: sess,
         useSessionCookies: true,
+        referrerPolicy: "unsafe-url",
       });
 
       upstream.setHeader("User-Agent", FULL_UA);
@@ -451,10 +481,18 @@ export function setupCdnProxyProtocol(): void {
               (status === 403 || status === 502) &&
               refererIndex + 1 < refererCandidates.length
             ) {
+              // 先尝试同 referer 下的默认会话，再换下一个 referer
+              if (sessionIndex === 0) {
+                console.warn(
+                  `[CDN] ${status}，回退默认会话 (referer=${new URL(referer).host})`,
+                );
+                openUpstream(refererIndex, 1);
+                return;
+              }
               console.warn(
                 `[CDN] ${status}，尝试切换 Referer: ${new URL(refererCandidates[refererIndex + 1]).host}`,
               );
-              openUpstream(refererIndex + 1);
+              openUpstream(refererIndex + 1, 0);
               return;
             }
             resolve(new Response(body || `Upstream ${status}`, { status }));
@@ -554,6 +592,12 @@ export function setupCdnProxyProtocol(): void {
       upstream.on("error", (err: Error) => {
         clearTimeout(timer);
         console.error(`[CDN] 上游错误 ${parsedUrl.href}: ${err.message}`);
+        // missav 会话出错时，先回退默认会话再放弃
+        if (sessionIndex === 0) {
+          console.warn(`[CDN] 回退默认会话 (referer=${new URL(referer).host})`);
+          openUpstream(refererIndex, 1);
+          return;
+        }
         resolve(new Response(`Upstream error: ${err.message}`, { status: 502 }));
       });
 

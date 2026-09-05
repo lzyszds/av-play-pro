@@ -36,18 +36,21 @@ function srtToVtt(srt: string): string {
   return "WEBVTT\n\n" + body;
 }
 
+const CDN_PROXY_BASE = "http://127.0.0.1:39528/m";
+
 function toProxied(url: string, referer?: string) {
-  const proxied = url
-    .replace(/^https?:\/\/(([\w-]+\.)*surrit\.com)/i, "cdn://$1")
-    .replace(/^https?:\/\/(([\w-]+\.)*surrit\.org)/i, "cdn://$1")
-    .replace(/^https?:\/\/(([\w-]+\.)*fourhoi\.com)/i, "cdn://$1");
-  if (!referer?.trim() || !proxied.startsWith("cdn://")) return proxied;
+  // 只代理 fourhoi/surrit 等 CDN 域名
+  const isCdn = /^https?:\/\/(([\w-]+\.)*)(fourhoi\.com|surrit\.com|surrit\.org)/i.test(url);
+  if (!isCdn) return url;
   try {
-    const parsed = new URL(proxied.replace(/^cdn:\/\//i, "https://"));
-    parsed.searchParams.set("__avp_referer", referer.trim());
-    return `cdn://${parsed.host}${parsed.pathname}${parsed.search}${parsed.hash}`;
+    const proxy = new URL(CDN_PROXY_BASE);
+    proxy.searchParams.set("u", url);
+    if (referer?.trim()) {
+      proxy.searchParams.set("r", referer.trim());
+    }
+    return proxy.toString();
   } catch {
-    return proxied;
+    return url;
   }
 }
 
@@ -193,7 +196,8 @@ export const HlsVideoPlayer: React.FC<Props> = ({
       captions: { active: true, language: "auto", update: true },
       speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
       tooltips: { controls: true, seek: true },
-      keyboard: { focused: true, global: true },
+      // 键盘交给 PlayerPage 统一处理（含空格），避免 Plyr 全局键盘与全局 keydown 双重切换互相抵消
+      keyboard: { focused: false, global: false },
       previewThumbnails: previewVttUrl
         ? { enabled: true, src: previewVttUrl }
         : { enabled: false },

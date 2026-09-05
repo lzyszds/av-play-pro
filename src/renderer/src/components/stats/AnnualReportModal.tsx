@@ -619,8 +619,8 @@ export function AnnualReportModal({
         <HolographicCardModal
           stats={stats}
           rankings={rankings}
-          rankTitle={rank.title}
-          rankScore={combatScore}
+          rankTitle={tierTitle}
+          rankScore={controlScore}
           peakHour={peakHour}
           onClose={() => setShowHolographic(false)}
           onAddSystemLog={onAddSystemLog}

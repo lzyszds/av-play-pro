@@ -47,10 +47,7 @@ import {
 } from "../components/player/RepairModal";
 import { Tooltip } from "../components/common/Tooltip";
 import { Button } from "../components/common/Button";
-import {
-  ProHotkeyHud,
-  type HudEvent,
-} from "../components/player/ProHotkeyHud";
+import { ProHotkeyHud } from "../components/player/ProHotkeyHud";
 
 const LAST_PLAYED_KEY = "av-play-pro:lastPlayed";
 const FAVORITES_KEY = "av-play-pro:favorites";
@@ -112,14 +109,6 @@ import {
   Sparkles,
   Film,
   Clapperboard,
-  Pause,
-  FastForward,
-  Rewind,
-  Bookmark,
-  Volume2,
-  VolumeX,
-  Maximize2,
-  Zap,
 } from "lucide-react";
 import {
   deriveFolderFromUrl,
@@ -183,6 +172,7 @@ export function PlayerPage({
   onConsumePendingPlay,
   onActiveVideoChange,
   onOpenActor,
+  onLayoutChange,
 }: PlayerPageProps) {
   const isClassicLayout = layout === "classic";
   const isZeroLayout = layout === "zero";
@@ -240,7 +230,6 @@ export function PlayerPage({
   const [repairMode, setRepairMode] = useState<"single" | "all">("all");
 
   // B130: 极客级全键盘盲操与全屏 HUD 视控系统
-  const [hudEvent, setHudEvent] = useState<HudEvent | null>(null);
   const [showHotkeyHelp, setShowHotkeyHelp] = useState(false);
 
   // 本地视频列表
@@ -1204,6 +1193,7 @@ export function PlayerPage({
     ];
     void saveDirectorCut(next);
     setDirectorCutOpen(true);
+    setZeroEdge("none");
     onAddSystemLog(`已加入导演剪辑: ${bookmark.videoName}`, "SUCCESS");
   };
 
@@ -1275,19 +1265,24 @@ export function PlayerPage({
 
   const handleZeroEdgeMove = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!isZeroLayout) return;
+    // 导演剪辑台 / 时间轴打开时禁用边缘热区，避免片库弹出盖住面板
+    if (directorCutOpen || timelineOpen) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    // 片库已展开时，浮层本身会冒泡到这里；把整个浮层宽度视作安全区，
-    // 避免鼠标刚离开右侧 86px 的唤起带就被立即收起。
-    const libraryWidth = Math.min(544, rect.width * 0.7);
+    const libraryWidth = Math.min(ZERO_LIB_PANEL_W, rect.width * 0.42);
+    // 片库已展开时，鼠标在片库区域内不触发边缘判定
     if (zeroEdge === "library" && x >= rect.width - libraryWidth) return;
-    if (x >= rect.width - 86) setZeroEdge("library");
+    if (x >= rect.width - 72) setZeroEdge("library");
     else if (x <= 76) setZeroEdge("continue");
     else if (y >= rect.height - 72) setZeroEdge("timeline");
     else if (y <= 54) setZeroEdge("cut");
-    else setZeroEdge("none");
+    else if (zeroEdge !== "library") setZeroEdge("none");
   };
+
+  useEffect(() => {
+    if (directorCutOpen || timelineOpen) setZeroEdge("none");
+  }, [directorCutOpen, timelineOpen]);
 
   useEffect(() => {
     const onGlobalKeyDown = (event: KeyboardEvent) => {
@@ -1311,6 +1306,14 @@ export function PlayerPage({
       }
 
       if (key === "Escape") {
+        if (directorCutOpen) {
+          setDirectorCutOpen(false);
+          return;
+        }
+        if (timelineOpen) {
+          setTimelineOpen(false);
+          return;
+        }
         if (showHotkeyHelp) {
           setShowHotkeyHelp(false);
           return;
@@ -1321,25 +1324,16 @@ export function PlayerPage({
         }
       }
 
-      // 2. Space 播放 / 暂停
-      if (key === " " && videoEl) {
-        event.preventDefault();
-        if (videoEl.paused) {
-          videoEl.play().catch(() => {});
-          setHudEvent({
-            id: String(Date.now()),
-            icon: <Play className="w-4 h-4 text-emerald-400" />,
-            title: "放映中 (PLAY)",
-            sub: "Space",
-          });
-        } else {
-          videoEl.pause();
-          setHudEvent({
-            id: String(Date.now()),
-            icon: <Pause className="w-4 h-4 text-amber-400" />,
-            title: "暂停 (PAUSE)",
-            sub: "Space",
-          });
+      // 2. Space 播放 / 暂停（capture 阶段优先于按钮/播放器默认行为）
+      if (key === " " || key === "Spacebar") {
+        if (videoEl) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (videoEl.paused) {
+            videoEl.play().catch(() => {});
+          } else {
+            videoEl.pause();
+          }
         }
         return;
       }
@@ -1352,12 +1346,6 @@ export function PlayerPage({
           const cur = selectedVideoIndex != null ? selectedVideoIndex : 0;
           const nextIdx = (cur + 1) % vids.length;
           handleLoadLocalVideo(vids[nextIdx], nextIdx);
-          setHudEvent({
-            id: String(Date.now()),
-            icon: <FastForward className="w-4 h-4 text-sky-400" />,
-            title: "下一个影片 (J)",
-            sub: vids[nextIdx].name.slice(0, 18),
-          });
         }
         return;
       }
@@ -1368,12 +1356,6 @@ export function PlayerPage({
           const cur = selectedVideoIndex != null ? selectedVideoIndex : 0;
           const prevIdx = (cur - 1 + vids.length) % vids.length;
           handleLoadLocalVideo(vids[prevIdx], prevIdx);
-          setHudEvent({
-            id: String(Date.now()),
-            icon: <Rewind className="w-4 h-4 text-sky-400" />,
-            title: "上一个影片 (K)",
-            sub: vids[prevIdx].name.slice(0, 18),
-          });
         }
         return;
       }
@@ -1382,26 +1364,15 @@ export function PlayerPage({
       if (lower === "h" && videoEl) {
         event.preventDefault();
         videoEl.currentTime = Math.max(0, videoEl.currentTime - 10);
-        setHudEvent({
-          id: String(Date.now()),
-          icon: <Rewind className="w-4 h-4 text-amber-400" />,
-          title: "快退 10 秒 (H)",
-          sub: "-10s",
-        });
         return;
       }
       if (lower === "l") {
         if (isZeroLayout) {
+          if (directorCutOpen || timelineOpen) return;
           setZeroEdge((edge) => (edge === "library" ? "none" : "library"));
         } else if (videoEl) {
           event.preventDefault();
           videoEl.currentTime = Math.min(videoEl.duration || 999999, videoEl.currentTime + 10);
-          setHudEvent({
-            id: String(Date.now()),
-            icon: <FastForward className="w-4 h-4 text-amber-400" />,
-            title: "快进 10 秒 (L)",
-            sub: "+10s",
-          });
         }
         return;
       }
@@ -1411,12 +1382,6 @@ export function PlayerPage({
         event.preventDefault();
         const pct = parseInt(key, 10) * 10;
         videoEl.currentTime = (pct / 100) * videoEl.duration;
-        setHudEvent({
-          id: String(Date.now()),
-          icon: <Zap className="w-4 h-4 text-amber-300" />,
-          title: `关键帧跃迁 ${pct}% (${key})`,
-          sub: `SEEK TO ${pct}%`,
-        });
         return;
       }
 
@@ -1424,16 +1389,6 @@ export function PlayerPage({
       if (lower === "m" && videoEl) {
         event.preventDefault();
         videoEl.muted = !videoEl.muted;
-        setHudEvent({
-          id: String(Date.now()),
-          icon: videoEl.muted ? (
-            <VolumeX className="w-4 h-4 text-rose-400" />
-          ) : (
-            <Volume2 className="w-4 h-4 text-emerald-400" />
-          ),
-          title: videoEl.muted ? "已静音 (M)" : "恢复音量 (M)",
-          sub: videoEl.muted ? "MUTED" : "UNMUTED",
-        });
         return;
       }
 
@@ -1457,40 +1412,19 @@ export function PlayerPage({
         };
         setFilterSettings(nextSettings);
         saveFilterSettings(nextSettings);
-        setHudEvent({
-          id: String(Date.now()),
-          icon: <Sparkles className="w-4 h-4 text-amber-400" />,
-          title: `画质着色器: ${nextPreset.toUpperCase()} (S)`,
-          sub: "SHADER CYCLED",
-        });
         return;
       }
 
       // 8. F 高能书签打点
       if (lower === "f" && videoEl) {
         event.preventDefault();
-        const time = videoEl.currentTime;
-        const m = Math.floor(time / 60);
-        const s = Math.floor(time % 60);
-        setHudEvent({
-          id: String(Date.now()),
-          icon: <Bookmark className="w-4 h-4 text-amber-400" />,
-          title: "高能书签已标记 (F)",
-          sub: `TIMESTAMP ${m}:${s.toString().padStart(2, "0")}`,
-        });
         return;
       }
 
       // 9. Z 切换零界面放映
       if (lower === "z") {
         event.preventDefault();
-        setIsZeroLayout((prev) => !prev);
-        setHudEvent({
-          id: String(Date.now()),
-          icon: <Maximize2 className="w-4 h-4 text-purple-400" />,
-          title: isZeroLayout ? "退出零界面 (Z)" : "进入零界面 (Z)",
-          sub: "ZERO UI TOGGLED",
-        });
+        onLayoutChange?.(isZeroLayout ? "classic" : "zero");
         return;
       }
 
@@ -1501,8 +1435,8 @@ export function PlayerPage({
       }
     };
 
-    window.addEventListener("keydown", onGlobalKeyDown);
-    return () => window.removeEventListener("keydown", onGlobalKeyDown);
+    window.addEventListener("keydown", onGlobalKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", onGlobalKeyDown, { capture: true });
   }, [
     isZeroLayout,
     zeroEdge,
@@ -1512,6 +1446,8 @@ export function PlayerPage({
     localVideos,
     filterSettings,
     showHotkeyHelp,
+    directorCutOpen,
+    timelineOpen,
     handleLoadLocalVideo,
   ]);
 
@@ -1749,9 +1685,9 @@ export function PlayerPage({
           </div>
         )}
         <div
-          className="relative flex-1"
+          className="relative min-h-0 flex-1"
           onMouseMove={isZeroLayout ? handleZeroEdgeMove : undefined}
-          onMouseLeave={isZeroLayout ? () => setZeroEdge("none") : undefined}
+          onMouseLeave={isZeroLayout ? () => setZeroEdge((edge) => (edge === "library" ? "library" : "none")) : undefined}
           onContextMenu={isZeroLayout ? (event) => event.preventDefault() : undefined}
           onPointerDown={isZeroLayout ? startScrubDial : undefined}
           onPointerMove={isZeroLayout ? moveScrubDial : undefined}
@@ -1830,18 +1766,33 @@ export function PlayerPage({
               </div>
             )}
             {timelineOpen && (
-              <div className="absolute right-3 top-3 z-20 w-72 max-h-[70%] overflow-y-auto rounded-lg border border-slate-700 bg-slate-950/90 backdrop-blur p-2 shadow-xl">
+              <div
+                className="zero-scroll absolute right-3 top-3 z-50 w-72 max-h-[70%] overflow-y-auto rounded-lg border border-slate-700 bg-slate-950/90 backdrop-blur p-2 shadow-xl pointer-events-auto"
+                onMouseMove={(event) => event.stopPropagation()}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-[11px] font-bold text-slate-100">时间轴书签</div>
-                  <button
-                    type="button"
-                    onClick={() => void loadTimelineBookmarks()}
-                    title="刷新当前视频的高能时间轴书签"
-                    aria-label="刷新时间轴书签"
-                    className="text-[10px] text-slate-400 hover:text-amber-400 cursor-pointer"
-                  >
-                    刷新
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => void loadTimelineBookmarks()}
+                      title="刷新当前视频的高能时间轴书签"
+                      aria-label="刷新时间轴书签"
+                      className="text-[10px] text-slate-400 hover:text-amber-400 cursor-pointer"
+                    >
+                      刷新
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTimelineOpen(false)}
+                      title="关闭时间轴书签"
+                      aria-label="关闭时间轴书签"
+                      className="rounded p-1 text-slate-400 transition hover:bg-white/10 hover:text-white cursor-pointer"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
                 {timelineBookmarks.length === 0 ? (
                   <div className="py-6 text-center text-[11px] text-slate-500">当前视频暂无书签</div>
@@ -1922,6 +1873,8 @@ export function PlayerPage({
                 edge={zeroEdge}
                 videos={filteredVideos}
                 selectedVideoId={selectedVideoId}
+                overlayOpen={directorCutOpen || timelineOpen}
+                onCloseLibrary={() => setZeroEdge("none")}
                 onChooseVideo={(video, index) => {
                   handleLoadLocalVideo(video, index);
                   setZeroEdge("none");
@@ -1973,6 +1926,7 @@ export function PlayerPage({
                     className="border-white/30 text-white hover:bg-white/10"
                     onClick={() => {
                       setDirectorCutOpen(true);
+                      setZeroEdge("none");
                       setShowEndSheet(false);
                     }}
                   >
@@ -2396,9 +2350,8 @@ export function PlayerPage({
         </div>
       )}
 
-      {/* B130: 极客级全键盘盲操与全屏 HUD 视控系统 */}
+      {/* 快捷键帮助 (? 唤起) */}
       <ProHotkeyHud
-        event={hudEvent}
         showHelp={showHotkeyHelp}
         onCloseHelp={() => setShowHotkeyHelp(false)}
       />
@@ -2420,10 +2373,247 @@ function LibraryBackdrop({ videos }: { videos: VideoItem[] }) {
   );
 }
 
+const ZERO_LIB_PANEL_W = 360;
+const ZERO_LIB_ROW_GAP = 10;
+/** 封面展开比例：宽 : 高 ≈ 2 : 1（横版整封） */
+const ZERO_LIB_ASPECT_W = 2;
+const ZERO_LIB_ASPECT_H = 1;
+
+function formatZeroLibSubline(video: VideoItem): string {
+  const parts: string[] = [];
+  if (video.actors?.length) {
+    const names = video.actors.slice(0, 2).join(" · ");
+    parts.push(video.actors.length > 2 ? `${names} 等${video.actors.length}人` : names);
+  }
+  if (video.duration?.trim()) parts.push(video.duration.trim());
+  if (video.size?.trim()) parts.push(video.size.trim());
+  if (video.releaseDate?.trim()) {
+    const d = video.releaseDate.trim();
+    parts.push(/^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(0, 10) : d);
+  }
+  if (video.studio?.trim()) parts.push(video.studio.trim());
+  if (video.genres?.length) parts.push(video.genres.slice(0, 2).join(" / "));
+  if (video.playCount != null && video.playCount > 0) parts.push(`播放 ${video.playCount} 次`);
+  if (video.resolution && video.resolution !== "local" && /^\d+x\d+$/i.test(video.resolution)) {
+    parts.push(video.resolution);
+  }
+  return parts.length ? parts.join("  ·  ") : "暂无元数据";
+}
+
+function ZeroLibVideoItem({
+  video,
+  selected,
+  cardHeight,
+  onChoose,
+}: {
+  video: VideoItem;
+  selected: boolean;
+  cardHeight: number;
+  onChoose: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewRef = useRef<HTMLVideoElement | null>(null);
+  const previewStartRef = useRef(0);
+  const previewSrc = video.previewUrl || video.url;
+
+  const handleEnter = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    hoverTimer.current = setTimeout(() => setHovered(true), 220);
+  };
+
+  const handleLeave = () => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current);
+    setHovered(false);
+    setIsPreviewPlaying(false);
+    if (previewRef.current) {
+      try {
+        previewRef.current.pause();
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  const handlePreviewReady = () => {
+    const el = previewRef.current;
+    if (!el) return;
+    if (!video.previewUrl && el.duration > 30) {
+      const start = Math.min(Math.floor(el.duration * 0.22), 300);
+      previewStartRef.current = start;
+      el.currentTime = start;
+    }
+    el.play()
+      .then(() => setIsPreviewPlaying(true))
+      .catch(() => setIsPreviewPlaying(false));
+  };
+
+  const handlePreviewTimeUpdate = () => {
+    const el = previewRef.current;
+    if (!el || video.previewUrl) return;
+    const start = previewStartRef.current;
+    const elapsed = el.currentTime - start;
+    const loopDuration = 5.0;
+    if (elapsed >= loopDuration || el.currentTime < start) {
+      el.currentTime = start;
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onChoose}
+      onMouseEnter={handleEnter}
+      onMouseLeave={handleLeave}
+      style={{ height: `${cardHeight}px` }}
+      className={`group relative aspect-[2/1] w-full overflow-hidden rounded-lg border text-left transition ${selected
+        ? "border-violet-300 ring-2 ring-violet-400/50"
+        : "border-white/10 hover:border-violet-300/70"
+        }`}
+    >
+      <div className="absolute inset-0 bg-slate-800">
+        {video.coverUrl ? (
+          <img
+            src={video.coverUrl}
+            alt=""
+            loading="lazy"
+            className={`h-full w-full object-cover object-center transition duration-300 group-hover:scale-[1.02] ${isPreviewPlaying ? "opacity-0" : "opacity-100"
+              }`}
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-[10px] text-white/30">无封面</div>
+        )}
+        {hovered && previewSrc ? (
+          <video
+            ref={previewRef}
+            src={previewSrc}
+            muted
+            loop={!!video.previewUrl}
+            playsInline
+            preload="auto"
+            onLoadedData={handlePreviewReady}
+            onTimeUpdate={handlePreviewTimeUpdate}
+            onError={() => setIsPreviewPlaying(false)}
+            className={`absolute inset-0 h-full w-full object-cover bg-black transition-opacity duration-300 ${isPreviewPlaying ? "opacity-100" : "opacity-0 pointer-events-none"
+              }`}
+          />
+        ) : null}
+      </div>
+      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/92 via-black/55 to-transparent px-2.5 pb-2 pt-7">
+        <div className="line-clamp-1 text-[11px] font-bold leading-snug text-white">{video.name}</div>
+        <div className="mt-0.5 line-clamp-1 text-[10px] text-white/70">{formatZeroLibSubline(video)}</div>
+      </div>
+    </button>
+  );
+}
+
+function ZeroFingerLibrary({
+  videos,
+  selectedVideoId,
+  onChooseVideo,
+  onClose,
+}: {
+  videos: VideoItem[];
+  selectedVideoId: string | null;
+  onChooseVideo: (video: VideoItem, index: number) => void;
+  onClose: () => void;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [listWidth, setListWidth] = useState(ZERO_LIB_PANEL_W - 28);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const sync = () => setListWidth(el.clientWidth || ZERO_LIB_PANEL_W - 28);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const cardHeight = Math.round((listWidth * ZERO_LIB_ASPECT_H) / ZERO_LIB_ASPECT_W);
+  const rowHeight = cardHeight + ZERO_LIB_ROW_GAP;
+
+  const rowVirtualizer = useVirtualizer({
+    count: videos.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 3,
+    measureElement: (el) => el.getBoundingClientRect().height || rowHeight,
+  });
+
+  return (
+    <div
+      className="absolute inset-y-0 right-0 z-40 flex h-full max-h-full min-h-0 w-[min(22.5rem,42vw)] min-w-[18rem] flex-col overflow-hidden border-l border-white/15 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-xl pointer-events-auto"
+      onMouseMove={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <div className="mb-2 flex shrink-0 items-center justify-between gap-2 text-white">
+        <div className="min-w-0">
+          <div className="text-[10px] font-bold tracking-[0.22em] text-violet-300">FINGER LIBRARY</div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] text-white/60">{videos.length}</span>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="关闭片库"
+            title="关闭 (Esc / L)"
+            className="rounded p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      <div
+        ref={scrollRef}
+        className="zero-scroll zero-scroll-visible min-h-0 flex-1 overflow-y-scroll overscroll-contain pr-1"
+        onWheel={(event) => event.stopPropagation()}
+      >
+        {videos.length === 0 ? (
+          <div className="py-16 text-center text-[11px] text-white/45">片库为空</div>
+        ) : (
+          <div
+            className="relative w-full"
+            style={{ height: `${rowVirtualizer.getTotalSize()}px` }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+              const video = videos[virtualRow.index];
+              const index = virtualRow.index;
+              return (
+                <div
+                  key={video.id}
+                  ref={rowVirtualizer.measureElement}
+                  data-index={virtualRow.index}
+                  className="absolute left-0 top-0 w-full px-0.5"
+                  style={{
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  <ZeroLibVideoItem
+                    video={video}
+                    selected={video.id === selectedVideoId}
+                    cardHeight={cardHeight}
+                    onChoose={() => onChooseVideo(video, index)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ZeroInterfaceLayer({
   edge,
   videos,
   selectedVideoId,
+  overlayOpen,
+  onCloseLibrary,
   onChooseVideo,
   onContinue,
   onOpenTimeline,
@@ -2432,21 +2622,26 @@ function ZeroInterfaceLayer({
   edge: "none" | "continue" | "library" | "timeline" | "cut";
   videos: VideoItem[];
   selectedVideoId: string | null;
+  overlayOpen: boolean;
+  onCloseLibrary: () => void;
   onChooseVideo: (video: VideoItem, index: number) => void;
   onContinue: () => void;
   onOpenTimeline: () => void;
   onOpenCut: () => void;
 }) {
+  const showLibrary = edge === "library" && !overlayOpen;
+
   return (
     <>
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex justify-center p-3 text-[10px] font-medium tracking-[0.2em] text-white/35">
-        C 剪辑　·　L 片库　·　T 时间轴　·　ESC 收起
+        C 剪辑　·　L 片库　·　T 时间轴　·　Space 暂停　·　ESC 收起
       </div>
-      {edge === "continue" && (
+      {edge === "continue" && !overlayOpen && (
         <button
           type="button"
           onClick={onContinue}
-          className="absolute inset-y-0 left-0 z-30 flex w-60 items-center bg-gradient-to-r from-black/75 to-transparent px-6 text-left text-white backdrop-blur-[2px]"
+          onMouseMove={(event) => event.stopPropagation()}
+          className="absolute inset-y-0 left-0 z-30 flex w-60 items-center bg-gradient-to-r from-black/75 to-transparent px-6 text-left text-white backdrop-blur-[2px] pointer-events-auto"
         >
           <span>
             <span className="block text-[10px] tracking-[0.2em] text-violet-300">CONTINUE</span>
@@ -2455,55 +2650,33 @@ function ZeroInterfaceLayer({
           </span>
         </button>
       )}
-      {edge === "cut" && (
+      {edge === "cut" && !overlayOpen && (
         <button
           type="button"
           onClick={onOpenCut}
-          className="absolute inset-x-0 top-0 z-30 flex h-20 items-center justify-center bg-gradient-to-b from-black/80 to-transparent text-[11px] font-bold text-violet-100"
+          onMouseMove={(event) => event.stopPropagation()}
+          className="absolute inset-x-0 top-0 z-30 flex h-20 items-center justify-center bg-gradient-to-b from-black/80 to-transparent text-[11px] font-bold text-violet-100 pointer-events-auto"
         >
           <Clapperboard className="mr-2 h-4 w-4" /> 打开导演剪辑台
         </button>
       )}
-      {edge === "timeline" && (
+      {edge === "timeline" && !overlayOpen && (
         <button
           type="button"
           onClick={onOpenTimeline}
-          className="absolute inset-x-0 bottom-0 z-30 flex h-24 items-center justify-center bg-gradient-to-t from-black/85 to-transparent text-[11px] font-bold text-amber-100"
+          onMouseMove={(event) => event.stopPropagation()}
+          className="absolute inset-x-0 bottom-0 z-30 flex h-24 items-center justify-center bg-gradient-to-t from-black/85 to-transparent text-[11px] font-bold text-amber-100 pointer-events-auto"
         >
           <ListChecks className="mr-2 h-4 w-4" /> 浏览时间轴书签
         </button>
       )}
-      {edge === "library" && (
-        <div className="absolute inset-y-0 right-0 z-30 flex w-[min(34rem,70%)] flex-col border-l border-white/15 bg-slate-950/90 p-4 shadow-2xl backdrop-blur-xl">
-          <div className="mb-3 flex items-center justify-between text-white">
-            <div>
-              <div className="text-[10px] font-bold tracking-[0.22em] text-violet-300">FINGER LIBRARY</div>
-              <div className="mt-1 text-sm font-bold">向下滚动，点一部即换片</div>
-            </div>
-            <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] text-white/60">{videos.length}</span>
-          </div>
-          <div className="grid min-h-0 flex-1 grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3">
-            {videos.slice(0, 36).map((video, index) => (
-              <button
-                key={video.id}
-                type="button"
-                onClick={() => onChooseVideo(video, index)}
-                className={`group relative aspect-[2/3] overflow-hidden rounded-xl border text-left transition ${video.id === selectedVideoId
-                  ? "border-violet-300 ring-2 ring-violet-400/50"
-                  : "border-white/10 hover:-translate-y-1 hover:border-violet-300"
-                  }`}
-              >
-                <div className="absolute inset-0 bg-slate-800">
-                  {video.coverUrl && <img src={video.coverUrl} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />}
-                </div>
-                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pb-2 pt-8">
-                  <div className="truncate text-[10px] font-bold text-white">{video.name}</div>
-                  <div className="mt-0.5 text-[9px] text-white/60">{video.resolution}</div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
+      {showLibrary && (
+        <ZeroFingerLibrary
+          videos={videos}
+          selectedVideoId={selectedVideoId}
+          onChooseVideo={onChooseVideo}
+          onClose={onCloseLibrary}
+        />
       )}
     </>
   );

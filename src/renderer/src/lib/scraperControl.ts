@@ -16,11 +16,13 @@ export interface ScrapeRunOpts {
   startPage: number;
   endPage: number;
   onProgress?: (message: string) => void;
+  signal?: AbortSignal;
 }
 
 export type ScrapeRunner = (opts: ScrapeRunOpts) => Promise<ScrapedItem[]>;
 
 let runner: ScrapeRunner | null = null;
+let currentAbort: AbortController | null = null;
 
 export function registerScraperRunner(fn: ScrapeRunner | null): void {
   runner = fn;
@@ -30,9 +32,49 @@ export function isScraperReady(): boolean {
   return runner != null;
 }
 
+export function isScrapeRunning(): boolean {
+  return currentAbort != null;
+}
+
+/** 强制停止当前进行中的一键抓取 */
+export function cancelScrape(): void {
+  currentAbort?.abort();
+}
+
+export function isScrapeAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
 export async function runScraper(opts: ScrapeRunOpts): Promise<ScrapedItem[]> {
   if (!runner) throw new Error("抓取组件尚未就绪，请稍候再试");
-  return runner(opts);
+  if (currentAbort) throw new Error("已有抓取任务进行中");
+  const ac = new AbortController();
+  currentAbort = ac;
+  try {
+    return await runner({ ...opts, signal: ac.signal });
+  } finally {
+    if (currentAbort === ac) currentAbort = null;
+  }
+}
+
+export function throwIfScrapeAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException("抓取已取消", "AbortError");
+}
+
+export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  throwIfScrapeAborted(signal);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(new DOMException("抓取已取消", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort);
+  });
 }
 
 /** 把带 {page} 占位或 page=N 的地址替换成第 p 页 */

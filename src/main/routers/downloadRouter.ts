@@ -25,7 +25,7 @@ function getRefererFromHeaders(headers?: string): string {
 
 /** 与 cdnProxyProtocol 保持一致的完整 UA，截断的 UA 会被 Cloudflare 判定为机器人导致 403 */
 const FULL_UA =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36";
 
 /**
  * 构造传给 N_m3u8DL-RE 的 -H 头：
@@ -818,7 +818,7 @@ export const downloadRouter = t.router({
                   timeout: 15000,
                   headers: {
                     "User-Agent":
-                      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+                      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
                     Referer: referer,
                     Accept:
                       "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",

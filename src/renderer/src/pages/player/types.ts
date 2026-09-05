@@ -39,5 +39,7 @@ export interface PlayerPageProps {
   onActiveVideoChange?: (name: string | null) => void;
   /** 点击演员名跳转到「演员」页详情 */
   onOpenActor?: (name: string) => void;
+  /** 切换播放器布局（Z 键零界面开关） */
+  onLayoutChange?: (layout: PlayerLayout) => void;
 }
 import type { PlayerLayout } from "../download/types";

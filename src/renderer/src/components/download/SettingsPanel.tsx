@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Tooltip } from "../common/Tooltip";
 import { Button } from "../common/Button";
 import {
@@ -7,7 +7,8 @@ import {
   Save,
   Cpu,
   Globe,
-  Settings as SettingsIcon,
+  Palette,
+  Bell,
   Download,
   Info,
   Activity,
@@ -25,6 +26,14 @@ import {
   Database,
   Check,
   Heart,
+  Archive,
+  GitCompareArrows,
+  FlaskConical,
+  ArrowUp,
+  ArrowDown,
+  MinusCircle,
+  PlusCircle,
+  CheckCheck,
 } from "lucide-react";
 import { trpc } from "../../lib/trpc";
 import type {
@@ -36,8 +45,15 @@ import type {
   ThemeMode,
 } from "../../pages/download/types";
 import { CoverLoader } from "../CoverLoader";
+import { SnapshotLibraryModal } from "./SnapshotLibraryModal";
 
-type TabKey = "storage" | "network" | "appearance" | "health" | "sync";
+type TabKey =
+  | "storage"
+  | "network"
+  | "appearance"
+  | "notification"
+  | "health"
+  | "sync";
 const DOWNLOAD_BACKGROUNDS: DownloadBackground[] = [
   "1",
   "2",
@@ -204,6 +220,10 @@ export function SettingsPanel({
     message: string;
   } | null>(null);
   const [confirmPull, setConfirmPull] = useState(false);
+  const [showSnapshotLibrary, setShowSnapshotLibrary] = useState(false);
+  const [syncDiff, setSyncDiff] = useState<any | null>(null);
+  const [syncDiffLoading, setSyncDiffLoading] = useState(false);
+  const [syncDiffError, setSyncDiffError] = useState("");
 
   const handleTestConnection = async () => {
     setTestingConnection(true);
@@ -315,6 +335,37 @@ export function SettingsPanel({
     }
   };
 
+  const handlePreviewSyncDiff = async () => {
+    if (!cloudSyncSecret.trim()) {
+      setSyncDiffError("请先输入访问密码 (SYNC_SECRET)");
+      return;
+    }
+    setSyncDiffLoading(true);
+    setSyncDiffError("");
+    setSyncDiff(null);
+    try {
+      const res = await trpc.sync.previewSyncDiff.query({
+        endpoint: cloudSyncEndpoint,
+        secretKey: cloudSyncSecret,
+      });
+      if (!res.success) {
+        setSyncDiffError(res.error || "演练预览失败");
+        onAddSystemLog(`同步演练预览失败: ${res.error}`, "ERROR");
+      } else {
+        setSyncDiff(res);
+        onAddSystemLog(
+          `同步演练场: 本次预览为只读，未写入任何数据。可推送 ${res.summary?.pushAdd + res.summary?.pushUpdate} 项，需拉取 ${res.summary?.pullAdd + res.summary?.pullUpdate} 项`,
+          "INFO",
+        );
+      }
+    } catch (err: any) {
+      setSyncDiffError(err?.message || String(err));
+      onAddSystemLog(`同步演练异常: ${err?.message || err}`, "ERROR");
+    } finally {
+      setSyncDiffLoading(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSaveSettings({
@@ -394,10 +445,25 @@ export function SettingsPanel({
   const tabs: Array<{ key: TabKey; label: string; icon: any }> = [
     { key: "storage", label: "存储路径", icon: Folder },
     { key: "network", label: "网络与插件", icon: Globe },
-    { key: "appearance", label: "个性化与通知", icon: SettingsIcon },
+    { key: "appearance", label: "个性化", icon: Palette },
+    { key: "notification", label: "通知", icon: Bell },
     { key: "sync", label: "云端同步", icon: Cloud },
     { key: "health", label: "健康状态", icon: Activity },
   ];
+
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollTimerRef = useRef<number | null>(null);
+
+  const handleContentScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    el.classList.add("is-scrolling");
+    if (scrollTimerRef.current !== null) {
+      window.clearTimeout(scrollTimerRef.current);
+    }
+    scrollTimerRef.current = window.setTimeout(() => {
+      el.classList.remove("is-scrolling");
+    }, 160);
+  };
 
   const tabBtnClass = (active: boolean) =>
     `flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium transition cursor-pointer ${active
@@ -436,7 +502,7 @@ export function SettingsPanel({
     >
       <form
         onSubmit={handleSubmit}
-        className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col h-[600px] anim-scale-in"
+        className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col h-[600px] anim-scale-in"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
@@ -483,7 +549,11 @@ export function SettingsPanel({
           </div>
 
           {/* Content */}
-          <div className="flex-1 p-6 overflow-y-auto bg-white dark:bg-slate-900">
+          <div
+            ref={scrollRef}
+            onScroll={handleContentScroll}
+            className="settings-scroll flex-1 p-6 overflow-y-auto bg-white dark:bg-slate-900"
+          >
             {activeTab === "storage" && (
               <div className="space-y-5">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
@@ -821,7 +891,7 @@ export function SettingsPanel({
                       </button>
                     ))}
                   </div>
-                  <div className="relative mt-3 overflow-hidden rounded-xl border border-slate-200/70 bg-slate-950 shadow-lg dark:border-slate-800">
+                  <div className="relative mt-3 overflow-hidden rounded-xl border border-slate-200/70 bg-slate-950 shadow-lg dark:border-slate-800 [content-visibility:auto] [contain-intrinsic-size:auto_120px]">
                     <img
                       src={`./${downloadBackground}.webp`}
                       alt="当前壁纸预览"
@@ -829,6 +899,7 @@ export function SettingsPanel({
                       style={{
                         filter: `blur(${Math.min(privacyScreenBlur, 12)}px)`,
                         opacity: Math.max(0.32, privacyScreenImageOpacity / 100),
+                        willChange: "filter, opacity",
                       }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/20 to-transparent" />
@@ -917,7 +988,7 @@ export function SettingsPanel({
                   </div>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 [content-visibility:auto] [contain-intrinsic-size:auto_320px]">
                   <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
                     封面加载动画
                   </label>
@@ -980,6 +1051,46 @@ export function SettingsPanel({
               </div>
             )}
 
+            {activeTab === "notification" && (
+              <div className="space-y-5">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+                  <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 tracking-wide uppercase">
+                    通知与提醒
+                  </h3>
+                </div>
+
+                <div className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80 rounded-xl">
+                  <div>
+                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      下载状态系统通知
+                    </div>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                      任务完成或失败时通过系统横幅通知
+                    </p>
+                  </div>
+                  <Toggle
+                    on={notifyOnComplete}
+                    onToggle={() => setNotifyOnComplete(!notifyOnComplete)}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80 rounded-xl">
+                  <div>
+                    <div className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      完成声音提醒
+                    </div>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                      下载任务结束时播放 assets/tips.mp3
+                    </p>
+                  </div>
+                  <Toggle
+                    on={notifySound}
+                    onToggle={() => setNotifySound(!notifySound)}
+                  />
+                </div>
+              </div>
+            )}
+
             {activeTab === "sync" && (
               <div className="space-y-5">
                 {/* 标题说明区 */}
@@ -990,7 +1101,7 @@ export function SettingsPanel({
                       Cloudflare Workers + KV 云端同步
                     </h3>
                     <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
-                      全球边缘无服务器存储，随时将观影记录、打点书签、演员库及配置安全同步
+                      全球边缘无服务器存储，随时将观影记录、打点书签及配置安全同步
                     </p>
                   </div>
                   {cloudSyncLastSync && (
@@ -1090,7 +1201,7 @@ export function SettingsPanel({
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                      开启后，每次进入应用时、彻底退出应用前或最小化到托盘时，系统都会在后台自动静默将观影记录、打点书签、演员库与成就殿堂推送到 Cloudflare KV，彻底告别手动备份。
+                      开启后，每次进入应用时、彻底退出应用前或最小化到托盘时，系统都会在后台自动静默将观影记录、打点书签与成就殿堂推送到 Cloudflare KV，彻底告别手动备份。
                     </p>
                   </div>
                   <Toggle
@@ -1122,7 +1233,7 @@ export function SettingsPanel({
                         <span>备份数据到云端 (Push)</span>
                       </div>
                       <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
-                        将当前播放历史、统计数据、打点书签、演员库及配置打包推送到 Cloudflare KV 存储。
+                        将当前播放历史、统计数据、打点书签及配置打包推送到 Cloudflare KV 存储。
                       </p>
                     </div>
 
@@ -1203,6 +1314,145 @@ export function SettingsPanel({
                   </div>
                 </div>
 
+                {/* 同步演练场 (B111)：同步前只读预览本地与云端差异 */}
+                <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                        <FlaskConical className="w-4 h-4 text-teal-500" />
+                        <span>同步演练场（只读预览差异）</span>
+                        <span className="text-[10px] bg-teal-500/15 text-teal-700 dark:text-teal-300 font-semibold px-1.5 py-0.5 rounded">
+                          可撤销
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                        同步前先展示本地与云端差异，本次预览不会写入任何数据。手动推送前与云端恢复前，系统都会自动生成可回滚快照。
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handlePreviewSyncDiff}
+                      disabled={syncDiffLoading || !cloudSyncSecret.trim()}
+                      className="px-3 py-2 rounded-lg bg-teal-500 hover:bg-teal-600 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 disabled:opacity-40 cursor-pointer shadow-sm shadow-teal-500/10"
+                    >
+                      <GitCompareArrows className={`w-3.5 h-3.5 ${syncDiffLoading ? "animate-spin" : ""}`} />
+                      {syncDiffLoading ? "计算中..." : syncDiff ? "重新演练" : "开始演练"}
+                    </button>
+                  </div>
+
+                  {syncDiffError && (
+                    <div className="flex items-center gap-1.5 text-xs p-2.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{syncDiffError}</span>
+                    </div>
+                  )}
+
+                  {syncDiff && !syncDiffError && (
+                    <>
+                      {!syncDiff.hasCloud && (
+                        <div className="flex items-center gap-1.5 text-xs p-2.5 rounded-lg bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20">
+                          <Info className="w-4 h-4 shrink-0" />
+                          <span>云端暂无数据，本地数据可全部推送到云端。</span>
+                        </div>
+                      )}
+                      {syncDiff.hasCloud && (
+                        <>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="p-2.5 rounded-lg bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 space-y-1">
+                              <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                                <ArrowUp className="w-3.5 h-3.5" />
+                                推送 (本地 → 云端)
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-mono">新增 {syncDiff.summary?.pushAdd ?? 0}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 font-mono">更新 {syncDiff.summary?.pushUpdate ?? 0}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-500/10 text-slate-500 font-mono">一致 {syncDiff.summary?.pushKeep ?? 0}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-300 font-mono">移除 {syncDiff.summary?.pushRemove ?? 0}</span>
+                              </div>
+                            </div>
+                            <div className="p-2.5 rounded-lg bg-sky-500/5 dark:bg-sky-500/10 border border-sky-500/20 space-y-1">
+                              <div className="flex items-center gap-1.5 text-[11px] font-bold text-sky-600 dark:text-sky-400">
+                                <ArrowDown className="w-3.5 h-3.5" />
+                                拉取 (云端 → 本地)
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-mono">需拉取 {syncDiff.summary?.pullAdd ?? 0}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 font-mono">更新 {syncDiff.summary?.pullUpdate ?? 0}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-500/10 text-slate-500 font-mono">一致 {syncDiff.summary?.pullKeep ?? 0}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 dark:text-violet-300 font-mono">仅本地 {syncDiff.summary?.pullLocalOnly ?? 0}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                            {syncDiff.items?.map((item: any) => {
+                              const pushCfg: Record<string, { label: string; cls: string }> = {
+                                add: { label: "推送新增", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/20" },
+                                update: { label: "推送更新", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/20" },
+                                keep: { label: "一致", cls: "bg-slate-500/10 text-slate-500 border-slate-500/20" },
+                                remove: { label: "云端清理", cls: "bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/20" },
+                              };
+                              const pullCfg: Record<string, { label: string; cls: string }> = {
+                                add: { label: "拉取新增", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/20" },
+                                update: { label: "拉取更新", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/20" },
+                                keep: { label: "一致", cls: "bg-slate-500/10 text-slate-500 border-slate-500/20" },
+                                localOnly: { label: "仅本地", cls: "bg-violet-500/15 text-violet-600 dark:text-violet-300 border-violet-500/20" },
+                              };
+                              const p = pushCfg[item.pushAction] || pushCfg.keep;
+                              const l = pullCfg[item.pullAction] || pullCfg.keep;
+                              return (
+                                <div key={item.key} className="flex items-center gap-2 p-2.5 rounded-lg border border-slate-200/70 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
+                                  <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 w-20 shrink-0 truncate">
+                                    {item.label}
+                                  </span>
+                                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-semibold shrink-0 ${p.cls}`}>{p.label}</span>
+                                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-semibold shrink-0 ${l.cls}`}>{l.label}</span>
+                                  <span className="text-[10px] text-slate-400 font-mono truncate">
+                                    {item.equal
+                                      ? "完全一致"
+                                      : item.keySummary
+                                        ? `${item.keySummary.changed} 变化 / +${item.keySummary.added} / -${item.keySummary.removed}`
+                                        : `${item.localBytes ?? 0}B → ${item.cloudBytes ?? 0}B`}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {syncDiff.cloudUpdatedAt && (
+                            <div className="text-[10px] text-slate-400">
+                              云端最近更新: {new Date(syncDiff.cloudUpdatedAt).toLocaleString()}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* 私有档案快照库入口 (B108) */}
+                <div className="flex items-center justify-between p-3.5 bg-violet-500/5 dark:bg-violet-500/10 border border-violet-500/20 rounded-xl transition">
+                  <div className="space-y-0.5 max-w-[80%]">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                        <Archive className="w-3.5 h-3.5 text-violet-500" />
+                        私有档案快照库
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                      本地可命名、可加密、可预览差异的快照，随时一键回滚。手动推送前与云端恢复前也会自动生成快照。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowSnapshotLibrary(true)}
+                    className="px-3 py-2 rounded-lg bg-violet-500 hover:bg-violet-600 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm shadow-violet-500/10"
+                  >
+                    <Archive className="w-3.5 h-3.5" />
+                    打开快照库
+                  </button>
+                </div>
+
                 {/* 安全机制说明 */}
                 <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 p-3.5 space-y-2">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
@@ -1220,7 +1470,7 @@ export function SettingsPanel({
                     </li>
                     <li>
                       <span className="font-medium text-slate-700 dark:text-slate-300">数据范围：</span>
-                      包含播放统计与观看时长 (<code className="font-mono text-[10px]">stats.json</code>)、视频打点书签 (<code className="font-mono text-[10px]">timeline.json</code>)、收藏演员资料 (<code className="font-mono text-[10px]">actors.json</code>) 与基础偏好。
+                      包含播放统计与观看时长 (<code className="font-mono text-[10px]">stats.json</code>)、视频打点书签 (<code className="font-mono text-[10px]">timeline.json</code>) 与基础偏好。
                     </li>
                   </ul>
                 </div>
@@ -1319,6 +1569,13 @@ export function SettingsPanel({
           </div>
         </div>
       </form>
+
+      {showSnapshotLibrary && (
+        <SnapshotLibraryModal
+          onClose={() => setShowSnapshotLibrary(false)}
+          onAddSystemLog={onAddSystemLog}
+        />
+      )}
     </div>
   );
 }

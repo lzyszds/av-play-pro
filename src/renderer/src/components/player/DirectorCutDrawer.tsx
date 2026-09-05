@@ -38,7 +38,11 @@ export function DirectorCutDrawer({
   onClear,
 }: Props) {
   return (
-    <div className="absolute inset-y-3 right-3 z-30 flex w-[340px] flex-col overflow-hidden rounded-xl border border-violet-400/30 bg-slate-950/95 shadow-2xl backdrop-blur-xl">
+    <div
+      className="absolute inset-y-3 right-3 z-50 flex w-[340px] flex-col overflow-hidden rounded-xl border border-violet-400/30 bg-slate-950/95 shadow-2xl backdrop-blur-xl pointer-events-auto"
+      onMouseMove={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
       <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-bold text-violet-100">

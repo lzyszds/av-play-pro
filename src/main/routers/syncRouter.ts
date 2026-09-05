@@ -1,10 +1,17 @@
-import { app } from "electron";
+import { app, net } from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import { z } from "zod";
 import { t } from "../trpc";
 import { log } from "../logger";
 import { recordActivity } from "./activityRouter";
+import {
+  SYNC_FILE_DEFS,
+  readLocalSyncData,
+  createSnapshotRecord,
+  computeValueDiff,
+  mergeSettingsPreservingLocal,
+} from "./snapshotRouter";
 
 function getUserDataPath(...segments: string[]): string {
   return path.join(app.getPath("userData"), ...segments);
@@ -39,6 +46,98 @@ import { getMainWindow } from "../windowState";
 
 let isExecutingCloudPush = false;
 
+const PUSH_TIMEOUT_MS = 30_000;
+const PUSH_MAX_ATTEMPTS = 3;
+const PUSH_RETRY_DELAY_MS = 1_500;
+const PUSH_BUSY_WAIT_MS = 15_000;
+
+// 使用 Electron net.fetch（走 Chromium 网络栈，可复用系统代理），
+// 替代 Node 全局 fetch（undici 不读取系统代理，直连 Cloudflare 端点经常失败）。
+async function cloudFetch(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await net.fetch(url, init);
+  } catch (err: any) {
+    const name = err?.name || "";
+    if (name === "AbortError" || name === "TimeoutError") throw err;
+    throw new TypeError(err?.message || String(err));
+  }
+}
+
+async function postSyncWithRetry(
+  endpoint: string,
+  secretKey: string,
+  payload: unknown,
+): Promise<{ status: number; body: string }> {
+  let lastStatus = 0;
+  let lastBody = "";
+  let lastErr: unknown = null;
+
+  for (let attempt = 0; attempt < PUSH_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, PUSH_RETRY_DELAY_MS));
+    }
+    try {
+      const res = await cloudFetch(`${endpoint}/api/sync`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Sync-Key": secretKey.trim(),
+          "User-Agent": "AVPlayPro-Electron",
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(PUSH_TIMEOUT_MS),
+      });
+      const body = await res.text();
+      if (res.status !== 408 && res.status !== 429 && res.status < 500) {
+        return { status: res.status, body };
+      }
+      lastStatus = res.status;
+      lastBody = body;
+    } catch (err: any) {
+      lastErr = err;
+      const name = err?.name || "";
+      const transient =
+        name === "AbortError" || name === "TimeoutError" || err instanceof TypeError;
+      if (!transient) {
+        throw err;
+      }
+    }
+  }
+
+  if (lastErr) {
+    throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+  }
+  return { status: lastStatus, body: lastBody };
+}
+
+// 拉取云端当前完整数据（演练预览 / 推送前存档共用，只读不写）
+async function fetchCloudSyncData(
+  endpoint: string,
+  secretKey: string,
+  timeoutMs = 15000,
+): Promise<{ ok: boolean; status?: number; payload?: any; error?: string }> {
+  try {
+    const res = await cloudFetch(`${endpoint}/api/sync`, {
+      method: "GET",
+      headers: {
+        "X-Sync-Key": secretKey.trim(),
+        "User-Agent": "AVPlayPro-Electron",
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (res.status === 401) {
+      return { ok: false, error: "未授权：密钥错误" };
+    }
+    if (!res.ok) {
+      return { ok: false, error: `拉取失败 HTTP ${res.status}` };
+    }
+    const payload: any = await res.json();
+    return { ok: true, payload };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+}
+
 // 执行上传/推送本地数据至云端 KV 核心逻辑
 export async function executePushToCloud(
   rawEndpoint: string,
@@ -59,8 +158,15 @@ export async function executePushToCloud(
         message: "已等待正在进行的备份完成",
       };
     }
-    log.warn("[syncRouter] Another cloud backup is already in progress, skipping");
-    return { success: false as const, error: "已有正在进行的云端同步任务" };
+    log.info("[syncRouter] Another cloud backup is in progress, waiting for it to finish...");
+    const busyWaitStart = Date.now();
+    while (isExecutingCloudPush && Date.now() - busyWaitStart < PUSH_BUSY_WAIT_MS) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (isExecutingCloudPush) {
+      log.warn("[syncRouter] Another cloud backup is still in progress after waiting, skipping");
+      return { success: false as const, error: "已有正在进行的云端同步任务" };
+    }
   }
 
   isExecutingCloudPush = true;
@@ -117,6 +223,37 @@ export async function executePushToCloud(
       ? localActors.length
       : Object.keys(localActors || {}).length;
 
+    // 手动推送前，自动保存「推送前·云端旧档」快照，使本次覆盖云端可撤销
+    if (reason === "manual") {
+      const cloud = await fetchCloudSyncData(endpoint, secretKey);
+      if (
+        cloud.ok &&
+        cloud.payload?.data &&
+        Object.keys(cloud.payload.data).length > 0
+      ) {
+        const snap = await createSnapshotRecord({
+          name: `推送前·云端旧档 ${new Date().toLocaleString()}`,
+          source: "pre-push",
+          note: "手动推送覆盖云端前的旧数据，回滚后可重新推回",
+          data: cloud.payload.data,
+        });
+        if (snap.success) {
+          log.info(
+            `[syncRouter] Saved pre-push cloud snapshot: ${snap.snapshot?.id}`,
+          );
+        } else {
+          log.warn(
+            "[syncRouter] Failed to save pre-push cloud snapshot:",
+            snap.error,
+          );
+        }
+      } else {
+        log.info(
+          "[syncRouter] No existing cloud data to snapshot before manual push",
+        );
+      }
+    }
+
     const payload = {
       version: 1,
       exportedAt: new Date().toISOString(),
@@ -125,7 +262,6 @@ export async function executePushToCloud(
         settings: localSettings,
         stats: localStats,
         timeline: localTimeline,
-        actors: localActors,
         tagModel: localTagModel,
         activities: localActivities,
         annualReport: localReport,
@@ -133,25 +269,15 @@ export async function executePushToCloud(
       },
     };
 
-    const res = await fetch(`${endpoint}/api/sync`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Sync-Key": secretKey.trim(),
-        "User-Agent": "AVPlayPro-Electron",
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(10000),
-    });
+    const res = await postSyncWithRetry(endpoint, secretKey, payload);
 
     if (res.status === 401) {
       return { success: false as const, error: "未授权：密钥错误" };
     }
-    if (!res.ok) {
-      const text = await res.text();
+    if (res.status < 200 || res.status >= 300) {
       return {
         success: false as const,
-        error: `上传失败 (HTTP ${res.status}): ${text}`,
+        error: `上传失败 (HTTP ${res.status}): ${res.body}`,
       };
     }
 
@@ -288,7 +414,7 @@ export const syncRouter = t.router({
       const startTime = Date.now();
       try {
         const pingUrl = `${endpoint}/api/ping`;
-        const res = await fetch(pingUrl, {
+        const res = await cloudFetch(pingUrl, {
           method: "GET",
           headers: {
             "X-Sync-Key": input.secretKey.trim(),
@@ -349,7 +475,7 @@ export const syncRouter = t.router({
       if (!endpoint) return { success: false, error: "云同步端点不能为空" };
 
       try {
-        const res = await fetch(`${endpoint}/api/sync/metadata`, {
+        const res = await cloudFetch(`${endpoint}/api/sync/metadata`, {
           headers: {
             "X-Sync-Key": input.secretKey.trim(),
             "User-Agent": "AVPlayPro-Electron",
@@ -375,6 +501,99 @@ export const syncRouter = t.router({
       } catch (err: any) {
         return { success: false, error: err?.message || String(err) };
       }
+    }),
+
+  // 同步演练场：预览本地与云端差异（只读，不写入任何数据）
+  previewSyncDiff: t.procedure
+    .input(
+      z.object({
+        endpoint: z.string(),
+        secretKey: z.string(),
+      }),
+    )
+    .query(async ({ input }) => {
+      const endpoint = normalizeUrl(input.endpoint);
+      if (!endpoint) {
+        return { success: false as const, error: "云同步端点不能为空" };
+      }
+
+      const cloud = await fetchCloudSyncData(endpoint, input.secretKey);
+      if (!cloud.ok) {
+        return {
+          success: false as const,
+          error: cloud.error || "无法获取云端数据",
+        };
+      }
+
+      const remoteData = cloud.payload?.data || {};
+      const localData = readLocalSyncData();
+      const cloudUpdatedAt = cloud.payload?.updatedAt || null;
+
+      const hasData = (v: unknown) =>
+        v !== undefined &&
+        v !== null &&
+        JSON.stringify(v) !== "{}" &&
+        JSON.stringify(v) !== "[]";
+
+      const cloudDefs = SYNC_FILE_DEFS.filter((d) => d.key !== "actors");
+      const items = cloudDefs.map((def) => {
+        const localVal = localData[def.key];
+        const cloudVal = remoteData[def.key];
+        const localHas = hasData(localVal);
+        const cloudHas = hasData(cloudVal);
+        const diff = computeValueDiff(localVal, cloudVal);
+
+        let pushAction: "add" | "update" | "keep" | "remove";
+        if (localHas && !cloudHas) pushAction = "add";
+        else if (localHas && cloudHas && !diff.equal) pushAction = "update";
+        else if (localHas && cloudHas && diff.equal) pushAction = "keep";
+        else pushAction = "remove";
+
+        let pullAction: "add" | "update" | "keep" | "localOnly";
+        if (cloudHas && !localHas) pullAction = "add";
+        else if (cloudHas && localHas && !diff.equal) pullAction = "update";
+        else if (cloudHas && localHas && diff.equal) pullAction = "keep";
+        else pullAction = "localOnly";
+
+        return {
+          key: def.key,
+          label: def.label,
+          localHas,
+          cloudHas,
+          equal: diff.equal,
+          localBytes: diff.localBytes,
+          cloudBytes: diff.remoteBytes,
+          localCount: diff.localCount,
+          cloudCount: diff.remoteCount,
+          keySummary: diff.keySummary,
+          addedKeys: diff.addedKeys,
+          removedKeys: diff.removedKeys,
+          changedKeys: diff.changedKeys,
+          pushAction,
+          pullAction,
+        };
+      });
+
+      const summary = {
+        pushAdd: items.filter((i) => i.pushAction === "add").length,
+        pushUpdate: items.filter((i) => i.pushAction === "update").length,
+        pushKeep: items.filter((i) => i.pushAction === "keep").length,
+        pushRemove: items.filter((i) => i.pushAction === "remove").length,
+        pullAdd: items.filter((i) => i.pullAction === "add").length,
+        pullUpdate: items.filter((i) => i.pullAction === "update").length,
+        pullKeep: items.filter((i) => i.pullAction === "keep").length,
+        pullLocalOnly: items.filter((i) => i.pullAction === "localOnly")
+          .length,
+      };
+
+      const hasCloud = Object.keys(remoteData).some((k) => hasData(remoteData[k]));
+      return {
+        success: true as const,
+        hasCloud,
+        cloudUpdatedAt,
+        items,
+        summary,
+      };
     }),
 
   // 上传/推送本地数据至云端 KV
@@ -439,7 +658,7 @@ export const syncRouter = t.router({
       if (!endpoint) return { success: false as const, error: "云同步端点不能为空" };
 
       try {
-        const res = await fetch(`${endpoint}/api/sync`, {
+        const res = await cloudFetch(`${endpoint}/api/sync`, {
           method: "GET",
           headers: {
             "X-Sync-Key": input.secretKey.trim(),
@@ -463,6 +682,19 @@ export const syncRouter = t.router({
             success: false as const,
             error: "云端尚无备份数据，请先点击【立即备份到云端】上传一次数据。",
           };
+        }
+
+        // 0. 恢复前自动为本地旧数据创建「恢复前·本地旧档」快照（可撤销）
+        const prePullSnap = await createSnapshotRecord({
+          name: `恢复前·本地旧档 ${new Date().toLocaleString()}`,
+          source: "pre-pull",
+          note: "从云端覆盖本地前的旧数据，可在快照库中一键回滚",
+        });
+        if (!prePullSnap.success) {
+          log.warn(
+            "[syncRouter] Failed to save pre-pull local snapshot:",
+            prePullSnap.error,
+          );
         }
 
         // 1. 本地安全镜像备份（防止覆盖后数据找不回）
@@ -502,9 +734,6 @@ export const syncRouter = t.router({
         if (remoteData.timeline) {
           writeJsonFile(getUserDataPath("timeline.json"), remoteData.timeline);
         }
-        if (remoteData.actors) {
-          writeJsonFile(getUserDataPath("actors.json"), remoteData.actors);
-        }
         if (remoteData.tagModel) {
           writeJsonFile(getUserDataPath("tag-model.json"), remoteData.tagModel);
         }
@@ -534,28 +763,15 @@ export const syncRouter = t.router({
         );
         const remoteSettings = (remoteData.settings as Record<string, any>) || {};
 
-        const mergedSettings = {
-          ...remoteSettings,
-          ...localSettings,
-          // 偏好类设置优先采用云端
-          theme: remoteSettings.theme ?? localSettings.theme,
-          notifySound: remoteSettings.notifySound ?? localSettings.notifySound,
-          notifyOnComplete:
-            remoteSettings.notifyOnComplete ?? localSettings.notifyOnComplete,
-          loaderStyle: remoteSettings.loaderStyle ?? localSettings.loaderStyle,
-          downloadBackground:
-            remoteSettings.downloadBackground ??
-            localSettings.downloadBackground,
-          playerLayout:
-            remoteSettings.playerLayout ?? localSettings.playerLayout,
-          privacyScreenEnabled:
-            remoteSettings.privacyScreenEnabled ??
-            localSettings.privacyScreenEnabled,
-          // 保留当前本机的连接参数与同步时间
-          cloudSyncEndpoint: input.endpoint,
-          cloudSyncSecret: input.secretKey,
-          cloudSyncLastSync: remotePayload.updatedAt || new Date().toISOString(),
-        };
+        const mergedSettings = mergeSettingsPreservingLocal(
+          localSettings,
+          remoteSettings,
+          {
+            endpoint: input.endpoint,
+            secret: input.secretKey,
+            lastSync: remotePayload.updatedAt || new Date().toISOString(),
+          },
+        );
 
         writeJsonFile(getUserDataPath("settings.json"), mergedSettings);
 

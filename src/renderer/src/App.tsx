@@ -403,6 +403,9 @@ export default function App() {
             onActiveVideoChange={(name) => {
               currentPlayingFolderRef.current = name;
             }}
+            onLayoutChange={(l) =>
+              setSettings((s) => ({ ...s, playerLayout: l }))
+            }
           />
         )}
         {currentPage === "discover" && (
@@ -464,7 +467,7 @@ export default function App() {
             if (e.target === e.currentTarget) setSettingsOpen(false);
           }}
         >
-          <div className="anim-pop-in" style={{ width: "100%", maxWidth: 680 }}>
+          <div className="anim-pop-in" style={{ width: "100%", maxWidth: 1080 }}>
             <SettingsPanel
               settings={settings}
               onSaveSettings={(next) => {

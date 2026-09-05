@@ -109,6 +109,33 @@ body {
   background: #64748b;
 }
 
+/* 零界面放映面板滚动条：深色半透明背景上保证可见、可拖动 */
+.zero-scroll {
+  scrollbar-width: auto;
+  scrollbar-color: rgba(226, 232, 240, 0.9) rgba(255, 255, 255, 0.14);
+}
+.zero-scroll::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+.zero-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  margin: 6px 0;
+}
+.zero-scroll::-webkit-scrollbar-thumb {
+  background: rgba(226, 232, 240, 0.88);
+  border-radius: 6px;
+  border: 2px solid rgba(15, 23, 42, 0.45);
+  min-height: 40px;
+}
+.zero-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.95);
+}
+.zero-scroll-visible {
+  overflow-y: scroll !important;
+}
+
 /* Plyr 主题覆盖 */
 .plyr {
   --plyr-color-main: #f43f5e;
@@ -2160,6 +2187,13 @@ button:active:not(:disabled):not(.plyr__control) {
     0 10px 32px rgba(0, 0, 0, 0.45),
     0 0 18px rgba(244, 63, 94, 0.12);
   transform: translateY(-4px) scale(1.02);
+}
+
+/* ---- 设置面板滚动性能：滚动期间暂停动画预览，避免掉帧 ---- */
+.settings-scroll.is-scrolling [class*="cover-"] *,
+.settings-scroll.is-scrolling [class*="cover-"]::before,
+.settings-scroll.is-scrolling [class*="cover-"]::after {
+  animation-play-state: paused !important;
 }
 
 /* ==================================================================== */

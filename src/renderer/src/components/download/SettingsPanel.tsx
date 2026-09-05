@@ -12,6 +12,16 @@ import {
   CheckCircle2,
   AlertTriangle,
   XCircle,
+  Cloud,
+  UploadCloud,
+  DownloadCloud,
+  Key,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  Database,
+  Check,
 } from "lucide-react";
 import { trpc } from "../../lib/trpc";
 import type {
@@ -23,7 +33,7 @@ import type {
 } from "../../pages/download/types";
 import { CoverLoader } from "../CoverLoader";
 
-type TabKey = "storage" | "network" | "appearance" | "health";
+type TabKey = "storage" | "network" | "appearance" | "health" | "sync";
 const DOWNLOAD_BACKGROUNDS: DownloadBackground[] = [
   "1",
   "2",
@@ -141,6 +151,147 @@ export function SettingsPanel({
     }
   };
 
+  const [cloudSyncEndpoint, setCloudSyncEndpoint] = useState(
+    settings.cloudSyncEndpoint ||
+      "https://avplay-sync.1024327189.workers.dev",
+  );
+  const [cloudSyncSecret, setCloudSyncSecret] = useState(
+    settings.cloudSyncSecret || "",
+  );
+  const [cloudSyncAutoSync, setCloudSyncAutoSync] = useState(
+    settings.cloudSyncAutoSync ?? false,
+  );
+  const [cloudSyncLastSync, setCloudSyncLastSync] = useState(
+    settings.cloudSyncLastSync || "",
+  );
+  const [showSecret, setShowSecret] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  const [pushing, setPushing] = useState(false);
+  const [pushResult, setPushResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  const [pulling, setPulling] = useState(false);
+  const [pullResult, setPullResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  const [confirmPull, setConfirmPull] = useState(false);
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const res = await trpc.sync.testConnection.mutate({
+        endpoint: cloudSyncEndpoint,
+        secretKey: cloudSyncSecret,
+      });
+      if (res.success) {
+        setTestResult({
+          success: true,
+          message: `连接成功 (延迟 ${res.latencyMs}ms)`,
+        });
+        onAddSystemLog(
+          `Cloudflare Worker 连通正常，延迟: ${res.latencyMs}ms`,
+          "SUCCESS",
+        );
+      } else {
+        setTestResult({
+          success: false,
+          message: res.error || "连接测试失败",
+        });
+        onAddSystemLog(`Cloudflare Worker 连通失败: ${res.error}`, "ERROR");
+      }
+    } catch (err: any) {
+      setTestResult({
+        success: false,
+        message: err?.message || String(err),
+      });
+      onAddSystemLog(`云同步测试异常: ${err?.message || err}`, "ERROR");
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  const handlePushToCloud = async () => {
+    if (!cloudSyncSecret.trim()) {
+      setPushResult({ success: false, message: "请先输入访问密码 (SYNC_SECRET)" });
+      return;
+    }
+    setPushing(true);
+    setPushResult(null);
+    try {
+      const res = await trpc.sync.pushToCloud.mutate({
+        endpoint: cloudSyncEndpoint,
+        secretKey: cloudSyncSecret,
+      });
+      if (res.success) {
+        setPushResult({
+          success: true,
+          message: `备份成功！共 ${res.stats?.videoCount ?? 0} 部影片记录，${res.stats?.timelineCount ?? 0} 条打点`,
+        });
+        setCloudSyncLastSync(res.updatedAt || new Date().toISOString());
+        onAddSystemLog("已成功将本地全量数据与设置备份至 Cloudflare KV", "SUCCESS");
+      } else {
+        setPushResult({
+          success: false,
+          message: res.error || "备份失败",
+        });
+        onAddSystemLog(`云端备份失败: ${res.error}`, "ERROR");
+      }
+    } catch (err: any) {
+      setPushResult({
+        success: false,
+        message: err?.message || String(err),
+      });
+      onAddSystemLog(`云端备份异常: ${err?.message || err}`, "ERROR");
+    } finally {
+      setPushing(false);
+    }
+  };
+
+  const handlePullFromCloud = async () => {
+    if (!cloudSyncSecret.trim()) {
+      setPullResult({ success: false, message: "请先输入访问密码 (SYNC_SECRET)" });
+      return;
+    }
+    setPulling(true);
+    setPullResult(null);
+    setConfirmPull(false);
+    try {
+      const res = await trpc.sync.pullFromCloud.mutate({
+        endpoint: cloudSyncEndpoint,
+        secretKey: cloudSyncSecret,
+      });
+      if (res.success) {
+        setPullResult({
+          success: true,
+          message: `恢复成功！旧数据已自动安全镜像备份至 backups 目录`,
+        });
+        setCloudSyncLastSync(res.updatedAt || new Date().toISOString());
+        onAddSystemLog(`已从 Cloudflare KV 恢复云端数据，旧数据已安全备份`, "SUCCESS");
+      } else {
+        setPullResult({
+          success: false,
+          message: res.error || "恢复失败",
+        });
+        onAddSystemLog(`从云端恢复失败: ${res.error}`, "ERROR");
+      }
+    } catch (err: any) {
+      setPullResult({
+        success: false,
+        message: err?.message || String(err),
+      });
+      onAddSystemLog(`云端恢复异常: ${err?.message || err}`, "ERROR");
+    } finally {
+      setPulling(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSaveSettings({
@@ -166,6 +317,10 @@ export function SettingsPanel({
         1,
         Math.min(50, thumbQueueConcurrency || 1),
       ),
+      cloudSyncEndpoint: cloudSyncEndpoint.trim(),
+      cloudSyncSecret: cloudSyncSecret.trim(),
+      cloudSyncAutoSync,
+      cloudSyncLastSync,
     });
     onAddSystemLog("Electron 核心: 系统配置已更新。", "SUCCESS");
   };
@@ -211,10 +366,11 @@ export function SettingsPanel({
     }
   };
 
-  const tabs: Array<{ key: TabKey; label: string; icon: typeof Folder }> = [
+  const tabs: Array<{ key: TabKey; label: string; icon: any }> = [
     { key: "storage", label: "存储路径", icon: Folder },
     { key: "network", label: "网络与插件", icon: Globe },
     { key: "appearance", label: "个性化与通知", icon: SettingsIcon },
+    { key: "sync", label: "云端同步", icon: Cloud },
     { key: "health", label: "健康状态", icon: Activity },
   ];
 
@@ -738,6 +894,222 @@ export function SettingsPanel({
                     on={notifySound}
                     onToggle={() => setNotifySound(!notifySound)}
                   />
+                </div>
+              </div>
+            )}
+
+            {activeTab === "sync" && (
+              <div className="space-y-5">
+                {/* 标题说明区 */}
+                <div className="flex items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 tracking-wide uppercase flex items-center gap-1.5">
+                      <Cloud className="w-3.5 h-3.5 text-amber-500" />
+                      Cloudflare Workers + KV 云端同步
+                    </h3>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                      全球边缘无服务器存储，随时将观影记录、打点书签、演员库及配置安全同步
+                    </p>
+                  </div>
+                  {cloudSyncLastSync && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full font-medium shrink-0">
+                      上次同步: {new Date(cloudSyncLastSync).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+
+                {/* 服务配置卡片 */}
+                <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 p-4 space-y-3.5">
+                  {/* Worker 端点 */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                      <span>Worker 同步服务地址 (Endpoint)</span>
+                      <span className="text-[10px] font-normal text-slate-400">已自动连接你的 Cloudflare Worker</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={cloudSyncEndpoint}
+                      onChange={(e) => setCloudSyncEndpoint(e.target.value)}
+                      placeholder="https://avplay-sync.1024327189.workers.dev"
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-700 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  {/* 访问密码 SYNC_SECRET */}
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
+                      访问鉴权密钥 (SYNC_SECRET)
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type={showSecret ? "text" : "password"}
+                          value={cloudSyncSecret}
+                          onChange={(e) => setCloudSyncSecret(e.target.value)}
+                          placeholder="输入你在 Cloudflare Worker 环境变量配置的 SYNC_SECRET"
+                          className="w-full pl-3 pr-9 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-mono text-slate-700 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowSecret(!showSecret)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                          title={showSecret ? "隐藏密码" : "显示密码"}
+                        >
+                          {showSecret ? (
+                            <EyeOff className="w-3.5 h-3.5" />
+                          ) : (
+                            <Eye className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleTestConnection}
+                        disabled={testingConnection || !cloudSyncEndpoint.trim()}
+                        className="px-3 py-2 rounded-lg bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-300/80 dark:hover:bg-slate-700 text-xs font-bold transition flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+                      >
+                        <RefreshCw
+                          className={`w-3.5 h-3.5 ${
+                            testingConnection ? "animate-spin text-amber-500" : ""
+                          }`}
+                        />
+                        {testingConnection ? "测试中..." : "测试连接"}
+                      </button>
+                    </div>
+
+                    {/* 测试结果提示 */}
+                    {testResult && (
+                      <div
+                        className={`flex items-center gap-1.5 text-xs p-2 rounded-lg ${
+                          testResult.success
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                            : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
+                        }`}
+                      >
+                        {testResult.success ? (
+                          <CheckCircle2 className="w-4 h-4 shrink-0" />
+                        ) : (
+                          <XCircle className="w-4 h-4 shrink-0" />
+                        )}
+                        <span>{testResult.message}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 同步与备份操作区 */}
+                <div className="grid grid-cols-2 gap-3.5">
+                  {/* 备份到云端 */}
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex flex-col justify-between space-y-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                        <UploadCloud className="w-4 h-4 text-amber-500" />
+                        <span>备份数据到云端 (Push)</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                        将当前播放历史、统计数据、打点书签、演员库及配置打包推送到 Cloudflare KV 存储。
+                      </p>
+                    </div>
+
+                    {pushResult && (
+                      <div
+                        className={`text-[11px] p-2 rounded-lg ${
+                          pushResult.success
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                            : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
+                        }`}
+                      >
+                        {pushResult.message}
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handlePushToCloud}
+                      disabled={pushing || pulling || !cloudSyncSecret.trim()}
+                      className="w-full py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer shadow-sm shadow-amber-500/10"
+                    >
+                      <UploadCloud className={`w-3.5 h-3.5 ${pushing ? "animate-bounce" : ""}`} />
+                      {pushing ? "正在打包并上传..." : "立即备份到云端"}
+                    </button>
+                  </div>
+
+                  {/* 从云端恢复 */}
+                  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex flex-col justify-between space-y-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200">
+                        <DownloadCloud className="w-4 h-4 text-sky-500" />
+                        <span>从云端恢复数据 (Pull)</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+                        从云端拉取已保存的观影数据。覆盖前系统会自动在本地安全归档一份旧数据。
+                      </p>
+                    </div>
+
+                    {pullResult && (
+                      <div
+                        className={`text-[11px] p-2 rounded-lg ${
+                          pullResult.success
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                            : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
+                        }`}
+                      >
+                        {pullResult.message}
+                      </div>
+                    )}
+
+                    {confirmPull ? (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setConfirmPull(false)}
+                          className="flex-1 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 rounded-lg text-xs font-semibold cursor-pointer"
+                        >
+                          取消
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handlePullFromCloud}
+                          disabled={pulling}
+                          className="flex-1 py-2 bg-rose-500 hover:bg-rose-600 text-white rounded-lg text-xs font-bold cursor-pointer"
+                        >
+                          {pulling ? "恢复中..." : "确定覆盖恢复"}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmPull(true)}
+                        disabled={pushing || pulling || !cloudSyncSecret.trim()}
+                        className="w-full py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer shadow-sm shadow-sky-500/10"
+                      >
+                        <DownloadCloud className={`w-3.5 h-3.5 ${pulling ? "animate-bounce" : ""}`} />
+                        从云端拉取恢复
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 安全机制说明 */}
+                <div className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 p-3.5 space-y-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-300">
+                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                    <span>安全保障与数据覆盖说明</span>
+                  </div>
+                  <ul className="text-[11px] text-slate-500 dark:text-slate-400 space-y-1 list-disc list-inside">
+                    <li>
+                      <span className="font-medium text-slate-700 dark:text-slate-300">防误触双重保障：</span>
+                      每次从云端拉取时，当前机器现有的数据都会自动复制到 <code className="font-mono text-amber-600 dark:text-amber-400">userData/backups/</code> 中。
+                    </li>
+                    <li>
+                      <span className="font-medium text-slate-700 dark:text-slate-300">本地路径保护：</span>
+                      恢复云端数据时，会自动保留当前机器设置的本地视频库路径与临时目录，不会破坏两台电脑不同的盘符设置。
+                    </li>
+                    <li>
+                      <span className="font-medium text-slate-700 dark:text-slate-300">数据范围：</span>
+                      包含播放统计与观看时长 (<code className="font-mono text-[10px]">stats.json</code>)、视频打点书签 (<code className="font-mono text-[10px]">timeline.json</code>)、收藏演员资料 (<code className="font-mono text-[10px]">actors.json</code>) 与基础偏好。
+                    </li>
+                  </ul>
                 </div>
               </div>
             )}

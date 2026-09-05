@@ -45,6 +45,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   privacyScreenImageOpacity: 42,
   privacyScreenChangeSeconds: 10,
   lastPage: "player",
+  cloudSyncEndpoint: "https://avplay-sync.1024327189.workers.dev",
+  cloudSyncSecret: "",
+  cloudSyncLastSync: "",
+  cloudSyncAutoSync: false,
 };
 
 // 合法的页面 key，用于校验持久化的 lastPage

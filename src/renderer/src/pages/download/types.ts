@@ -99,6 +99,14 @@ export interface AppSettings {
   privacyScreenChangeSeconds: number;
   /** 上次所在的页面（重启后恢复） */
   lastPage?: string;
+  /** Cloudflare Workers 云端同步端点地址 */
+  cloudSyncEndpoint?: string;
+  /** Cloudflare Workers 同步鉴权密码 */
+  cloudSyncSecret?: string;
+  /** 最近一次成功云端同步的时间戳 */
+  cloudSyncLastSync?: string;
+  /** 是否开启自动同步 */
+  cloudSyncAutoSync?: boolean;
 }
 
 export interface DownloadPageProps {

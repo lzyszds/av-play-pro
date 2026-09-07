@@ -1,0 +1,12 @@
+name = "avplay-news"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+workers_dev = true
+
+[triggers]
+crons = ["*/30 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "avplay-news"
+database_id = "14d1bbe2-fac9-4f8c-a738-70b11463409e"

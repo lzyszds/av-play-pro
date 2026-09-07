@@ -35,6 +35,13 @@ import { parseHeadersText } from "../../pages/download/utils";
 
 export interface NewTaskModalProps {
   initialUrl?: string;
+  initialCandidate?: {
+    name: string;
+    url: string;
+    coverUrl?: string;
+    previewUrl?: string;
+    pageUrl?: string;
+  };
   onClose: () => void;
   onAddTask: (task: {
     name: string;
@@ -65,6 +72,7 @@ const REFERER_PRESETS = [
 
 export function NewTaskModal({
   initialUrl = "",
+  initialCandidate,
   onClose,
   onAddTask,
   defaultSavePath,
@@ -88,6 +96,23 @@ export function NewTaskModal({
   const [errorMsg, setErrorMsg] = useState("");
   const [selectedRefererIndex, setSelectedRefererIndex] = useState<number>(0);
   const [cmdCopied, setCmdCopied] = useState(false);
+  React.useEffect(() => {
+    if (!initialCandidate) return;
+    setUrl(initialCandidate.url);
+    setName(initialCandidate.name);
+    setCoverUrl(initialCandidate.coverUrl || "");
+    setPreviewUrl(initialCandidate.previewUrl || "");
+    if (initialCandidate.pageUrl) {
+      try {
+        const origin = new URL(initialCandidate.pageUrl).origin;
+        setHeadersText(
+          `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\\nReferer: ${initialCandidate.pageUrl}\\nOrigin: ${origin}\\nCookie: `,
+        );
+      } catch {
+        // 保留默认 Referer 预设
+      }
+    }
+  }, [initialCandidate]);
   // 定时下载相关状态
   const [scheduledEnabled, setScheduledEnabled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState<string>("");

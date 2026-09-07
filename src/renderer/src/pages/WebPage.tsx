@@ -1,12 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bug,
+  ClipboardCopy,
   ChevronLeft,
   ChevronRight,
+  Download,
   Globe,
   Home,
   RefreshCw,
+  ScanSearch,
   ShieldOff,
+  X,
 } from "lucide-react";
 import { PageLoader } from "../components/PageLoader";
 
@@ -14,11 +18,23 @@ const DEFAULT_WEB_URL = "https://missav.ai/dm816/cn/uncensored-leak?page=1";
 const WEBVIEW_PARTITION = "persist:missav-web";
 const RAW_WEBVIEW_PARTITION = "persist:missav-web-raw";
 
+export interface WebCandidate {
+  title: string;
+  code: string;
+  coverUrl: string;
+  previewUrl: string;
+  mediaUrl: string;
+  description: string;
+  actors: string[];
+  pageUrl: string;
+}
+
 interface WebPageProps {
   onAddSystemLog: (
     text: string,
     level: "INFO" | "WARNING" | "SUCCESS" | "ERROR",
   ) => void;
+  onCreateDownload: (candidate: WebCandidate) => void;
 }
 
 type ElectronWebview = HTMLElement & {
@@ -30,6 +46,7 @@ type ElectronWebview = HTMLElement & {
   canGoBack: () => boolean;
   canGoForward: () => boolean;
   openDevTools: () => void;
+  executeJavaScript: (code: string, userGesture?: boolean) => Promise<unknown>;
 };
 
 type WebviewEvent = Event & {
@@ -46,7 +63,7 @@ type WebviewEvent = Event & {
   exitCode?: number;
 };
 
-export function WebPage({ onAddSystemLog }: WebPageProps) {
+export function WebPage({ onAddSystemLog, onCreateDownload }: WebPageProps) {
   const webviewRef = useRef<ElectronWebview | null>(null);
   // `src` 只用于 webview 创建/重建时的首跳地址。页面内部跳转（尤其是
   // Cloudflare challenge）只更新地址栏，不能再反写 src，否则会中止正在进行的导航。
@@ -58,6 +75,8 @@ export function WebPage({ onAddSystemLog }: WebPageProps) {
   const [canGoForward, setCanGoForward] = useState(false);
   const [isRawMode, setIsRawMode] = useState(false);
   const [webviewKey, setWebviewKey] = useState(0);
+  const [candidate, setCandidate] = useState<WebCandidate | null>(null);
+  const [capturing, setCapturing] = useState(false);
 
   const syncNavState = useCallback(() => {
     const webview = webviewRef.current;
@@ -204,6 +223,63 @@ export function WebPage({ onAddSystemLog }: WebPageProps) {
     }
   }, [onAddSystemLog]);
 
+  const captureCurrentPage = useCallback(async () => {
+    const webview = webviewRef.current;
+    if (!webview) {
+      onAddSystemLog("网页尚未就绪，暂时无法摘取", "WARNING");
+      return;
+    }
+
+    setCapturing(true);
+    try {
+      const extracted = (await webview.executeJavaScript(`(() => {
+        const absolute = (value) => {
+          if (!value) return "";
+          try { return new URL(value, location.href).href; } catch { return ""; }
+        };
+        const meta = (...names) => {
+          for (const name of names) {
+            const node = document.querySelector('meta[property="' + name + '"], meta[name="' + name + '"]');
+            const value = node?.getAttribute("content")?.trim();
+            if (value) return value;
+          }
+          return "";
+        };
+        const title = meta("og:title", "twitter:title") || document.querySelector("h1")?.textContent?.trim() || document.title || "未命名网页资源";
+        const description = meta("og:description", "description", "twitter:description") || "";
+        const coverUrl = absolute(meta("og:image", "twitter:image"));
+        const urls = Array.from(document.querySelectorAll("video, source, a[href], [data-src], [data-url]"))
+          .flatMap((node) => [node.getAttribute("src"), node.getAttribute("href"), node.getAttribute("data-src"), node.getAttribute("data-url")])
+          .map(absolute)
+          .filter(Boolean);
+        const mediaUrl = urls.find((url) => /\\.(m3u8|mp4|webm)(?:[?#]|$)|\\/video(?:[/?#]|$)/i.test(url)) || "";
+        const previewUrl = absolute(document.querySelector("video")?.getAttribute("poster")) || mediaUrl;
+        const text = [title, document.body?.innerText?.slice(0, 3000) || ""].join(" ");
+        const code = text.match(/\\b([A-Z]{2,10}[-_ ]?\\d{2,7})\\b/i)?.[1]?.replace(/[ _]/g, "-").toUpperCase() || "";
+        const actors = Array.from(document.querySelectorAll('[rel="tag"], .actor a, [class*="actor"] a, [class*="performer"] a'))
+          .map((node) => node.textContent?.trim() || "")
+          .filter((value, index, values) => value && values.indexOf(value) === index)
+          .slice(0, 12);
+        return { title, code, coverUrl, previewUrl, mediaUrl, description, actors, pageUrl: location.href };
+      })()`)) as WebCandidate;
+
+      setCandidate(extracted);
+      onAddSystemLog(
+        extracted.mediaUrl
+          ? `已摘取网页资源：${extracted.title}`
+          : `已保存网页线索：${extracted.title}（未发现直连媒体）`,
+        "SUCCESS",
+      );
+    } catch (error) {
+      onAddSystemLog(
+        `网页摘取失败：${error instanceof Error ? error.message : String(error)}`,
+        "ERROR",
+      );
+    } finally {
+      setCapturing(false);
+    }
+  }, [onAddSystemLog]);
+
   const controls = useMemo(
     () => [
       {
@@ -237,6 +313,12 @@ export function WebPage({ onAddSystemLog }: WebPageProps) {
         onClick: openWebviewDevTools,
       },
       {
+        label: capturing ? "正在摘取" : "摘取当前网页",
+        icon: ScanSearch,
+        disabled: capturing || isLoading,
+        onClick: () => void captureCurrentPage(),
+      },
+      {
         label: isRawMode ? "Managed mode" : "Raw mode",
         icon: ShieldOff,
         disabled: false,
@@ -246,6 +328,8 @@ export function WebPage({ onAddSystemLog }: WebPageProps) {
     [
       canGoBack,
       canGoForward,
+      captureCurrentPage,
+      capturing,
       goHome,
       isRawMode,
       openWebviewDevTools,
@@ -314,6 +398,53 @@ export function WebPage({ onAddSystemLog }: WebPageProps) {
           </div>
         )}
       </div>
+
+      {candidate && (
+        <div
+          className="fixed inset-0 z-50 bg-black/65 backdrop-blur-sm flex items-center justify-center p-5"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setCandidate(null);
+          }}
+        >
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-amber-400/25 bg-slate-950 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4">
+              <div>
+                <div className="text-sm font-bold text-white">网页摘取候选卡</div>
+                <div className="mt-1 text-[11px] text-slate-400">确认信息后再创建下载任务</div>
+              </div>
+              <button type="button" onClick={() => setCandidate(null)} className="rounded-md p-2 text-slate-400 hover:bg-slate-800 hover:text-white">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid gap-5 p-5 sm:grid-cols-[140px_minmax(0,1fr)]">
+              <div className="aspect-[2/3] overflow-hidden rounded-xl bg-slate-900">
+                {candidate.coverUrl ? <img src={candidate.coverUrl} alt="候选封面" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-xs text-slate-600">未找到封面</div>}
+              </div>
+              <div className="min-w-0 space-y-3">
+                <div>
+                  <div className="text-[10px] font-bold tracking-wider text-amber-400">标题</div>
+                  <div className="mt-1 break-words text-sm font-semibold text-slate-100">{candidate.title}</div>
+                </div>
+                {candidate.code && <div className="inline-flex rounded bg-amber-400/10 px-2 py-1 font-mono text-xs text-amber-300">{candidate.code}</div>}
+                {candidate.actors.length > 0 && <div className="text-xs text-slate-300">演员：{candidate.actors.join(" · ")}</div>}
+                {candidate.description && <p className="line-clamp-3 text-xs leading-5 text-slate-400">{candidate.description}</p>}
+                <div className="rounded-lg border border-slate-800 bg-slate-900/70 p-3">
+                  <div className="text-[10px] font-bold text-slate-500">媒体链接</div>
+                  <div className="mt-1 break-all font-mono text-[10px] text-slate-300">{candidate.mediaUrl || "未从当前页面发现可下载的媒体直链"}</div>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 border-t border-slate-800 px-5 py-4">
+              <button type="button" onClick={() => void navigator.clipboard.writeText(candidate.pageUrl)} className="inline-flex items-center gap-1.5 rounded-md border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800">
+                <ClipboardCopy className="h-3.5 w-3.5" />复制页面链接
+              </button>
+              <button type="button" disabled={!candidate.mediaUrl} onClick={() => { onCreateDownload(candidate); setCandidate(null); }} className="inline-flex items-center gap-1.5 rounded-md bg-amber-500 px-3 py-2 text-xs font-bold text-white hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40">
+                <Download className="h-3.5 w-3.5" />创建下载任务
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

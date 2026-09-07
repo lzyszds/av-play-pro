@@ -6,13 +6,14 @@ import { SettingsPanel } from "./components/download/SettingsPanel";
 import { thumbnailQueue } from "./lib/thumbnailQueue";
 import { DownloadPage } from "./pages/DownloadPage";
 import { PlayerPage } from "./pages/PlayerPage";
-import { WebPage } from "./pages/WebPage";
+import { WebPage, type WebCandidate } from "./pages/WebPage";
 import { StatsPage } from "./pages/StatsPage";
 import { CommandCenterPage } from "./pages/CommandCenterPage";
 import { StarMapPage } from "./pages/StarMapPage";
 import { MosaicPage } from "./pages/MosaicPage";
 import { RssPage } from "./pages/RssPage";
 import { DiscoverPage } from "./pages/DiscoverPage";
+import { NewsPage } from "./pages/NewsPage";
 import { ScraperWebview } from "./components/ScraperWebview";
 import { AchievementToast } from "./components/achievements/AchievementToast";
 import { trpc } from "./lib/trpc";
@@ -48,6 +49,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   cloudSyncSecret: "MySecretToken_2026",
   cloudSyncLastSync: "",
   cloudSyncAutoSync: true,
+  newsEndpoint: "https://avplay-news.1024327189.workers.dev",
+  newsApiKey: "Aa395878870",
   autoArousalOnPlay: true,
   playerLayout: "classic",
 };
@@ -63,6 +66,7 @@ const VALID_PAGES: Page[] = [
   "starmap",
   "mosaic",
   "rss",
+  "news",
 ];
 
 function applyLoaderStyle(style: AppSettings["loaderStyle"]): void {
@@ -97,6 +101,14 @@ export default function App() {
   const [logs, setLogs] = useState<LogMessage[]>([]);
   // 「立即查看」目标
   const [pendingPlayName, setPendingPlayName] = useState<string | null>(null);
+  const [incomingDownloadCandidate, setIncomingDownloadCandidate] = useState<{
+    id: string;
+    title: string;
+    mediaUrl: string;
+    coverUrl?: string;
+    previewUrl?: string;
+    pageUrl?: string;
+  } | null>(null);
   // 私密计时器
   const [arousalActive, setArousalActive] = useState(false);
   const [arousalElapsed, setArousalElapsed] = useState(0);
@@ -391,6 +403,8 @@ export default function App() {
               setPendingPlayName(task.name);
               setCurrentPage("player");
             }}
+            incomingCandidate={incomingDownloadCandidate}
+            onIncomingCandidateConsumed={() => setIncomingDownloadCandidate(null)}
           />
         </div>
         {currentPage === "player" && (
@@ -411,7 +425,24 @@ export default function App() {
         {currentPage === "discover" && (
           <DiscoverPage onAddSystemLog={addLog} />
         )}
-        {currentPage === "web" && <WebPage onAddSystemLog={addLog} />}
+        {currentPage === "web" && (
+          <WebPage
+            onAddSystemLog={addLog}
+            onCreateDownload={(candidate: WebCandidate) => {
+              setIncomingDownloadCandidate({
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                title: candidate.code ? `${candidate.code} ${candidate.title}` : candidate.title,
+                mediaUrl: candidate.mediaUrl,
+                coverUrl: candidate.coverUrl || undefined,
+                previewUrl: candidate.previewUrl || undefined,
+                pageUrl: candidate.pageUrl,
+              });
+              setCurrentPage("download");
+              addLog(`已将网页候选带入下载任务：${candidate.title}`, "SUCCESS");
+            }}
+          />
+        )}
+        {currentPage === "news" && <NewsPage endpoint={settings.newsEndpoint} apiKey={settings.newsApiKey} onAddSystemLog={addLog} />}
         {currentPage === "stats" && (
           <StatsPage videoPath={settings.video_path} onAddSystemLog={addLog} />
         )}

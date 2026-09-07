@@ -190,6 +190,8 @@ export function SettingsPanel({
   const [cloudSyncLastSync, setCloudSyncLastSync] = useState(
     settings.cloudSyncLastSync || "",
   );
+  const [newsEndpoint, setNewsEndpoint] = useState(settings.newsEndpoint || "");
+  const [newsApiKey, setNewsApiKey] = useState(settings.newsApiKey || "");
 
   useEffect(() => {
     if (settings.cloudSyncLastSync) {
@@ -395,6 +397,8 @@ export function SettingsPanel({
       cloudSyncSecret: cloudSyncSecret.trim(),
       cloudSyncAutoSync,
       cloudSyncLastSync,
+      newsEndpoint: newsEndpoint.trim(),
+      newsApiKey: newsApiKey.trim(),
       autoArousalOnPlay,
       playerLayout,
     });
@@ -765,6 +769,15 @@ export function SettingsPanel({
                     <Download className="w-3.5 h-3.5" />
                     {isInstallingExtension ? "打开中..." : "导入向导"}
                   </button>
+                </div>
+
+                <div className="p-4 bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80 rounded-xl space-y-3">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">云端影视资讯服务</h4>
+                    <p className="mt-0.5 text-[10px] text-slate-400 dark:text-slate-500">填入部署后的 News Worker 地址；客户端仅使用只读密钥。</p>
+                  </div>
+                  <input type="text" value={newsEndpoint} onChange={(e) => setNewsEndpoint(e.target.value)} placeholder="https://avplay-news.your-subdomain.workers.dev" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-700 focus:border-amber-500 focus:outline-none dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200" />
+                  <input type="password" value={newsApiKey} onChange={(e) => setNewsApiKey(e.target.value)} placeholder="CLIENT_TOKEN（若服务配置了）" className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-700 focus:border-amber-500 focus:outline-none dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200" />
                 </div>
               </div>
             )}

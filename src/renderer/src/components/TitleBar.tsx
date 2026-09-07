@@ -18,6 +18,7 @@ import {
   Settings as SettingsIcon,
   Gauge,
   Compass,
+  Newspaper,
   Clock,
   RotateCcw,
 } from "lucide-react";
@@ -34,7 +35,8 @@ export type Page =
   | "starmap"
   | "mosaic"
   | "rss"
-  | "discover";
+  | "discover"
+  | "news";
 
 interface TitleBarProps {
   currentPage: Page;
@@ -91,6 +93,12 @@ const pages: Array<{
       label: "网页",
       desc: "内置无痕网页嗅探器与资源捕获",
       icon: Globe,
+    },
+    {
+      key: "news",
+      label: "资讯",
+      desc: "云端聚合的影视动态与来源追踪",
+      icon: Newspaper,
     },
     {
       key: "command",

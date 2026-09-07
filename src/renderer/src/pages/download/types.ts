@@ -109,6 +109,10 @@ export interface AppSettings {
   cloudSyncLastSync?: string;
   /** 是否开启自动同步 */
   cloudSyncAutoSync?: boolean;
+  /** 云端影视资讯服务地址 */
+  newsEndpoint?: string;
+  /** 云端影视资讯服务只读密钥 */
+  newsApiKey?: string;
   /** 播放视频时是否自动开启私密计时 */
   autoArousalOnPlay?: boolean;
   /** 播放页与片库列表的组合布局 */
@@ -132,4 +136,13 @@ export interface DownloadPageProps {
     text: string,
     level?: "INFO" | "WARNING" | "SUCCESS" | "ERROR",
   ) => void;
+  incomingCandidate?: {
+    id: string;
+    title: string;
+    mediaUrl: string;
+    coverUrl?: string;
+    previewUrl?: string;
+    pageUrl?: string;
+  } | null;
+  onIncomingCandidateConsumed?: () => void;
 }

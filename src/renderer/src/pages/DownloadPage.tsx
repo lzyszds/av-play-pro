@@ -107,6 +107,8 @@ export function DownloadPage({
   logs,
   setLogs,
   addLog,
+  incomingCandidate,
+  onIncomingCandidateConsumed,
 }: DownloadPageProps) {
   /* ---- state ---- */
   const [tasks, setTasks] = useState<DownloadTask[]>([]);
@@ -114,6 +116,13 @@ export function DownloadPage({
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
   const [initialTaskUrl, setInitialTaskUrl] = useState("");
+  const [initialTaskCandidate, setInitialTaskCandidate] = useState<{
+    name: string;
+    url: string;
+    coverUrl?: string;
+    previewUrl?: string;
+    pageUrl?: string;
+  } | null>(null);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -145,6 +154,20 @@ export function DownloadPage({
   const startNextRef = useRef<() => void>(() => {});
   const privacyIdleTimerRef = useRef<number | null>(null);
   const privacyExitTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!incomingCandidate?.mediaUrl) return;
+    setInitialTaskUrl(incomingCandidate.mediaUrl);
+    setInitialTaskCandidate({
+      name: incomingCandidate.title,
+      url: incomingCandidate.mediaUrl,
+      coverUrl: incomingCandidate.coverUrl,
+      previewUrl: incomingCandidate.previewUrl,
+      pageUrl: incomingCandidate.pageUrl,
+    });
+    setShowNewTaskModal(true);
+    onIncomingCandidateConsumed?.();
+  }, [incomingCandidate, onIncomingCandidateConsumed]);
 
   const hidePrivacyScreen = useCallback(() => {
     if (!privacyScreenActive || privacyScreenLeaving) return;
@@ -1793,9 +1816,11 @@ export function DownloadPage({
       {showNewTaskModal && (
         <NewTaskModal
           initialUrl={initialTaskUrl}
+          initialCandidate={initialTaskCandidate ?? undefined}
           onClose={() => {
             setShowNewTaskModal(false);
             setInitialTaskUrl("");
+            setInitialTaskCandidate(null);
           }}
           onAddTask={handleAddNewTask}
           defaultSavePath={settings.video_path}

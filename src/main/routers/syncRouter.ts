@@ -1,6 +1,7 @@
 import { app, net } from "electron";
 import * as fs from "fs";
 import { atomicWriteFileSync } from "../lib/fsutil";
+import { writeSettingsJson } from "../lib/settingsFile";
 import * as path from "path";
 import { z } from "zod";
 import { t } from "../trpc";
@@ -781,7 +782,7 @@ export const syncRouter = t.router({
           },
         );
 
-        writeJsonFile(getUserDataPath("settings.json"), mergedSettings);
+        writeSettingsJson(mergedSettings);
 
         log.info(
           `[syncRouter] Successfully restored from cloud. Local backup saved to ${backupDir}`,

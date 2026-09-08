@@ -371,6 +371,11 @@ export const statsRouter = t.router({
       v.completedCount = (v.completedCount || 0) + 1;
       v.lastCompletedAt = now.toISOString();
       await saveStatsAsync(s);
+      recordActivity("PLAY", "完整看完", `完整看完影片: ${folder}`, {
+        folder,
+        completedCount: v.completedCount,
+        series: v.series,
+      });
       return { success: true, completedCount: v.completedCount };
     }),
 

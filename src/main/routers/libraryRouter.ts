@@ -3,6 +3,7 @@ import * as path from "path";
 import { app } from "electron";
 import { t } from "../trpc";
 import { invalidateVideoListCache } from "./videosRouter";
+import { atomicWriteFile } from "../lib/fsutil";
 
 interface LibraryVideo {
   id: string;
@@ -408,7 +409,7 @@ export const libraryRouter = t.router({
           sourceSite: "Local",
           scrapedAt: new Date().toISOString(),
         };
-        await fs.promises.writeFile(metaPath, JSON.stringify(meta, null, 2), "utf8");
+        await atomicWriteFile(metaPath, JSON.stringify(meta, null, 2));
         writtenMeta += 1;
       }
       return {
@@ -488,8 +489,7 @@ export const libraryRouter = t.router({
         createdAt: new Date().toISOString(),
       };
       store.bookmarks = [...(store.bookmarks || []), bookmark].slice(-500);
-      await fs.promises.mkdir(path.dirname(file), { recursive: true });
-      await fs.promises.writeFile(file, JSON.stringify(store, null, 2), "utf8");
+      await atomicWriteFile(file, JSON.stringify(store, null, 2));
       return { success: true, bookmark };
     }),
 
@@ -501,8 +501,7 @@ export const libraryRouter = t.router({
       const before = Array.isArray(store.bookmarks) ? store.bookmarks.length : 0;
       store.bookmarks = (store.bookmarks || []).filter((item: { id?: string }) => item.id !== input.id);
       const deleted = store.bookmarks.length !== before;
-      await fs.promises.mkdir(path.dirname(file), { recursive: true });
-      await fs.promises.writeFile(file, JSON.stringify(store, null, 2), "utf8");
+      await atomicWriteFile(file, JSON.stringify(store, null, 2));
       return { success: deleted, deleted };
     }),
 
@@ -568,8 +567,7 @@ export const libraryRouter = t.router({
             Math.max(5, Math.floor(Number(clip.clipDuration) || 20)),
           ),
         }));
-      await fs.promises.mkdir(path.dirname(file), { recursive: true });
-      await fs.promises.writeFile(file, JSON.stringify(store, null, 2), "utf8");
+      await atomicWriteFile(file, JSON.stringify(store, null, 2));
       return { success: true, clips: store.directorCut };
     }),
 

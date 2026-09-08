@@ -1,5 +1,6 @@
 import { app } from "electron";
 import * as fs from "fs";
+import { atomicWriteFileSync } from "../lib/fsutil";
 import * as path from "path";
 import * as crypto from "crypto";
 import { z } from "zod";
@@ -24,7 +25,7 @@ function readJsonFile<T = unknown>(filePath: string, fallback: T): T {
 
 function writeJsonFile(filePath: string, data: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
+  atomicWriteFileSync(filePath, JSON.stringify(data, null, 2));
 }
 
 // 参与快照/云同步的本地数据文件定义（快照会包含 actors 作为本地完整档案）
@@ -170,7 +171,7 @@ export async function createSnapshotRecord(opts: {
     const id = `snap-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const dir = snapshotDir(id);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(snapshotPayloadPath(id), stored, "utf8");
+    atomicWriteFileSync(snapshotPayloadPath(id), stored);
 
     const meta: SnapshotMeta = {
       id,

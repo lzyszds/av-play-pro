@@ -1,6 +1,7 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
 import * as fs from "fs";
+import { atomicWriteFileSync } from "../lib/fsutil";
 import * as path from "path";
 import { app, session, webContents } from "electron";
 import type { WebContents } from "electron";
@@ -71,7 +72,7 @@ export function readScrapeConfig(): ScrapeConfig {
 
 function writeScrapeConfig(config: ScrapeConfig): void {
   try {
-    fs.writeFileSync(configFile(), JSON.stringify(config, null, 2), "utf8");
+    atomicWriteFileSync(configFile(), JSON.stringify(config, null, 2));
   } catch (error) {
     log.warn(`[scrape] 写入配置失败: ${(error as Error)?.message}`);
   }
@@ -135,7 +136,7 @@ export function readScrapeStore(): ScrapeStore {
 
 function writeScrapeStore(store: ScrapeStore): void {
   try {
-    fs.writeFileSync(storeFile(), JSON.stringify(store, null, 2), "utf8");
+    atomicWriteFileSync(storeFile(), JSON.stringify(store, null, 2));
   } catch (error) {
     log.warn(`[scrape] 写入缓存失败: ${(error as Error)?.message}`);
   }

@@ -156,6 +156,7 @@ export function RepairModal({
       try {
         const r: any = await trpc.meta.scrapeMetadata.mutate({
           folderPath: t.folderPath,
+          force: true, // 用户主动修复：绕过近 90s 的重复刮削冷却
         });
         if (r?.success) {
           onLog(`刮削成功: ${t.name} - ${r.message || ""}`, "SUCCESS");

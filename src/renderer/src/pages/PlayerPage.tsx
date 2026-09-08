@@ -80,8 +80,36 @@ interface LastPlayedRecord {
   name: string;
   url: string;
   currentTime: number;
+  duration?: number;
   savedAt: number;
+  finished?: boolean;
 }
+
+// B196 断点续播：超过该时长视为「过期进度」，不再打扰提示
+const RESUME_OFFER_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
+
+function loadLastPlayed(): LastPlayedRecord | null {
+  try {
+    const raw = localStorage.getItem(LAST_PLAYED_KEY);
+    if (!raw) return null;
+    const rec = JSON.parse(raw) as LastPlayedRecord;
+    if (!rec || !rec.name || !rec.url) return null;
+    rec.currentTime = Number(rec.currentTime) || 0;
+    rec.savedAt = Number(rec.savedAt) || 0;
+    return rec;
+  } catch {
+    return null;
+  }
+}
+
+function clearLastPlayed(): void {
+  try {
+    localStorage.removeItem(LAST_PLAYED_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 interface TimelineBookmark {
   id: string;
   videoName: string;
@@ -711,13 +739,22 @@ export function PlayerPage({
       const sec = Math.floor(pendingWatchSecRef.current);
       if (sec < 5) return;
       pendingWatchSecRef.current = 0;
-      void trpc.stats.recordWatch.mutate({ folder, series, sec, actors });
+      void trpc.stats.recordWatch.mutate({
+        folder,
+        series,
+        sec,
+        actors,
+        position: videoEl.currentTime,
+        duration: videoEl.duration || null,
+      });
       localStorage.setItem(
         LAST_PLAYED_KEY,
         JSON.stringify({
           name: folder,
           url: activeStream.url,
           currentTime: videoEl.currentTime,
+          duration: videoEl.duration || 0,
+          finished: false,
           savedAt: Date.now(),
         }),
       );
@@ -728,9 +765,37 @@ export function PlayerPage({
         if (pendingWatchSecRef.current >= 10) flushWatch();
       }
     }, 1000);
+
+    // 看到片尾：写入完成态并清除续播位，避免下次再提示「从头续播」
+    const handleEnded = () => {
+      pendingWatchSecRef.current = 0;
+      try {
+        localStorage.setItem(
+          LAST_PLAYED_KEY,
+          JSON.stringify({
+            name: folder,
+            url: activeStream.url,
+            currentTime: 0,
+            duration: videoEl.duration || 0,
+            finished: true,
+            savedAt: Date.now(),
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
+      if (folder && folder !== "等待选择视频...") {
+        void trpc.stats.recordFinished
+          .mutate({ folder, series, actors })
+          .catch(() => { });
+      }
+    };
+    videoEl.addEventListener("ended", handleEnded);
+
     return () => {
       flushWatch();
       clearInterval(interval);
+      videoEl.removeEventListener("ended", handleEnded);
     };
   }, [videoEl, activeStream, localVideos]);
 
@@ -888,12 +953,59 @@ export function PlayerPage({
     };
   }, [activeStream.url, directorCutClips, directorCutPlayingIndex, playDirectorCutClip, videoEl]);
 
+  // B196 断点续播：应用上次的播放秒位（由 handleResume 触发）
+  useEffect(() => {
+    if (!videoEl || pendingResumeSeekRef.current == null) return;
+    const target = pendingResumeSeekRef.current;
+    const jump = () => {
+      pendingResumeSeekRef.current = null;
+      if (videoEl.duration > 0 && target > 0) {
+        videoEl.currentTime = Math.min(target, Math.max(0, videoEl.duration - 2));
+      }
+      void videoEl.play().catch(() => {});
+    };
+    if (videoEl.readyState >= 1) jump();
+    else videoEl.addEventListener("loadedmetadata", jump, { once: true });
+    return () => videoEl.removeEventListener("loadedmetadata", jump);
+  }, [videoEl, activeStream.url]);
+
+  // B196 断点续播：本地库就绪且用户尚未手动选片时，读取上次进度并询问是否续播
+  useEffect(() => {
+    if (resumeChecked.current || userInitiated) return;
+    if (localVideos.length === 0) return;
+    resumeChecked.current = true;
+    const rec = loadLastPlayed();
+    if (!rec || rec.finished) return;
+    const t = rec.currentTime;
+    if (t < 20) return; // 刚开始的进度不值得续播
+    const age = Date.now() - rec.savedAt;
+    if (age < 0 || age > RESUME_OFFER_MAX_AGE_MS) return; // 过期进度不再打扰
+    const stillExists = localVideos.some(
+      (v) => v.url === rec.url || v.name === rec.name,
+    );
+    if (!stillExists) return;
+    // 分批加载会反复触发本 effect；resumeChecked 保证只评估一次，直接展示即可
+    setResumePrompt(rec);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localVideos]);
+
   const handleResume = useCallback(() => {
     if (!resumePrompt) return;
     const idx = filteredVideos.findIndex(
       (v) => v.url === resumePrompt.url || v.name === resumePrompt.name,
     );
     if (idx < 0) return;
+    // 续播目标就是当前已挂载的流：直接就地 seek，避免无谓的重载
+    if (activeStream.url === resumePrompt.url && videoEl) {
+      const target = resumePrompt.currentTime;
+      if (videoEl.duration > 0 && target > 0) {
+        videoEl.currentTime = Math.min(target, Math.max(0, videoEl.duration - 2));
+      }
+      setUserInitiated(true);
+      setResumePrompt(null);
+      void videoEl.play().catch(() => {});
+      return;
+    }
     pendingResumeSeekRef.current = resumePrompt.currentTime;
     setSelectedVideoIndex(idx);
     setActiveStream({
@@ -906,7 +1018,7 @@ export function PlayerPage({
     setUserInitiated(true);
     setResumePrompt(null);
     rowVirtualizer.scrollToIndex(idx, { align: "center" });
-  }, [resumePrompt, filteredVideos]);
+  }, [activeStream.url, resumePrompt, filteredVideos, videoEl]);
 
   // 批量把 Windows 绝对路径 → local-media:/// 协议。逐段编码（盘符保持原样）
   function encodeMediaUrl(filePath: string): string {
@@ -1619,7 +1731,10 @@ export function PlayerPage({
           currentTime={resumePrompt.currentTime}
           savedAt={resumePrompt.savedAt}
           onResume={handleResume}
-          onClose={() => setResumePrompt(null)}
+          onClose={() => {
+            clearLastPlayed();
+            setResumePrompt(null);
+          }}
         />
       )}
 

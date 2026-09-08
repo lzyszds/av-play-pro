@@ -1,6 +1,7 @@
 // 演员资料持久化：userData/actors.json
 // 数据结构：{ [name]: ActorRecord }
 import * as fs from "fs";
+import { atomicWriteFileSync } from "../lib/fsutil";
 import * as path from "path";
 import { app } from "electron";
 import { log } from "../logger";
@@ -41,7 +42,7 @@ function ensureLoaded() {
 
 function save() {
   try {
-    fs.writeFileSync(FILE(), JSON.stringify(store, null, 2), "utf8");
+    atomicWriteFileSync(FILE(), JSON.stringify(store, null, 2));
   } catch (e: any) {
     log.warn(`[actors] save failed: ${e?.message}`);
   }

@@ -1,6 +1,7 @@
 import { BrowserWindow, shell, app, dialog } from "electron";
 import { join } from "path";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, mkdirSync } from "fs";
+import { atomicWriteFileSync } from "../lib/fsutil";
 import { createIPCHandler } from "electron-trpc-experimental/main";
 import { appRouter } from "../router";
 import { setMainWindow } from "../windowState";
@@ -43,10 +44,9 @@ function writeCloseAction(action: "tray" | "quit"): void {
     const prev = existsSync(file)
       ? (JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>)
       : {};
-    writeFileSync(
+    atomicWriteFileSync(
       file,
       JSON.stringify({ ...prev, closeAction: action }, null, 2),
-      "utf8",
     );
   } catch (err) {
     log.error("[createMainWindow] writeCloseAction failed", err);

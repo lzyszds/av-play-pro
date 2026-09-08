@@ -1,5 +1,6 @@
 import { app } from "electron";
 import * as fs from "fs";
+import { atomicWriteFileSync } from "../lib/fsutil";
 import * as path from "path";
 import { t } from "../trpc";
 
@@ -33,7 +34,7 @@ function readDownloadState(): DownloadState {
 function writeDownloadState(state: DownloadState): void {
   const file = getDownloadStatePath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(state, null, 2), "utf8");
+  atomicWriteFileSync(file, JSON.stringify(state, null, 2));
 }
 
 export const storageRouter = t.router({
@@ -52,7 +53,7 @@ export const storageRouter = t.router({
     .mutation(({ input }) => {
       const file = getSettingsPath();
       fs.mkdirSync(path.dirname(file), { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(input || {}, null, 2), "utf8");
+      atomicWriteFileSync(file, JSON.stringify(input || {}, null, 2));
       return { success: true };
     }),
 

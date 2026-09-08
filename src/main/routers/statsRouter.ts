@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import { atomicWriteFile, atomicWriteFileSync } from "../lib/fsutil";
 import * as path from "path";
 import { app } from "electron";
 import { t } from "../trpc";
@@ -22,6 +23,12 @@ export interface VideoEntry {
   firstPlayedAt: string | null;
   series: string | null;
   actors?: string[];
+  /** 最近一次记录到的播放秒位（B196 续播数据，供统计回顾） */
+  lastPosition?: number | null;
+  positionUpdatedAt?: string | null;
+  /** 完整看完的次数与最近完成时间（B196 完成态） */
+  completedCount?: number;
+  lastCompletedAt?: string | null;
 }
 
 export interface RankingItem {
@@ -193,7 +200,7 @@ async function saveStatsAsync(s: StatsData, immediate = false): Promise<void> {
     try {
       const file = statsPath();
       await fs.promises.mkdir(path.dirname(file), { recursive: true });
-      await fs.promises.writeFile(file, JSON.stringify(cachedStats, null, 2), "utf8");
+      await atomicWriteFile(file, JSON.stringify(cachedStats, null, 2));
       saveTimeout = null;
     } catch (err: any) {
       log.error(`[stats] save failed: ${err?.message}`);
@@ -214,7 +221,7 @@ app.on("before-quit", () => {
     const file = statsPath();
     const dir = path.dirname(file);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(cachedStats, null, 2), "utf8");
+    atomicWriteFileSync(file, JSON.stringify(cachedStats, null, 2));
   }
 });
 
@@ -233,6 +240,10 @@ function ensureVideo(s: StatsData, folder: string, series?: string | null, actor
       firstPlayedAt: null,
       series: series ?? null,
       actors: actors ?? [],
+      lastPosition: null,
+      positionUpdatedAt: null,
+      completedCount: 0,
+      lastCompletedAt: null,
     };
   } else {
     if (series && !s.videos[folder].series) s.videos[folder].series = series;
@@ -329,7 +340,7 @@ export const statsRouter = t.router({
     }),
 
   recordWatch: t.procedure
-    .input((input: unknown) => input as { folder: string; sec: number; series?: string | null; actors?: string[] })
+    .input((input: unknown) => input as { folder: string; sec: number; series?: string | null; actors?: string[]; position?: number | null; duration?: number | null })
     .mutation(async ({ input }) => {
       const folder = input.folder?.trim();
       const sec = Math.max(0, Math.floor(input.sec));
@@ -339,9 +350,28 @@ export const statsRouter = t.router({
       const v = ensureVideo(s, folder, input.series ?? null, input.actors);
       v.watchSec += sec;
       v.lastPlayedAt = now.toISOString();
+      if (typeof input.position === "number" && Number.isFinite(input.position)) {
+        v.lastPosition = Math.max(0, input.position);
+        v.positionUpdatedAt = now.toISOString();
+      }
       addToAllBuckets(s, { watchSec: sec }, now);
       await saveStatsAsync(s);
       return { success: true, totalSec: v.watchSec };
+    }),
+
+  // B196 完成态：影片自然播完时调用一次
+  recordFinished: t.procedure
+    .input((input: unknown) => input as { folder: string; series?: string | null; actors?: string[] })
+    .mutation(async ({ input }) => {
+      const folder = input.folder?.trim();
+      if (!folder) return { success: false, error: "folder is required" };
+      const s = loadStatsSync();
+      const now = new Date();
+      const v = ensureVideo(s, folder, input.series ?? null, input.actors);
+      v.completedCount = (v.completedCount || 0) + 1;
+      v.lastCompletedAt = now.toISOString();
+      await saveStatsAsync(s);
+      return { success: true, completedCount: v.completedCount };
     }),
 
   recordDownload: t.procedure

@@ -1,5 +1,6 @@
 import { app, net } from "electron";
 import * as fs from "fs";
+import { atomicWriteFileSync } from "../lib/fsutil";
 import * as path from "path";
 import { z } from "zod";
 import { t } from "../trpc";
@@ -30,7 +31,7 @@ function readJsonFile<T = unknown>(filePath: string, fallback: T): T {
 
 function writeJsonFile(filePath: string, data: unknown): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf8");
+  atomicWriteFileSync(filePath, JSON.stringify(data, null, 2));
 }
 
 function normalizeUrl(urlStr: string): string {

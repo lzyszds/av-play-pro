@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import axios from "axios";
+import { atomicWriteFileSync, cleanTempAround } from "../lib/fsutil";
 import * as cheerio from "cheerio";
 import { t } from "../trpc";
 import { log } from "../logger";
@@ -216,10 +217,26 @@ function buildMeta(input: {
   };
 }
 
-function writeMetaFile(folder: string, meta: VideoMeta): void {
-  fs.mkdirSync(folder, { recursive: true });
-  fs.writeFileSync(metaPath(folder), JSON.stringify(meta, null, 2), "utf8");
+function readExistingMeta(folder: string): VideoMeta | null {
+  try {
+    const p = metaPath(folder);
+    if (!fs.existsSync(p)) return null;
+    const parsed = JSON.parse(fs.readFileSync(p, "utf8")) as VideoMeta;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
 }
+
+function writeMetaFile(folder: string, meta: VideoMeta): void {
+  const target = metaPath(folder);
+  fs.mkdirSync(folder, { recursive: true });
+  cleanTempAround(target);
+  atomicWriteFileSync(target, JSON.stringify(meta, null, 2));
+}
+
+// B194 幂等：同一文件夹刮削成功的冷却窗口，窗口内再次请求不再打源站
+const SCRAPE_COOLDOWN_MS = 90_000;
 
 // =================== Router ===================
 
@@ -247,7 +264,30 @@ export const metaRouter = t.router({
     )
     .mutation(({ input }) => {
       try {
-        const meta = buildMeta(input);
+        const scaffold = buildMeta(input);
+        const existing = readExistingMeta(input.saveDir);
+        let meta: VideoMeta;
+        if (existing) {
+          // 是否已被联网刮削充实（并发/后续补全链路写入过）
+          const hasRealData =
+            !!existing.scrapedAt ||
+            !!existing.title ||
+            (existing.actors && existing.actors.length > 0);
+          if (hasRealData) {
+            // 保留已刮削的资料，只刷新文件级字段，避免并发链互相抹掉标题/演员
+            const out: VideoMeta = { ...existing };
+            out.rawName = scaffold.rawName || existing.rawName;
+            out.savePath = scaffold.savePath || existing.savePath;
+            if (scaffold.fileSize != null) out.fileSize = scaffold.fileSize;
+            if (scaffold.fileMtime != null) out.fileMtime = scaffold.fileMtime;
+            if (scaffold.format) out.format = scaffold.format;
+            meta = out;
+          } else {
+            meta = scaffold;
+          }
+        } else {
+          meta = scaffold;
+        }
         writeMetaFile(input.saveDir, meta);
         log.info(`[meta] write ${input.saveDir} code=${meta.code}`);
         return { success: true, meta };
@@ -324,16 +364,20 @@ export const metaRouter = t.router({
 
   // 从网络获取元数据（超级刮削器：多源 Fallback）
   scrapeMetadata: t.procedure
-    .input((input: unknown) => input as { folderPath: string; proxyUrl?: string })
+    .input((input: unknown) => input as { folderPath: string; proxyUrl?: string; force?: boolean })
     .mutation(async ({ input }) => {
       try {
         const { folderPath } = input;
         const currentName = path.basename(folderPath);
-        
+
         let meta: VideoMeta | null = null;
         const mPath = metaPath(folderPath);
         if (fs.existsSync(mPath)) {
-          meta = JSON.parse(fs.readFileSync(mPath, "utf8"));
+          try {
+            meta = JSON.parse(fs.readFileSync(mPath, "utf8"));
+          } catch {
+            meta = null;
+          }
         }
 
         const parsed = meta?.code ? parseCode(meta.code) : parseCode(currentName);
@@ -342,6 +386,21 @@ export const metaRouter = t.router({
         }
 
         const code = parsed.code.toUpperCase();
+
+        // B194 幂等：主进程后处理队列与渲染端补全链会并发触发同一文件夹，
+        // 90s 内刚刮削成功过就不再重复请求源站（仅真正手动“补全”时用 force 绕过）
+        const hasEnoughMeta =
+          !!meta && (!!meta.title || (meta.actors && meta.actors.length > 0));
+        if (!input.force && hasEnoughMeta) {
+          const scrapedTs = meta?.scrapedAt
+            ? new Date(meta.scrapedAt).getTime()
+            : 0;
+          if (scrapedTs > 0 && Date.now() - scrapedTs < SCRAPE_COOLDOWN_MS) {
+            log.info(`[scraper] 跳过重复刮削 ${code}（90s 内已刮削）`);
+            return { success: true, skipped: true, meta, message: "近期已刮削，自动跳过重复请求" };
+          }
+        }
+
         log.info(`[scraper] ============ 开始刮削 ${code} ============`);
 
         let title: string | undefined;
@@ -825,7 +884,9 @@ export const metaRouter = t.router({
                   Referer: refererMap[sourceSite] || "",
                 },
               });
-              fs.writeFileSync(path.join(folderPath, "cover.jpg"), imgRes.data);
+              const coverTarget = path.join(folderPath, "cover.jpg");
+              cleanTempAround(coverTarget);
+              atomicWriteFileSync(coverTarget, imgRes.data as Buffer);
               downloadedCover = true;
            } catch (e) {}
         }

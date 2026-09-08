@@ -841,11 +841,24 @@ export const downloadRouter = t.router({
                     reject(new Error(`HTTP ${res.statusCode}`));
                     return;
                   }
-                  const writer = fs.createWriteStream(localPath);
+                  // B194：先写入 .part，全部接收完再 rename 成最终名。
+                  // 避免进程中断时留下「存在但截断」的封面/预览，被后续 coverExists 永久跳过
+                  const partPath = `${localPath}.part`;
+                  try {
+                    if (fs.existsSync(partPath)) fs.unlinkSync(partPath);
+                  } catch { /* ignore */ }
+                  const writer = fs.createWriteStream(partPath);
                   res.pipe(writer);
                   writer.on("finish", () => {
-                    writer.close();
-                    resolve();
+                    writer.close(() => {
+                      try {
+                        fs.renameSync(partPath, localPath);
+                      } catch (err) {
+                        reject(err);
+                        return;
+                      }
+                      resolve();
+                    });
                   });
                   writer.on("error", reject);
                 },
@@ -857,6 +870,11 @@ export const downloadRouter = t.router({
               req.on("error", reject);
               req.end();
             }).catch((err) => {
+              // 失败时清掉可能残留的半截 .part
+              try {
+                const p = `${localPath}.part`;
+                if (fs.existsSync(p)) fs.unlinkSync(p);
+              } catch { /* ignore */ }
               if (retries > 0) {
                 return downloadFile(url, localPath, retries - 1);
               }

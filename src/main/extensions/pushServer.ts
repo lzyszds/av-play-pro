@@ -1,6 +1,7 @@
 import * as http from "http";
 import { app } from "electron";
 import * as fs from "fs";
+import { atomicWriteFileSync } from "../lib/fsutil";
 import * as path from "path";
 import { getMainWindow } from "../windowState";
 
@@ -42,7 +43,7 @@ function readQueue(): ExtensionTaskPushPayload[] {
 function writeQueue(queue: ExtensionTaskPushPayload[]): void {
   const file = getQueueFilePath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(queue, null, 2), "utf8");
+  atomicWriteFileSync(file, JSON.stringify(queue, null, 2));
 }
 
 function appendToQueue(payload: ExtensionTaskPushPayload): number {

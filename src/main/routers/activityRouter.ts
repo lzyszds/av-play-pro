@@ -1,5 +1,6 @@
 import { app } from "electron";
 import * as fs from "fs";
+import { atomicWriteFileSync } from "../lib/fsutil";
 import * as path from "path";
 import { z } from "zod";
 import { t } from "../trpc";
@@ -45,7 +46,7 @@ export function writeActivities(items: ActivityRecord[]): void {
   try {
     const file = getActivityFilePath();
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(items.slice(0, MAX_RECORDS), null, 2), "utf8");
+    atomicWriteFileSync(file, JSON.stringify(items.slice(0, MAX_RECORDS), null, 2));
   } catch (err) {
     log.error("[activity] Failed to write activity-history.json:", err);
   }

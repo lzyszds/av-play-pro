@@ -3,6 +3,7 @@ import * as fsPromises from "fs/promises";
 import * as path from "path";
 import { t } from "../trpc";
 import { smartMatch } from "../lib/searchMatch";
+import { atomicWriteFile, atomicWriteFileSync } from "../lib/fsutil";
 
 export interface VideoItem {
   id: string;
@@ -270,7 +271,7 @@ async function saveDiskCache(
 ): Promise<void> {
   const cachePath = path.join(videoDir, CACHE_NAME);
   try {
-    await fsPromises.writeFile(cachePath, JSON.stringify(cache), "utf8");
+    await atomicWriteFile(cachePath, JSON.stringify(cache));
   } catch {
     /* ignore */
   }
@@ -666,20 +667,20 @@ export const videosRouter = t.router({
           }
           if (input.webpBase64) {
             const buf = Buffer.from(input.webpBase64, "base64");
-            fs.writeFileSync(path.join(input.folder, "thumbs.webp"), buf);
+            const webpPath = path.join(input.folder, "thumbs.webp");
+            atomicWriteFileSync(webpPath, buf);
             // 清理旧 jpg 避免双副本
             const oldJpg = path.join(input.folder, "thumbs.jpg");
             if (fs.existsSync(oldJpg)) fs.unlinkSync(oldJpg);
           } else if (input.jpegBase64) {
             const buf = Buffer.from(input.jpegBase64, "base64");
-            fs.writeFileSync(path.join(input.folder, "thumbs.jpg"), buf);
+            atomicWriteFileSync(path.join(input.folder, "thumbs.jpg"), buf);
           } else {
             return { success: false, error: "missing image data" };
           }
-          fs.writeFileSync(
+          atomicWriteFileSync(
             path.join(input.folder, "thumbs.vtt"),
             input.vttText,
-            "utf8",
           );
           return { success: true };
         } catch (err: any) {

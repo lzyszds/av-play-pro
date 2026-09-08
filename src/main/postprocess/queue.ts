@@ -3,6 +3,7 @@
 // 持久化到 userData/postprocess-queue.json，重启可恢复
 
 import * as fs from "fs";
+import { atomicWriteFileSync } from "../lib/fsutil";
 import * as fsPromises from "fs/promises";
 import * as path from "path";
 import { app, Notification } from "electron";
@@ -74,7 +75,7 @@ function load() {
 
 function save() {
   try {
-    fs.writeFileSync(QUEUE_FILE(), JSON.stringify(tasks, null, 2), "utf8");
+    atomicWriteFileSync(QUEUE_FILE(), JSON.stringify(tasks, null, 2));
   } catch (e: any) {
     log.warn(`[postprocess] save queue failed: ${e?.message}`);
   }

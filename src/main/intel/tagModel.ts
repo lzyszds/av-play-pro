@@ -5,6 +5,7 @@
 //   分数映射到 0–10
 // - 建议标签：把贡献度从大到小排序，取前 K 个
 import * as fs from "fs";
+import { atomicWriteFileSync } from "../lib/fsutil";
 import * as path from "path";
 import { app } from "electron";
 import { log } from "../logger";
@@ -52,7 +53,7 @@ export function loadModel(): TagModel | null {
 
 export function saveModel(m: TagModel) {
   try {
-    fs.writeFileSync(FILE(), JSON.stringify(m, null, 2), "utf8");
+    atomicWriteFileSync(FILE(), JSON.stringify(m, null, 2));
   } catch (e: any) {
     log.warn(`[tagModel] save failed: ${e?.message}`);
   }

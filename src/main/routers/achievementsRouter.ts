@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import { atomicWriteFileSync } from "../lib/fsutil";
 import * as path from "path";
 import { app } from "electron";
 import { z } from "zod";
@@ -137,7 +138,7 @@ function loadUnlocked(): Record<string, string> {
 function saveUnlocked(data: Record<string, string>): void {
   try {
     const p = getAchievementsFile();
-    fs.writeFileSync(p, JSON.stringify(data, null, 2), "utf-8");
+    atomicWriteFileSync(p, JSON.stringify(data, null, 2));
   } catch (err) {
     console.error("Failed to save achievements:", err);
   }

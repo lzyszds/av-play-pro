@@ -27,6 +27,10 @@ interface Props {
   duration: number;
   currentTime: number;
   bookmarks?: Array<{ id?: string; currentTime: number; note?: string }>;
+  /** B197：真实镜头切换点（秒，来自 scenes.json） */
+  realScenes?: number[] | null;
+  scenesBusy?: boolean;
+  onGenerateRealScenes?: () => void;
   previewVttUrl?: string | null;
   onSeek: (seconds: number) => void;
   onClose: () => void;
@@ -98,6 +102,9 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
   duration,
   currentTime,
   bookmarks = [],
+  realScenes = null,
+  scenesBusy = false,
+  onGenerateRealScenes,
   onSeek,
   onClose,
 }) => {
@@ -116,6 +123,17 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
       isPeak: tpl.isPeak,
     }));
   }, [duration]);
+
+  // B197：归一化的真实镜头切换点（升序、去 0、去片尾、限显示条数）
+  const realSceneCuts = useMemo(() => {
+    if (!realScenes || realScenes.length < 2) return null;
+    const dur = Math.max(duration, 1);
+    const pts = realScenes
+      .filter((t) => Number.isFinite(t) && t >= 1 && t <= dur - 1)
+      .sort((a, b) => a - b);
+    if (pts.length < 2) return null;
+    return pts.slice(0, 21);
+  }, [realScenes, duration]);
 
   // 计算当前播放进度所在的幕次
   const currentChapterIdx = useMemo(() => {
@@ -300,6 +318,60 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
                   </div>
                 );
               })}
+
+              {/* B197 真实镜头分幕：ffmpeg 场景检测产物 */}
+              {realSceneCuts && realSceneCuts.length > 0 && (
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <Film className="w-3.5 h-3.5 text-sky-500" />
+                      <span>真实镜头分幕（ffmpeg 检测 · {realSceneCuts.length} 个切换点）</span>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    {realSceneCuts.map((start, i) => {
+                      const end =
+                        i + 1 < realSceneCuts.length ? realSceneCuts[i + 1] : duration;
+                      const isCurrent =
+                        currentTime >= start && currentTime < end;
+                      return (
+                        <div
+                          key={`real-${i}-${start}`}
+                          onClick={() => onSeek(start)}
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition border ${
+                            isCurrent
+                              ? "bg-sky-500/10 border-sky-500/50 text-sky-600 dark:text-sky-300"
+                              : "bg-slate-50/60 dark:bg-slate-800/30 border-slate-200/70 dark:border-slate-800 hover:border-sky-400/60"
+                          }`}
+                        >
+                          <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1.5 truncate">
+                            <FastForward className="w-3 h-3 text-sky-500 shrink-0" />
+                            镜头 {i + 1}
+                          </span>
+                          <span className="font-mono text-sky-600 dark:text-sky-400 font-bold shrink-0 ml-2">
+                            {formatSec(start)} → {formatSec(end)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* B197 尚无真实分幕时：提供显式 ffmpeg 检测入口 */}
+              {!realSceneCuts && onGenerateRealScenes && (
+                <div className="pt-2 flex justify-center">
+                  <button
+                    type="button"
+                    disabled={scenesBusy}
+                    onClick={onGenerateRealScenes}
+                    className="px-3 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer disabled:opacity-60 disabled:cursor-wait bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/30 hover:bg-sky-500/20"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    {scenesBusy ? "正在 ffmpeg 检测镜头分幕…" : "生成真实镜头分幕（本机检测）"}
+                  </button>
+                </div>
+              )}
 
               {/* 用户自定义高能书签 */}
               {bookmarks.length > 0 && (

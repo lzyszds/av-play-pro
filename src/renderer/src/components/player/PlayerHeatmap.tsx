@@ -10,6 +10,8 @@ interface PlayerHeatmapProps {
   duration: number;
   currentTime?: number;
   bookmarks?: Array<{ currentTime: number; note?: string }>;
+  /** B197：真实内容强度基线（80 桶 0..1，来自 intensity.json 分析产物）；缺省时退回原始波形 */
+  contentBaseline?: number[] | null;
   onHoverTime?: (time: number | null, percent: number | null, val: number | null) => void;
 }
 
@@ -81,6 +83,7 @@ export const PlayerHeatmap: React.FC<PlayerHeatmapProps> = ({
   duration,
   currentTime = 0,
   bookmarks = [],
+  contentBaseline = null,
 }) => {
   const [hoverPercent, setHoverPercent] = useState<number | null>(null);
   const [userHeat, setUserHeat] = useState<number[]>([]);
@@ -104,7 +107,14 @@ export const PlayerHeatmap: React.FC<PlayerHeatmapProps> = ({
   // 计算融合热力点
   const points = useMemo(() => {
     const seed = hashString(videoKey || "default_video");
-    const baseWave = generateOrganicHeatmap(seed, 80);
+    // B197：真实内容强度优先；无分析产物（或全空）时退回原始生成波形
+    const realContent =
+      contentBaseline &&
+      contentBaseline.length === 80 &&
+      contentBaseline.some((v) => v > 0.03)
+        ? contentBaseline
+        : null;
+    const baseWave = realContent ?? generateOrganicHeatmap(seed, 80);
 
     // 最大用户权重
     const maxUserHeat = userHeat.length > 0 ? Math.max(...userHeat, 1) : 1;
@@ -137,7 +147,7 @@ export const PlayerHeatmap: React.FC<PlayerHeatmapProps> = ({
     }
 
     return merged;
-  }, [videoKey, userHeat, bookmarks, duration]);
+  }, [videoKey, userHeat, bookmarks, duration, contentBaseline]);
 
   // 生成平滑 SVG path 路径
   const { pathData, areaData } = useMemo(() => {

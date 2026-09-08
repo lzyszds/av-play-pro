@@ -646,6 +646,10 @@ export function PlayerPage({
   const [directorCutClips, setDirectorCutClips] = useState<DirectorCutClip[]>([]);
   const [directorCutPlayingIndex, setDirectorCutPlayingIndex] = useState<number | null>(null);
   const pendingDirectorCutSeekRef = useRef<number | null>(null);
+  // B197 真实内容信号：intensity.json → 热力基线；scenes.json → 真实镜头分幕
+  const [heatContentBaseline, setHeatContentBaseline] = useState<number[] | null>(null);
+  const [detectedScenes, setDetectedScenes] = useState<number[] | null>(null);
+  const [scenesBusy, setScenesBusy] = useState(false);
 
   const recordPlayStats = useCallback((folder: string, url: string, actors?: string[]) => {
     if (!folder || !url || statsPlayedUrlRef.current === url) return;
@@ -1663,6 +1667,87 @@ export function PlayerPage({
     return () => { cancelled = true; };
   }, [videoPath]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // B197：读取本机内容分析产物（intensity.json / scenes.json），驱动真实热力与真实分幕。
+  // 均为懒读本地文件：只有用户通过「片段剪辑」分析过 intensity、或生成过 scenes 时才真实化，
+  // 其余情况播放器退回到原有体验，绝不静默跑 ffmpeg。
+  useEffect(() => {
+    setHeatContentBaseline(null);
+    setDetectedScenes(null);
+    if (!activeStream.url) return;
+    const folder = deriveFolderFromUrl(activeStream.url);
+    if (!folder) return;
+    let cancelled = false;
+
+    void trpc.intensity.get
+      .query({ folder })
+      .then((data: any) => {
+        if (cancelled || !data) return;
+        const cands = Array.isArray(data.candidates) ? data.candidates : [];
+        const dur = Number(data.duration) || 0;
+        if (cands.length === 0 || dur <= 0) return;
+        const buckets = new Array(80).fill(0);
+        const maxScore = Math.max(
+          ...cands.map((c: any) => Number(c.score) || 0),
+          1e-6,
+        );
+        for (const c of cands) {
+          const t = Number(c.time) || 0;
+          const idx = Math.floor((t / dur) * 80);
+          if (idx < 0 || idx >= 80) continue;
+          const w = Math.max(0.3, Math.min(1, (Number(c.score) || 0) / maxScore));
+          buckets[idx] += w;
+          if (idx > 0) buckets[idx - 1] += w * 0.5;
+          if (idx < 79) buckets[idx + 1] += w * 0.5;
+        }
+        const mx = Math.max(...buckets, 1e-6);
+        const norm = buckets.map((b) =>
+          Math.max(0.06, Math.min(1, (b / mx) * 0.9 + 0.08)),
+        );
+        if (!cancelled) setHeatContentBaseline(norm);
+      })
+      .catch(() => { });
+
+    void trpc.scenes.get
+      .query({ folder })
+      .then((sc: any) => {
+        if (cancelled) return;
+        const arr = Array.isArray(sc?.scenes)
+          ? (sc.scenes as number[]).filter((n) => Number.isFinite(n) && n > 0)
+          : [];
+        if (arr.length >= 2) setDetectedScenes(arr);
+      })
+      .catch(() => { });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStream.url]);
+
+  // B197：用户点「检测真实镜头分幕」时显式跑一次 ffmpeg 场景检测（慢，带 busy 态）
+  const handleGenerateRealScenes = async () => {
+    if (scenesBusy || !activeStream.url) return;
+    const folder = deriveFolderFromUrl(activeStream.url);
+    if (!folder) return;
+    setScenesBusy(true);
+    try {
+      onAddSystemLog(`正在 ffmpeg 检测真实镜头分幕: ${activeStream.name}`, "INFO");
+      const res: any = await trpc.scenes.generate.mutate({ folder });
+      const arr = Array.isArray(res?.data?.scenes)
+        ? (res.data.scenes as number[]).filter((n) => Number.isFinite(n) && n > 0)
+        : [];
+      if (arr.length >= 2) {
+        setDetectedScenes(arr);
+        onAddSystemLog(`镜头分幕完成，共 ${arr.length} 个切换点`, "SUCCESS");
+      } else {
+        onAddSystemLog("镜头分幕生成完成，但未检测到明显切换点", "WARNING");
+      }
+    } catch (err: any) {
+      onAddSystemLog(`镜头分幕检测异常: ${err?.message || err}`, "ERROR");
+    } finally {
+      setScenesBusy(false);
+    }
+  };
+
   const refreshVideoList = async (): Promise<VideoItem[]> => {
     if (!videoPath) return [];
     setEnrichProgress(0);
@@ -1915,6 +2000,7 @@ export function PlayerPage({
                   previewVttUrl={previewVttUrl}
                   subtitleUrl={subtitleUrl}
                   bookmarks={timelineBookmarks}
+                  heatContentBaseline={heatContentBaseline}
                   filterStyle={filterCss}
                   autoShadowLift={filterSettings.autoShadowLift ?? true}
                   antiGlare={filterSettings.antiGlare ?? true}
@@ -2487,6 +2573,9 @@ export function PlayerPage({
           duration={videoEl?.duration || 0}
           currentTime={videoEl?.currentTime || 0}
           bookmarks={timelineBookmarks}
+          realScenes={detectedScenes}
+          scenesBusy={scenesBusy}
+          onGenerateRealScenes={handleGenerateRealScenes}
           previewVttUrl={previewVttUrl}
           onSeek={(sec) => {
             if (videoEl) {

@@ -14,6 +14,8 @@ interface Props {
   /** 字幕文件的 local-media://... URL（srt 或 vtt） */
   subtitleUrl?: string | null;
   bookmarks?: Array<{ currentTime: number; note?: string }>;
+  /** B197：真实内容强度基线（intensity.json 分析产物），透传给进度条热力 */
+  heatContentBaseline?: number[] | null;
   filterStyle?: string;
   /** 智能自适应黑场暗部补偿 (B125) */
   autoShadowLift?: boolean;
@@ -61,6 +63,7 @@ export const HlsVideoPlayer: React.FC<Props> = ({
   previewVttUrl,
   subtitleUrl,
   bookmarks = [],
+  heatContentBaseline = null,
   filterStyle = "none",
   autoShadowLift = true,
   antiGlare = true,
@@ -477,6 +480,7 @@ export const HlsVideoPlayer: React.FC<Props> = ({
           duration={videoDuration}
           currentTime={videoCurrentTime}
           bookmarks={bookmarks}
+          contentBaseline={heatContentBaseline}
         />,
         progressEl
       )}

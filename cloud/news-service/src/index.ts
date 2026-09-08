@@ -52,6 +52,21 @@ function parseHtml(text: string, baseUrl: string): Draft[] {
   }).filter((item) => item.title && item.url);
 }
 
+// デビューログ首页并不是常规文章流，而是公开的当月新人清单；将两个栏目整理成可阅读的资讯卡。
+function parseDevulog(text: string, baseUrl: string): Draft[] {
+  const page = clean(text);
+  const section = (start: RegExp, end: RegExp) => {
+    const afterStart = page.split(start)[1] || "";
+    return (afterStart.split(end)[0] || "").trim().slice(0, 700);
+  };
+  const upcoming = section(/配信予定の新人\s*UPCOMING/i, /配信中の新人\s*NOW STREAMING/i);
+  const streaming = section(/配信中の新人\s*NOW STREAMING/i, /今月の詳しいまとめ記事|年齢確認/i);
+  return [
+    upcoming && { title: "本月即将出道的新人女优", url: `${baseUrl}?section=upcoming`, summary: upcoming, imageUrl: "", publishedAt: null },
+    streaming && { title: "本月已上线的新人女优", url: `${baseUrl}?section=streaming`, summary: streaming, imageUrl: "", publishedAt: null },
+  ].filter(Boolean) as Draft[];
+}
+
 function isAdmin(request: Request, env: Env): boolean { return request.headers.get("x-news-admin-key") === (env.ADMIN_TOKEN || DEFAULT_ADMIN_TOKEN); }
 function isClient(request: Request, env: Env): boolean { return request.headers.get("x-news-key") === (env.CLIENT_TOKEN || DEFAULT_CLIENT_TOKEN); }
 function cors(request: Request, env: Env): HeadersInit { const origin = request.headers.get("origin") || ""; const allowed = env.CORS_ORIGIN || ""; return allowed && origin === allowed ? { "access-control-allow-origin": origin, "vary": "origin" } : {}; }
@@ -61,7 +76,11 @@ async function refreshSource(source: Source, env: Env): Promise<{ added: number;
     const response = await fetch(source.url, { headers: { "user-agent": "AVPlayPro News Aggregator/1.0", accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, text/html;q=0.9,*/*;q=0.5" }, signal: AbortSignal.timeout(20_000) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
-    const drafts = /<(rss|feed)\b|<\?xml/i.test(text) ? parseRss(text) : parseHtml(text, source.url);
+    const drafts = /<(rss|feed)\b|<\?xml/i.test(text)
+      ? parseRss(text)
+      : new URL(source.url).hostname.endsWith("devulog.com")
+        ? parseDevulog(text, source.url)
+        : parseHtml(text, source.url);
     let added = 0;
     for (const draft of drafts) {
       const canonical = canonicalUrl(draft.url);

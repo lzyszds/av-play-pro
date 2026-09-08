@@ -442,7 +442,7 @@ export default function App() {
             }}
           />
         )}
-        {currentPage === "news" && <NewsPage endpoint={settings.newsEndpoint} apiKey={settings.newsApiKey} onAddSystemLog={addLog} />}
+        {currentPage === "news" && <NewsPage endpoint={settings.newsEndpoint} apiKey={settings.newsApiKey} videoPath={settings.video_path} onAddSystemLog={addLog} />}
         {currentPage === "stats" && (
           <StatsPage videoPath={settings.video_path} onAddSystemLog={addLog} />
         )}

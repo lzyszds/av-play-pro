@@ -48,6 +48,8 @@ import {
 import { Tooltip } from "../components/common/Tooltip";
 import { Button } from "../components/common/Button";
 import { ProHotkeyHud } from "../components/player/ProHotkeyHud";
+import { IntensityCutDrawer } from "../components/player/IntensityCutDrawer";
+import { AeroCapsulePlayer } from "../components/player/AeroCapsulePlayer";
 
 const LAST_PLAYED_KEY = "av-play-pro:lastPlayed";
 const FAVORITES_KEY = "av-play-pro:favorites";
@@ -109,6 +111,7 @@ import {
   Sparkles,
   Film,
   Clapperboard,
+  Scissors,
 } from "lucide-react";
 import {
   deriveFolderFromUrl,
@@ -176,6 +179,7 @@ export function PlayerPage({
 }: PlayerPageProps) {
   const isClassicLayout = layout === "classic";
   const isZeroLayout = layout === "zero";
+  const isCapsuleLayout = layout === "capsule";
   // 当前激活的 <video> 元素（由 HlsVideoPlayer 通过 onVideoEl 回调暴露给统计逻辑）
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const [ambientEnabled, setAmbientEnabled] = useState(() => {
@@ -599,6 +603,7 @@ export function PlayerPage({
   const [timelineBookmarks, setTimelineBookmarks] = useState<TimelineBookmark[]>([]);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [directorCutOpen, setDirectorCutOpen] = useState(false);
+  const [intensityCutOpen, setIntensityCutOpen] = useState(false);
   const [zeroEdge, setZeroEdge] = useState<
     "none" | "continue" | "library" | "timeline" | "cut"
   >("none");
@@ -1622,14 +1627,14 @@ export function PlayerPage({
       <div
         className={`relative flex min-w-0 flex-col ${layout === "runway"
           ? "min-h-0 flex-1 p-4"
-          : layout === "zero"
+          : layout === "zero" || layout === "capsule"
             ? "z-10 flex-1 p-0"
             : layout === "island"
               ? "z-10 flex-1 p-9 pr-80"
               : "flex-1 p-6"
           }`}
       >
-        {!isZeroLayout && (
+        {!isZeroLayout && !isCapsuleLayout && (
           <div className="mb-4 flex items-center justify-between shrink-0 px-1">
             <h3 className="text-[15px] font-bold text-slate-900 truncate flex items-center gap-2.5 max-w-[75%]">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.5)]"></span>
@@ -1673,6 +1678,19 @@ export function PlayerPage({
                   className="font-bold"
                 >
                   剧情分幕
+                </Button>
+              </Tooltip>
+
+              <Tooltip content="逐秒分析本地画面节奏，生成可跳转的高强度候选，并可勾选导出合辑" placement="bottom">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Scissors className="w-3.5 h-3.5 text-rose-500" />}
+                  onClick={() => setIntensityCutOpen(true)}
+                  disabled={!activeStream.url}
+                  className="font-bold"
+                >
+                  片段剪辑
                 </Button>
               </Tooltip>
 
@@ -1750,7 +1768,29 @@ export function PlayerPage({
             />
           )}
           <div className="relative h-full bg-black overflow-hidden ">
-            {activeStream.url ? (
+            {isCapsuleLayout ? (
+              <AeroCapsulePlayer
+                activeVideo={activeStream}
+                videos={filteredVideos}
+                selectedVideoId={selectedVideoId}
+                onSelectVideo={(video, index) => {
+                  setUserInitiated(true);
+                  handleLoadLocalVideo(video, index);
+                }}
+                filterStyle={filterCss}
+                onVideoEl={setVideoEl}
+                onMeta={(m) =>
+                  setActiveStream((s) => ({
+                    ...s,
+                    resolution: `${m.width}x${m.height}`,
+                  }))
+                }
+                onOpenShader={() => setShaderModalOpen(true)}
+                onOpenChapters={() => setChaptersDrawerOpen(true)}
+                onOpenCut={() => setIntensityCutOpen(true)}
+                onAddBookmark={handleAddTimelineBookmark}
+              />
+            ) : activeStream.url ? (
               <div className="h-full overflow-hidden" style={{ transform: `scale(${playerZoom})`, transformOrigin: "center center" }}>
                 <HlsVideoPlayer
                   key={activeStream.url}
@@ -1901,6 +1941,18 @@ export function PlayerPage({
                   void saveDirectorCut([]);
                   setDirectorCutPlayingIndex(null);
                 }}
+              />
+            )}
+            {intensityCutOpen && (
+              <IntensityCutDrawer
+                folder={deriveFolderFromUrl(activeStream.url)}
+                onClose={() => setIntensityCutOpen(false)}
+                onSeek={(time) => {
+                  if (!videoEl) return;
+                  videoEl.currentTime = time;
+                  void videoEl.play().catch(() => {});
+                }}
+                onLog={onAddSystemLog}
               />
             )}
             {isZeroLayout && (
@@ -2284,7 +2336,7 @@ export function PlayerPage({
         </div>
       )}
 
-      {!isClassicLayout && !isZeroLayout && (
+      {!isClassicLayout && !isZeroLayout && !isCapsuleLayout && (
         <PlayerLayoutRail
           layout={layout}
           videos={filteredVideos}

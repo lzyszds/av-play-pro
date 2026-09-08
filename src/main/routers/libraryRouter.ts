@@ -332,6 +332,31 @@ export const libraryRouter = t.router({
         .slice(0, 80);
     }),
 
+  newsMatches: t.procedure
+    .input((input: unknown) => input as { rootPath: string; items: Array<{ id: string; title?: string; summary?: string; code?: string }> })
+    .query(async ({ input }) => {
+      const videos = await scanLibrary(input.rootPath);
+      const normalize = (value = "") => value.normalize("NFKC").toLocaleLowerCase();
+      return input.items.slice(0, 100).map((item) => {
+        const text = normalize(`${item.title || ""} ${item.summary || ""}`);
+        const code = normalize(item.code || "");
+        const actorNames = [...new Set(videos.flatMap((video) => video.actors || []))]
+          .filter((name) => name.trim().length > 1 && text.includes(normalize(name)));
+        const matchedVideos = videos.filter((video) => {
+          const sameCode = !!code && normalize(video.code || "") === code;
+          const sameActor = actorNames.some((name) => video.actors?.includes(name));
+          return sameCode || sameActor;
+        }).slice(0, 8).map((video) => ({
+          id: video.id,
+          name: video.name,
+          title: video.title || video.name,
+          code: video.code || "",
+          actors: video.actors || [],
+        }));
+        return { id: item.id, actors: actorNames, videos: matchedVideos, total: matchedVideos.length };
+      });
+    }),
+
   slot: t.procedure
     .input((input: unknown) => input as { rootPath: string; actor?: string; genre?: string; maxMinutes?: number })
     .query(async ({ input }) => {

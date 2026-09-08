@@ -794,10 +794,11 @@ export function SettingsPanel({
                   <label className="text-[11px] font-bold text-slate-700 dark:text-slate-300 block">
                     播放页布局
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {(
                       [
                         { v: "zero", l: "零界面放映", d: "边缘唤出操作与片库" },
+                        { v: "capsule", l: "Aero 胶囊", d: "Rose Noir 悬浮胶囊与抽屉" },
                         { v: "classic", l: "经典右栏", d: "播放器 + 完整片库" },
                       ] as Array<{ v: PlayerLayout; l: string; d: string }>
                     ).map(({ v, l, d }) => (

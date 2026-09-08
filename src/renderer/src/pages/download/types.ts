@@ -62,7 +62,7 @@ export type LoaderStyle =
   | "pulse"
   | "scan";
 
-export type PlayerLayout = "classic" | "zero" | "island" | "runway" | "focus";
+export type PlayerLayout = "classic" | "zero" | "capsule" | "island" | "runway" | "focus";
 
 export interface AppSettings {
   video_path: string;

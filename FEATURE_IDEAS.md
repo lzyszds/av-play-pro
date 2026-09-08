@@ -42,6 +42,7 @@
 
 
 
+| **本地数据写入原子化与坏文件自愈 (B194)** | 所有核心 JSON(meta/索引/settings/download-state/stats/timeline·导演剪辑/actors/activity/成就/刮削缓存/快照/推送队列/云备份本地缓存/后处理队列)与封面/预览/thumbs 一律「临时文件 → 原子替换」落盘;封面/预览下载改「.part → rename」杜绝「半截文件占位后被永久跳过」;`writeForTask` 不覆盖已刮削资料、`scrapeMetadata` 90s 幂等冷却消除双路并发竞态;指挥中心「完整性自愈」探测损坏 meta.json / 0 字节封面·预览 / 原子写残留,坏 meta 先备份为 `.bak` 再按文件名一键重建 | `lib/fsutil.ts`、`lib/settingsFile.ts`、`metaRouter.ts`、`downloadRouter.ts`、`storageRouter.ts`、`statsRouter.ts`、`videosRouter.ts`、`libraryRouter.ts`(integrityScan/selfHealIntegrity)、`queue.ts`、`createMainWindow.ts`、`CommandCenterPage.tsx` 等 |
 
 ---
 
@@ -155,7 +156,6 @@
 | **B142** | **网页一键摘取器** | WebPage 已加入当前页摘取、候选卡确认与带封面/预览/Referer 的下载任务预填；适配规则与候选持久化待后续扩展。关联：`WebPage.tsx`、`App.tsx`、`DownloadPage.tsx`、`NewTaskModal.tsx`。 |
 | **B151** | **影视资讯聚合服务与新闻台** | 已完成并部署独立 Cloudflare Worker + D1 服务（Cron 采集、RSS/HTML 解析、来源管理、去重、只读资讯 API）与桌面端新闻页、服务地址/只读密钥配置；按用户明确要求，管理/客户端密钥同时保存在 Cloudflare Secret 与项目默认配置中。已移除英文、日文与泛娱乐来源及旧条目，现仅接入人工中文编辑的 AVNO1 中文业界资讯与 AV日报中文资讯；新闻页在零条目时显示明确空态。关联：`cloud/news-service/`、`newsRouter.ts`、`NewsPage.tsx`、`SettingsPanel.tsx`。 |
 | **B192** | **高强度候选与一键合辑** | 对已入库本地视频逐秒分析画面运动节奏，生成可点播复核的高强度候选；可勾选候选、调整单段时长，再由本地 ffmpeg 重编码并合并为 MP4。它只提供视觉节奏候选，不将结果伪称为对具体行为的确定识别。关联：`intensityDetector.ts`、`intensityRouter.ts`、`IntensityCutDrawer.tsx`、`PlayerPage.tsx`。 |
-| **B194** | **本地数据写入原子化与坏文件自愈** | 已新增 `lib/fsutil.ts` 原子写工具(临时文件→rename),并接入 meta.json、settings/download-state、stats、timeline/导演剪辑、片库索引、actors/activity/成就/刮削缓存/快照/推送队列/云备份本地缓存等 JSON 落盘及 thumbs 与 cover.jpg 写入;封面/预览下载改「.part → rename」杜绝「半截文件占位后被永久跳过」;`writeForTask` 改为不覆盖已刮削资料、`scrapeMetadata` 加 90s 幂等冷却(RepairModal 手动补全以 force 绕过),消除主进程后处理队列与渲染端补全链的双跑竞态。读取端坏 JSON 探测与指挥中心一键重建的「自愈面」待续。关联：`fsutil.ts`、`metaRouter.ts`、`downloadRouter.ts`、`storageRouter.ts`、`statsRouter.ts`、`videosRouter.ts`、`libraryRouter.ts`、`queue.ts`、`RepairModal.tsx`、`createMainWindow.ts`。 |
 | **B196** | **断点续播与观看完成态记录** | 已复活启动续播提示(ResumePrompt 恢复渲染、`pendingResumeSeekRef` 真正消费、同流就地 seek、关闭即清续播位);LAST_PLAYED 记录带 duration/finished,自然播完自动写入完成态并清除续播位;每部影片在 stats 新增 `lastPosition/positionUpdatedAt/completedCount/lastCompletedAt`,播放中 flushWatch 顺带上报秒位。完成/弃看信号在统计回顾界面的消费(如续播统计、弃看识别)待续。关联：`PlayerPage.tsx`、`ResumePrompt.tsx`、`statsRouter.ts`。 |
 | **B195** | **配置单一权威写通道与单实例互斥** | 已启用 `requestSingleInstanceLock`:多开时第二实例直接退出并唤起既有窗口聚焦,杜绝双份 30 分钟自动备份/后处理/抓取与并发写库;新增 `lib/settingsFile.ts` 作为 settings.json 路径唯一来源与原子读写通道,`storageRouter`(get/save)与 `createMainWindow`(closeAction 读写)已统一走它。云端 pull 的「有意覆盖」写点(`syncRouter`)保持独立合并、暂未纳入统一通道。关联：`index.ts`、`settingsFile.ts`、`storageRouter.ts`、`createMainWindow.ts`。 |
 | **B197** | **用真实场景/强度信号驱动分幕与热力** | 已把真实产物接到已实现但伪装的表层:PlayerPage 懒读 `intensity.json`/`scenes.json`(均在本地,不静默跑 ffmpeg),`intensity.json` 的候选强度映射为 80 桶基线经 `HlsVideoPlayer` 透传替换 `PlayerHeatmap` 的伪随机基线(用户走「片段剪辑」分析后热力即真实);`SceneChaptersDrawer` 展示 ffmpeg 真实镜头切换点列表(逐段可跳),无 scenes.json 时提供「生成真实镜头分幕」显式入口(带 busy 态)。6 幕剧情模板仍作无检测数据时的占位骨架;9 宫格保持均匀采样。完成态仍待「无任何分析产物时默认保持原样」的诚实标注与胶囊播放器接线。关联：`PlayerHeatmap.tsx`、`HlsVideoPlayer.tsx`、`PlayerPage.tsx`、`SceneChaptersDrawer.tsx`、`scenesRouter.ts`、`intensityRouter.ts`。 |

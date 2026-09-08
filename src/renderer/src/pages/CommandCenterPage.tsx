@@ -211,6 +211,12 @@ export function CommandCenterPage({
   const [cleanupRunning, setCleanupRunning] = useState(false);
   const [cleanupScannedOnce, setCleanupScannedOnce] = useState(false);
 
+  // B194 完整性自愈
+  const [integrityScanning, setIntegrityScanning] = useState(false);
+  const [integrityHealing, setIntegrityHealing] = useState(false);
+  const [integrityReport, setIntegrityReport] = useState<any>(null);
+  const [integrityScannedOnce, setIntegrityScannedOnce] = useState(false);
+
   // Emby 软链接整理弹窗
   const [showOrganizerModal, setShowOrganizerModal] = useState(false);
 
@@ -383,6 +389,67 @@ export function CommandCenterPage({
   const healthMeta = useMemo(() => calculateHealthScore(overview, healthData), [overview, healthData]);
 
   // 已选清理字节数
+  // B194 完整性自愈：扫描坏 meta / 空封面·预览 / 原子写残留
+  const scanIntegrity = async () => {
+    if (!videoPath) {
+      onAddSystemLog("未配置视频库路径，无法扫描完整性", "WARNING");
+      return;
+    }
+    setIntegrityScanning(true);
+    try {
+      const rep: any = await trpc.library.integrityScan.query({
+        rootPath: videoPath,
+      });
+      setIntegrityReport(rep);
+      setIntegrityScannedOnce(true);
+      const total =
+        (rep?.corruptMeta?.length || 0) +
+        (rep?.emptyCover?.length || 0) +
+        (rep?.emptyPreview?.length || 0) +
+        (rep?.staleTemp?.length || 0);
+      onAddSystemLog(
+        `完整性自愈扫描: 坏 meta ${rep?.corruptMeta?.length || 0} · 空封面 ${
+          rep?.emptyCover?.length || 0
+        } · 空预览 ${rep?.emptyPreview?.length || 0} · 写入残留 ${
+          rep?.staleTemp?.length || 0
+        }`,
+        total > 0 ? "WARNING" : "SUCCESS",
+      );
+    } catch (err: any) {
+      onAddSystemLog(`完整性自愈扫描异常: ${err?.message || err}`, "ERROR");
+    } finally {
+      setIntegrityScanning(false);
+    }
+  };
+
+  // B194 完整性自愈：备份并重建坏 meta、删除空文件与 .part/.tmp 残留
+  const runSelfHeal = async () => {
+    if (!videoPath || integrityHealing) return;
+    setIntegrityHealing(true);
+    try {
+      const s: any = await trpc.library.selfHealIntegrity.mutate({
+        rootPath: videoPath,
+      });
+      onAddSystemLog(
+        `完整性自愈完成: 备份并重建坏 meta ${s?.corruptMetaRebuilt || 0} · 删除空封面 ${
+          s?.emptyCoverRemoved || 0
+        } · 空预览 ${s?.emptyPreviewRemoved || 0} · 写入残留 ${
+          s?.staleTempRemoved || 0
+        }`,
+        "SUCCESS",
+      );
+      const rep: any = await trpc.library.integrityScan.query({
+        rootPath: videoPath,
+      });
+      setIntegrityReport(rep);
+      setIntegrityScannedOnce(true);
+    } catch (err: any) {
+      onAddSystemLog(`完整性自愈执行异常: ${err?.message || err}`, "ERROR");
+    } finally {
+      setIntegrityHealing(false);
+    }
+  };
+
   const selectedCleanupBytes = useMemo(
     () =>
       cleanupItems
@@ -1075,6 +1142,65 @@ export function CommandCenterPage({
         {/* ================= 工作台 Tab 4: 磁盘瘦身清理 ================= */}
         {activeSubTab === "cleaner" && (
           <div className="p-5 space-y-4 anim-fade-in">
+            {/* B194 完整性自愈：坏 meta / 空封面·预览 / 原子写残留 */}
+            <div className="rounded-2xl border border-sky-200/70 dark:border-sky-900/40 bg-gradient-to-br from-sky-50/80 to-white dark:from-sky-950/20 dark:to-slate-900/40 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center">
+                    <ShieldCheck className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                      完整性自愈 <span className="text-[9px] text-sky-500 font-semibold">B194</span>
+                    </h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      探测损坏的 meta.json、0 字节封面/预览、以及原子写/流式下载遗留的 .part/.tmp；修复会把坏 meta 先备份为 .bak 再重建
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={scanIntegrity}
+                    disabled={integrityScanning || !videoPath}
+                    className="h-8 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${integrityScanning ? "animate-spin" : ""}`} />
+                    <span>{integrityScanning ? "扫描中..." : "扫描"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={runSelfHeal}
+                    disabled={integrityHealing || !integrityScannedOnce || !videoPath}
+                    className="h-8 px-3.5 rounded-lg bg-sky-600 hover:bg-sky-700 disabled:opacity-40 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                  >
+                    <Wrench className="w-3.5 h-3.5" />
+                    <span>{integrityHealing ? "修复中..." : "一键修复"}</span>
+                  </button>
+                </div>
+              </div>
+
+              {integrityScannedOnce && integrityReport && (
+                <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                  <span className="px-2 py-1 rounded-lg bg-rose-500/10 border border-rose-500/25 text-rose-600 dark:text-rose-400 font-semibold">
+                    坏 meta：{integrityReport.corruptMeta?.length || 0}
+                  </span>
+                  <span className="px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 font-semibold">
+                    空封面：{integrityReport.emptyCover?.length || 0}
+                  </span>
+                  <span className="px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 font-semibold">
+                    空预览：{integrityReport.emptyPreview?.length || 0}
+                  </span>
+                  <span className="px-2 py-1 rounded-lg bg-sky-500/10 border border-sky-500/25 text-sky-600 dark:text-sky-400 font-semibold">
+                    写入残留：{integrityReport.staleTemp?.length || 0}
+                  </span>
+                  <span className="ml-auto text-[10px] text-slate-400">
+                    修复会删除 0 字节文件，并把无法解析的 meta.json 备份为 .bak 后按文件名重建
+                  </span>
+                </div>
+              )}
+            </div>
+
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
               <div>
                 <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">

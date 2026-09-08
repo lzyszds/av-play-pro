@@ -226,6 +226,139 @@ async function measurePath(target: string): Promise<{ bytes: number; files: numb
   return { bytes, files };
 }
 
+
+// ============ B194 自愈：坏 meta / 空封面·预览 / 原子写残留 ============
+function integrityStamp(): string {
+  const d = new Date();
+  const p = (v: number) => String(v).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+interface IntegrityFinding {
+  folder: string;
+  name: string;
+}
+
+async function scanFolderIntegrity(rootPath: string): Promise<{
+  corruptMeta: IntegrityFinding[];
+  emptyCover: IntegrityFinding[];
+  emptyPreview: IntegrityFinding[];
+  staleTemp: Array<{ folder: string; files: string[] }>;
+}> {
+  const out = {
+    corruptMeta: [] as IntegrityFinding[],
+    emptyCover: [] as IntegrityFinding[],
+    emptyPreview: [] as IntegrityFinding[],
+    staleTemp: [] as Array<{ folder: string; files: string[] }>,
+  };
+  if (!rootPath || !fs.existsSync(rootPath)) return out;
+  const names = await fs.promises.readdir(rootPath).catch(() => [] as string[]);
+  for (const name of names) {
+    if (name.startsWith(".") || name === ".avplay_index.json") continue;
+    const folderPath = path.join(rootPath, name);
+    const st = await fs.promises.stat(folderPath).catch(() => null);
+    if (!st || !st.isDirectory()) continue;
+    const entries = await fs.promises.readdir(folderPath).catch(() => [] as string[]);
+    const videoName = findByExt(
+      entries.filter((n) => !/^preview\./i.test(n)),
+      VIDEO_EXTS,
+      ["video.mp4", "video.mkv", "video.ts", "video.m4v"],
+    );
+    if (!videoName) continue; // 只处理含正片的正规片夹（无正片残留由 cleaner 负责）
+
+    const metaFile = path.join(folderPath, "meta.json");
+    if (fs.existsSync(metaFile)) {
+      let corrupt = false;
+      try {
+        const txt = fs.readFileSync(metaFile, "utf8");
+        const obj = JSON.parse(txt);
+        corrupt = txt.trim() === "" || !obj || typeof obj !== "object" || Array.isArray(obj);
+      } catch {
+        corrupt = true;
+      }
+      if (corrupt) out.corruptMeta.push({ folder: folderPath, name });
+    }
+
+    const staleFiles: string[] = [];
+    for (const en of entries) {
+      const p = path.join(folderPath, en);
+      const s = await fs.promises.stat(p).catch(() => null);
+      if (!s || !s.isFile()) continue;
+      if (/^(cover\.|preview\.)/i.test(en) && s.size === 0) {
+        const finding = { folder: folderPath, name: en };
+        if (/^cover\./i.test(en)) out.emptyCover.push(finding);
+        else out.emptyPreview.push(finding);
+      } else if (/\.(tmp|part)$/i.test(en)) {
+        staleFiles.push(en);
+      }
+    }
+    if (staleFiles.length) out.staleTemp.push({ folder: folderPath, files: staleFiles });
+  }
+  return out;
+}
+
+async function applyIntegritySelfHeal(rootPath: string): Promise<{
+  corruptMetaBackedUp: number;
+  corruptMetaRebuilt: number;
+  emptyCoverRemoved: number;
+  emptyPreviewRemoved: number;
+  staleTempRemoved: number;
+}> {
+  const found = await scanFolderIntegrity(rootPath);
+  const summary = {
+    corruptMetaBackedUp: 0,
+    corruptMetaRebuilt: 0,
+    emptyCoverRemoved: 0,
+    emptyPreviewRemoved: 0,
+    staleTempRemoved: 0,
+  };
+  for (const it of found.corruptMeta) {
+    try {
+      const src = path.join(it.folder, "meta.json");
+      const backup = `${src}.corrupt-${integrityStamp()}.bak`;
+      await fs.promises.rename(src, backup);
+      summary.corruptMetaBackedUp += 1;
+      // 用文件名重建极简 meta（与入库一致的形状），原损坏文件留 .bak 备份
+      const code = normalizeCode(it.name);
+      const minimal = {
+        code: code ?? null,
+        title: it.name,
+        actors: [] as string[],
+        genres: [] as string[],
+        savePath: it.folder,
+        sourceSite: "Local",
+        scrapedAt: new Date().toISOString(),
+      };
+      await atomicWriteFile(path.join(it.folder, "meta.json"), JSON.stringify(minimal, null, 2));
+      summary.corruptMetaRebuilt += 1;
+    } catch {
+      /* 单目录失败不影响其它目录 */
+    }
+  }
+  for (const list of [found.emptyCover, found.emptyPreview]) {
+    for (const it of list) {
+      try {
+        await fs.promises.unlink(path.join(it.folder, it.name));
+        if (found.emptyCover.includes(it)) summary.emptyCoverRemoved += 1;
+        else summary.emptyPreviewRemoved += 1;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  for (const it of found.staleTemp) {
+    for (const f of it.files) {
+      try {
+        await fs.promises.unlink(path.join(it.folder, f));
+        summary.staleTempRemoved += 1;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return summary;
+}
+
 export const libraryRouter = t.router({
   overview: t.procedure
     .input((input: unknown) => input as { rootPath: string })
@@ -775,6 +908,16 @@ export const libraryRouter = t.router({
     }),
 
   // 按番号去重：同一番号只保留最早下载（createdAt 最小）的那个，删除其余副本
+  /** B194 自愈：扫描坏 meta.json / 空封面·预览 / .part、.tmp 残留 */
+  integrityScan: t.procedure
+    .input((input: unknown) => input as { rootPath: string })
+    .query(async ({ input }) => scanFolderIntegrity((input.rootPath || "").trim())),
+
+  /** B194 自愈：备份并重建坏 meta.json，删除空封面/预览与原子写残留 */
+  selfHealIntegrity: t.procedure
+    .input((input: unknown) => input as { rootPath: string })
+    .mutation(async ({ input }) => applyIntegritySelfHeal((input.rootPath || "").trim())),
+
   dedupeVideos: t.procedure
     .input((input: unknown) => input as { rootPath: string })
     .mutation(async ({ input }) => {

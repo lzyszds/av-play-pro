@@ -217,6 +217,9 @@ export function CommandCenterPage({
   const [integrityReport, setIntegrityReport] = useState<any>(null);
   const [integrityScannedOnce, setIntegrityScannedOnce] = useState(false);
 
+  // B198 缺封面·本机取帧（离线兜底）
+  const [frameCoverRunning, setFrameCoverRunning] = useState(false);
+
   // Emby 软链接整理弹窗
   const [showOrganizerModal, setShowOrganizerModal] = useState(false);
 
@@ -447,6 +450,36 @@ export function CommandCenterPage({
       onAddSystemLog(`完整性自愈执行异常: ${err?.message || err}`, "ERROR");
     } finally {
       setIntegrityHealing(false);
+    }
+  };
+
+  // B198：对缺封面的片夹批量用本机视频帧生成 cover.jpg（不联网）
+  const runLocalFrameCovers = async () => {
+    if (!videoPath || frameCoverRunning) return;
+    if (!overview?.issues?.missingCover?.length) {
+      onAddSystemLog("当前没有缺封面的影片", "INFO");
+      return;
+    }
+    setFrameCoverRunning(true);
+    try {
+      const r: any = await trpc.library.generateLocalFrameCovers.mutate({
+        rootPath: videoPath,
+      });
+      onAddSystemLog(
+        `本机取帧补封面: 生成 ${r?.generated || 0} · 已存在跳过 ${
+          r?.skipped || 0
+        } · 无正片 ${r?.noVideo || 0} · 失败 ${r?.failed || 0}${
+          r?.error ? ` · ${r.error}` : ""
+        }`,
+        (r?.failed || 0) === 0 && (r?.noFfmpeg || 0) === 0
+          ? "SUCCESS"
+          : "WARNING",
+      );
+      await refresh();
+    } catch (err: any) {
+      onAddSystemLog(`本机取帧补封面异常: ${err?.message || err}`, "ERROR");
+    } finally {
+      setFrameCoverRunning(false);
     }
   };
 
@@ -1007,15 +1040,27 @@ export function CommandCenterPage({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={runIngest}
-                disabled={runningIngest}
-                className="h-8 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
-              >
-                <Workflow className="w-3.5 h-3.5" />
-                <span>{runningIngest ? "正在写入 meta.json..." : "一键自动生成元数据"}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={runLocalFrameCovers}
+                  disabled={frameCoverRunning || !issues?.missingCover?.length}
+                  className="h-8 px-3 rounded-lg bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                  title="离线用本机视频帧生成 cover.jpg，联网刮削失败时的兜底"
+                >
+                  <Wrench className="w-3.5 h-3.5" />
+                  <span>{frameCoverRunning ? "正在本机取帧..." : "缺封面·本机取帧"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={runIngest}
+                  disabled={runningIngest}
+                  className="h-8 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5 shadow-xs"
+                >
+                  <Workflow className="w-3.5 h-3.5" />
+                  <span>{runningIngest ? "正在写入 meta.json..." : "一键自动生成元数据"}</span>
+                </button>
+              </div>
             </div>
 
             {filteredMissingItems.length === 0 ? (

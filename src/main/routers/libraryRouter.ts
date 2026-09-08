@@ -1,9 +1,11 @@
 import * as fs from "fs";
 import * as path from "path";
+import { spawn } from "child_process";
 import { app } from "electron";
 import { t } from "../trpc";
 import { invalidateVideoListCache } from "./videosRouter";
 import { atomicWriteFile } from "../lib/fsutil";
+import { resolveFfmpeg } from "../whisper/whisperManager";
 
 interface LibraryVideo {
   id: string;
@@ -357,6 +359,86 @@ async function applyIntegritySelfHeal(rootPath: string): Promise<{
     }
   }
   return summary;
+}
+
+
+// ============ B198 本机取帧封面（离线兜底，联网刮削失败时用） ============
+function runFfmpegCapture(
+  ffmpegPath: string,
+  args: string[],
+): Promise<{ code: number; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(ffmpegPath, args, { windowsHide: true });
+    let stderr = "";
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", (err) =>
+      resolve({ code: -1, stderr: String((err as Error)?.message || err) }),
+    );
+    child.on("close", (code) => resolve({ code: code ?? -1, stderr }));
+  });
+}
+
+/** 对单个片夹：用视频 45% 处一帧生成 cover.jpg（已存在任一 cover 则跳过） */
+async function frameCoverForFolder(
+  folderPath: string,
+  ffmpegPath: string,
+): Promise<"ok" | "skip" | "no-video" | "failed"> {
+  const names = await fs.promises.readdir(folderPath).catch(() => [] as string[]);
+  if (names.some((n) => /^cover\.(jpg|jpeg|png)$/i.test(n))) return "skip";
+  const videoName = findByExt(
+    names.filter((n) => !/^preview\./i.test(n)),
+    VIDEO_EXTS,
+    ["video.mp4", "video.mkv", "video.ts", "video.m4v"],
+  );
+  if (!videoName) return "no-video";
+  const videoPath = path.join(folderPath, videoName);
+
+  const probe = await runFfmpegCapture(ffmpegPath, ["-hide_banner", "-i", videoPath]);
+  const dm = probe.stderr.match(/Duration: (\d+):(\d+):([\d.]+)/);
+  let duration = 0;
+  if (dm) duration = +dm[1] * 3600 + +dm[2] * 60 + +dm[3];
+
+  const target =
+    duration > 0
+      ? Math.min(Math.max(5, Math.floor(duration * 0.45)), Math.max(6, duration - 3))
+      : 5;
+
+  const tmpOut = path.join(
+    folderPath,
+    `.avplay-cover-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.jpg`,
+  );
+  const render = await runFfmpegCapture(ffmpegPath, [
+    "-y",
+    "-ss",
+    String(target),
+    "-i",
+    videoPath,
+    "-frames:v",
+    "1",
+    "-vf",
+    "scale=-2:'min(720,ih)'",
+    "-q:v",
+    "2",
+    tmpOut,
+  ]);
+  if (render.code !== 0) {
+    try {
+      await fs.promises.unlink(tmpOut);
+    } catch { /* ignore */ }
+    return "failed";
+  }
+  const finalOut = path.join(folderPath, "cover.jpg");
+  try {
+    await fs.promises.rename(tmpOut, finalOut);
+  } catch {
+    try {
+      await fs.promises.copyFile(tmpOut, finalOut);
+      await fs.promises.unlink(tmpOut);
+    } catch { /* ignore */ }
+  }
+  return "ok";
 }
 
 export const libraryRouter = t.router({
@@ -917,6 +999,44 @@ export const libraryRouter = t.router({
   selfHealIntegrity: t.procedure
     .input((input: unknown) => input as { rootPath: string })
     .mutation(async ({ input }) => applyIntegritySelfHeal((input.rootPath || "").trim())),
+
+  /** B198 缺封面·本机取帧（离线兜底：联网刮削失败时用视频帧当封面） */
+  generateLocalFrameCovers: t.procedure
+    .input((input: unknown) => input as { rootPath: string })
+    .mutation(async ({ input }) => {
+      const root = (input.rootPath || "").trim();
+      const summary = {
+        generated: 0,
+        skipped: 0,
+        noVideo: 0,
+        noFfmpeg: 0,
+        failed: 0,
+        error: "" as string,
+      };
+      if (!root || !fs.existsSync(root)) {
+        summary.error = "片库目录不存在";
+        return summary;
+      }
+      const ff = resolveFfmpeg();
+      if (!ff) {
+        summary.noFfmpeg = 1;
+        summary.error = "未找到 ffmpeg，请先在字幕工具中安装 ffmpeg";
+        return summary;
+      }
+      const names = await fs.promises.readdir(root).catch(() => [] as string[]);
+      for (const name of names) {
+        if (name.startsWith(".") || name === ".avplay_index.json") continue;
+        const folderPath = path.join(root, name);
+        const st = await fs.promises.stat(folderPath).catch(() => null);
+        if (!st || !st.isDirectory()) continue;
+        const result = await frameCoverForFolder(folderPath, ff.path);
+        if (result === "ok") summary.generated += 1;
+        else if (result === "skip") summary.skipped += 1;
+        else if (result === "no-video") summary.noVideo += 1;
+        else summary.failed += 1;
+      }
+      return summary;
+    }),
 
   dedupeVideos: t.procedure
     .input((input: unknown) => input as { rootPath: string })

@@ -45,6 +45,7 @@
 | **本地数据写入原子化与坏文件自愈 (B194)** | 所有核心 JSON(meta/索引/settings/download-state/stats/timeline·导演剪辑/actors/activity/成就/刮削缓存/快照/推送队列/云备份本地缓存/后处理队列)与封面/预览/thumbs 一律「临时文件 → 原子替换」落盘;封面/预览下载改「.part → rename」杜绝「半截文件占位后被永久跳过」;`writeForTask` 不覆盖已刮削资料、`scrapeMetadata` 90s 幂等冷却消除双路并发竞态;指挥中心「完整性自愈」探测损坏 meta.json / 0 字节封面·预览 / 原子写残留,坏 meta 先备份为 `.bak` 再按文件名一键重建 | `lib/fsutil.ts`、`lib/settingsFile.ts`、`metaRouter.ts`、`downloadRouter.ts`、`storageRouter.ts`、`statsRouter.ts`、`videosRouter.ts`、`libraryRouter.ts`(integrityScan/selfHealIntegrity)、`queue.ts`、`createMainWindow.ts`、`CommandCenterPage.tsx` 等 |
 | **配置单一权威写通道与单实例互斥 (B195)** | 单实例锁(`requestSingleInstanceLock`):多开时第二实例直接退出并唤起已有窗口聚焦,杜绝双份自动备份/后处理·抓取与并发写库;新增 `lib/settingsFile.ts` 作为 settings.json 路径唯一来源与原子读写通道,`storageRouter`、`createMainWindow`(closeAction)、`syncRouter`(云端合并写)均统一走它 | `index.ts`、`lib/settingsFile.ts`、`storageRouter.ts`、`createMainWindow.ts`、`syncRouter.ts` |
 | **断点续播与观看完成态记录 (B196)** | 复活启动续播提示并真正消费上次播放秒位(同流就地 seek、关闭即清续播位);LAST_PLAYED 带 duration/finished,自然播完写完成态并清除续播位;stats 记录 `lastPosition/positionUpdatedAt/completedCount/lastCompletedAt`,播放中顺带上报秒位,完成时写入 activity-history「完整看完」供回顾 | `PlayerPage.tsx`、`ResumePrompt.tsx`、`statsRouter.ts`、`activityRouter.ts` |
+| **本机取帧封面/海报生成器 (B198)** | 缺封面时从本地正片约 45% 处取一帧生成 cover.jpg(离线兜底,不依赖脆弱外源猜测);`libraryRouter.generateLocalFrameCovers` 整库批量处理(已存在 cover 自动跳过、无 ffmpeg 明确提示);CommandCenter「元数据」子台新增「缺封面·本机取帧」按钮 | `libraryRouter.ts`、`CommandCenterPage.tsx` |
 
 ---
 
@@ -137,7 +138,6 @@
 | **B159** | P1 | **女优出道档案页** | 为新人女优建立“首作、日期、厂牌、后续动态”的轻量档案；从资讯卡一点即可连续追踪出道后的公开消息。 | 以新人职业起点为核心，区别于 B154 覆盖全周期的履历时间线。 |
 | **B160** | P2 | **行业周报编辑台** | 每周从已抓资讯中自动挑出新人、厂牌、活动、访谈四类重点，用户可删改后保存一份自己的本周行业速览。 | 是低频精选阅读体验，不是 RSS 完整列表、推送通知或泛娱乐新闻。 |
 | **B161** | P1 | **来源健康与覆盖图** | 新闻台显示每个来源最近成功抓取时间、覆盖的资讯类型和最近一条内容，抓取异常时自动降级而不是让整页空白。 | 只保障资讯聚合质量，不触及用户已排除的云仓、网络线路与存储运维。 |
-| **B198** | P1 | **本机取帧封面/海报生成器** | 联网取封面失败或缺失时,从本地正片取代表性帧生成 cover 与一致缩略图,并可「从此帧做封面」;封面不再依赖脆弱的外源猜测而永久缺失。 | 是本地离线生成回退,不同于 B128 的多源竞速下载官方海报、也非 B118 的资产工厂调度。 |
 | **B199** | P1 | **媒体级误删回收站** | 清理/去重/修复/整理要删除的媒体先进入本机回收站暂存 N 天,可还原或一键清空;指挥中心危险动作前先建可回滚副本。 | 保护本地正片数据;区别于 B11 空间清理规则(面向磁盘)与 B108 仅覆盖 JSON 的快照。 |
 | **B201** | P2 | **本地演员档案卡** | 点演员打开本地档案:作品数、观看历史、最近播放、收藏、公开资讯履历(B154)与星图位置的聚合视图;别名仅手工补充,不自动合并。 | 区别于 B3 共演关系拓扑与 B159 新人出道档案;不做自动别名合并(黑名单 B162–171)。 |
 | **B202** | P2 | **私密观影「一场」小结** | 定义一次「入场 → 选片 → 若干播放 → 散场」的会话边界并落数据,散场给一张轻量小结卡(看了谁、时长、片段数、节律提示),沉淀进统计与历史。 | 是 session 级自省洞察,区别于 B21 定时编排放映、年度/季度报告的时间窗;不与 B129 节律分析重复。 |

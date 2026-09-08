@@ -9,9 +9,6 @@ import { PlayerPage } from "./pages/PlayerPage";
 import { WebPage, type WebCandidate } from "./pages/WebPage";
 import { StatsPage } from "./pages/StatsPage";
 import { CommandCenterPage } from "./pages/CommandCenterPage";
-import { StarMapPage } from "./pages/StarMapPage";
-import { MosaicPage } from "./pages/MosaicPage";
-import { RssPage } from "./pages/RssPage";
 import { DiscoverPage } from "./pages/DiscoverPage";
 import { NewsPage } from "./pages/NewsPage";
 import { ScraperWebview } from "./components/ScraperWebview";
@@ -63,9 +60,6 @@ const VALID_PAGES: Page[] = [
   "web",
   "stats",
   "command",
-  "starmap",
-  "mosaic",
-  "rss",
   "news",
 ];
 
@@ -457,16 +451,6 @@ export default function App() {
             }}
             onNavigate={(page) => setCurrentPage(page as Page)}
           />
-        )}
-
-        {currentPage === "starmap" && (
-          <StarMapPage videoPath={settings.video_path} onAddSystemLog={addLog} />
-        )}
-        {currentPage === "mosaic" && (
-          <MosaicPage videoPath={settings.video_path} onAddSystemLog={addLog} />
-        )}
-        {currentPage === "rss" && (
-          <RssPage videoPath={settings.video_path} onAddSystemLog={addLog} />
         )}
 
       </div>

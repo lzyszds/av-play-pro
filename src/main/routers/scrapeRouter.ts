@@ -148,7 +148,7 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * 优先复用已过 Cloudflare 的 missav webview 抓取 HTML，
- * 拿不到再退回 electron 会话 / axios。逻辑与 rssRouter 保持一致。
+ * 拿不到再退回 electron 会话 / axios。逻辑与站内抓取保持一致。
  */
 // 渲染进程注册的「专用抓取 webview」的 webContents id。
 // 它是渲染进程里常驻的隐藏 <webview>，与「网页」页 webview 完全一致，能过 Cloudflare。

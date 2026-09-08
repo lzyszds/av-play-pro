@@ -32,9 +32,6 @@ export type Page =
   | "web"
   | "stats"
   | "command"
-  | "starmap"
-  | "mosaic"
-  | "rss"
   | "discover"
   | "news";
 

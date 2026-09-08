@@ -1,7 +1,7 @@
 import { BrowserWindow, shell, app, dialog } from "electron";
 import { join } from "path";
-import { existsSync, readFileSync, mkdirSync } from "fs";
-import { atomicWriteFileSync } from "../lib/fsutil";
+import { existsSync } from "fs";
+import { readSettingsJson, writeSettingsJson } from "../lib/settingsFile";
 import { createIPCHandler } from "electron-trpc-experimental/main";
 import { appRouter } from "../router";
 import { setMainWindow } from "../windowState";
@@ -20,34 +20,15 @@ function resolveAppIcon(): string | undefined {
 }
 
 // 读取已保存的 closeAction（'ask' | 'tray' | 'quit'），首次为 ask
-function getSettingsPath(): string {
-  return join(app.getPath("userData"), "settings.json");
-}
-
 function readCloseAction(): "ask" | "tray" | "quit" {
-  try {
-    const file = getSettingsPath();
-    if (!existsSync(file)) return "ask";
-    const data = JSON.parse(readFileSync(file, "utf8")) as {
-      closeAction?: "ask" | "tray" | "quit";
-    };
-    return data.closeAction ?? "ask";
-  } catch {
-    return "ask";
-  }
+  const data = readSettingsJson<{ closeAction?: "ask" | "tray" | "quit" }>();
+  return data?.closeAction ?? "ask";
 }
 
 function writeCloseAction(action: "tray" | "quit"): void {
   try {
-    const file = getSettingsPath();
-    mkdirSync(join(file, ".."), { recursive: true });
-    const prev = existsSync(file)
-      ? (JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>)
-      : {};
-    atomicWriteFileSync(
-      file,
-      JSON.stringify({ ...prev, closeAction: action }, null, 2),
-    );
+    const prev = readSettingsJson() ?? {};
+    writeSettingsJson({ ...prev, closeAction: action });
   } catch (err) {
     log.error("[createMainWindow] writeCloseAction failed", err);
   }

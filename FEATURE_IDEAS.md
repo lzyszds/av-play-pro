@@ -133,7 +133,6 @@
 | **B159** | P1 | **女优出道档案页** | 为新人女优建立“首作、日期、厂牌、后续动态”的轻量档案；从资讯卡一点即可连续追踪出道后的公开消息。 | 以新人职业起点为核心，区别于 B154 覆盖全周期的履历时间线。 |
 | **B160** | P2 | **行业周报编辑台** | 每周从已抓资讯中自动挑出新人、厂牌、活动、访谈四类重点，用户可删改后保存一份自己的本周行业速览。 | 是低频精选阅读体验，不是 RSS 完整列表、推送通知或泛娱乐新闻。 |
 | **B161** | P1 | **来源健康与覆盖图** | 新闻台显示每个来源最近成功抓取时间、覆盖的资讯类型和最近一条内容，抓取异常时自动降级而不是让整页空白。 | 只保障资讯聚合质量，不触及用户已排除的云仓、网络线路与存储运维。 |
-| **B195** | P1 | **配置单一权威写通道与单实例互斥** | 把 settings.json 由 main/storageRouter/渲染端多处直接读写的竞态收敛为内存权威副本 + 唯一写通道(closeAction 不再双写),并启用单实例锁,避免多开造成双份自动云备份与写冲突。 | 面向多写者并发正确性,不改变云同步功能本身(演练场 B111 已实现)。 |
 | **B197** | P1 | **用真实场景/强度信号驱动分幕与热力** | 把「剧情分幕」的固定百分比模板与进度条伪随机热力基线,换成已实现却无 UI 消费的 scenes.json 镜头切换与 intensity.json 视觉节奏产物,拖动条与九宫格呈现真实内容信号。 | 是 Feature 1/5 的「由假到真」升级,不新增孤立小功能;真实管线 scenesRouter/sceneDetector 已存在。 |
 | **B198** | P1 | **本机取帧封面/海报生成器** | 联网取封面失败或缺失时,从本地正片取代表性帧生成 cover 与一致缩略图,并可「从此帧做封面」;封面不再依赖脆弱的外源猜测而永久缺失。 | 是本地离线生成回退,不同于 B128 的多源竞速下载官方海报、也非 B118 的资产工厂调度。 |
 | **B199** | P1 | **媒体级误删回收站** | 清理/去重/修复/整理要删除的媒体先进入本机回收站暂存 N 天,可还原或一键清空;指挥中心危险动作前先建可回滚副本。 | 保护本地正片数据;区别于 B11 空间清理规则(面向磁盘)与 B108 仅覆盖 JSON 的快照。 |
@@ -159,6 +158,7 @@
 | **B192** | **高强度候选与一键合辑** | 对已入库本地视频逐秒分析画面运动节奏，生成可点播复核的高强度候选；可勾选候选、调整单段时长，再由本地 ffmpeg 重编码并合并为 MP4。它只提供视觉节奏候选，不将结果伪称为对具体行为的确定识别。关联：`intensityDetector.ts`、`intensityRouter.ts`、`IntensityCutDrawer.tsx`、`PlayerPage.tsx`。 |
 | **B194** | **本地数据写入原子化与坏文件自愈** | 已新增 `lib/fsutil.ts` 原子写工具(临时文件→rename),并接入 meta.json、settings/download-state、stats、timeline/导演剪辑、片库索引、actors/activity/成就/刮削缓存/快照/推送队列/云备份本地缓存等 JSON 落盘及 thumbs 与 cover.jpg 写入;封面/预览下载改「.part → rename」杜绝「半截文件占位后被永久跳过」;`writeForTask` 改为不覆盖已刮削资料、`scrapeMetadata` 加 90s 幂等冷却(RepairModal 手动补全以 force 绕过),消除主进程后处理队列与渲染端补全链的双跑竞态。读取端坏 JSON 探测与指挥中心一键重建的「自愈面」待续。关联：`fsutil.ts`、`metaRouter.ts`、`downloadRouter.ts`、`storageRouter.ts`、`statsRouter.ts`、`videosRouter.ts`、`libraryRouter.ts`、`queue.ts`、`RepairModal.tsx`、`createMainWindow.ts`。 |
 | **B196** | **断点续播与观看完成态记录** | 已复活启动续播提示(ResumePrompt 恢复渲染、`pendingResumeSeekRef` 真正消费、同流就地 seek、关闭即清续播位);LAST_PLAYED 记录带 duration/finished,自然播完自动写入完成态并清除续播位;每部影片在 stats 新增 `lastPosition/positionUpdatedAt/completedCount/lastCompletedAt`,播放中 flushWatch 顺带上报秒位。完成/弃看信号在统计回顾界面的消费(如续播统计、弃看识别)待续。关联：`PlayerPage.tsx`、`ResumePrompt.tsx`、`statsRouter.ts`。 |
+| **B195** | **配置单一权威写通道与单实例互斥** | 已启用 `requestSingleInstanceLock`:多开时第二实例直接退出并唤起既有窗口聚焦,杜绝双份 30 分钟自动备份/后处理/抓取与并发写库;新增 `lib/settingsFile.ts` 作为 settings.json 路径唯一来源与原子读写通道,`storageRouter`(get/save)与 `createMainWindow`(closeAction 读写)已统一走它。云端 pull 的「有意覆盖」写点(`syncRouter`)保持独立合并、暂未纳入统一通道。关联：`index.ts`、`settingsFile.ts`、`storageRouter.ts`、`createMainWindow.ts`。 |
 
 ---
 

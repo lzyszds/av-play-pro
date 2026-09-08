@@ -1,7 +1,8 @@
 import { app } from "electron";
 import * as fs from "fs";
-import { atomicWriteFileSync } from "../lib/fsutil";
 import * as path from "path";
+import { atomicWriteFileSync } from "../lib/fsutil";
+import { readSettingsJson, writeSettingsJson } from "../lib/settingsFile";
 import { t } from "../trpc";
 
 interface DownloadState {
@@ -11,10 +12,6 @@ interface DownloadState {
 
 function getDownloadStatePath(): string {
   return path.join(app.getPath("userData"), "download-state.json");
-}
-
-function getSettingsPath(): string {
-  return path.join(app.getPath("userData"), "settings.json");
 }
 
 function readDownloadState(): DownloadState {
@@ -38,22 +35,15 @@ function writeDownloadState(state: DownloadState): void {
 }
 
 export const storageRouter = t.router({
+  // B195：settings.json 统一走 settingsFile 单一读写通道（原子 + 路径唯一）
   getSettings: t.procedure.query(() => {
-    try {
-      const file = getSettingsPath();
-      if (!fs.existsSync(file)) return {};
-      return JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
-    } catch {
-      return {};
-    }
+    return readSettingsJson() ?? {};
   }),
 
   saveSettings: t.procedure
     .input((input: unknown) => input as Record<string, unknown>)
     .mutation(({ input }) => {
-      const file = getSettingsPath();
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      atomicWriteFileSync(file, JSON.stringify(input || {}, null, 2));
+      writeSettingsJson(input || {});
       return { success: true };
     }),
 

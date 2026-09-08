@@ -14,7 +14,25 @@ import { triggerAutoCloudBackup } from "./routers/syncRouter";
 
 registerAppProtocolSchemes();
 
+// B195：单实例锁。避免多开造成双份自动云备份、双份后处理/抓取与并发写库
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+    }
+  });
+}
+
 app.whenReady().then(async () => {
+  // 第二个实例：上面已请求退出，这里不再初始化任何能力
+  if (!gotSingleInstanceLock) return;
+
   initLogger();
   installGlobalErrorHandlers();
 
@@ -56,6 +74,7 @@ let quitBackupDone = false;
 
 // 3. 应用退出前自动备份
 app.on("before-quit", async (event) => {
+  if (!gotSingleInstanceLock) return; // 第二个实例直接退出，不做备份
   markQuitting();
 
   if (quitBackupDone) {

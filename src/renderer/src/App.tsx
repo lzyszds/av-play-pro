@@ -3,6 +3,7 @@ import { TitleBar, type Page } from "./components/TitleBar";
 import { GlobalConsole } from "./components/GlobalConsole";
 import { ThumbnailQueueWidget } from "./components/ThumbnailQueueWidget";
 import { SettingsPanel } from "./components/download/SettingsPanel";
+import { FirstRunGuide } from "./components/download/FirstRunGuide";
 import { thumbnailQueue } from "./lib/thumbnailQueue";
 import { DownloadPage } from "./pages/DownloadPage";
 import { PlayerPage } from "./pages/PlayerPage";
@@ -88,6 +89,9 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // B207 首次运行体检向导：仅在本地没有任何设置文件（全新安装）时自动弹出一次
+  const [showWizard, setShowWizard] = useState(false);
+  const emptySettingsRef = useRef(false);
   const [systemLogs, setSystemLogs] = useState<
     Array<{ text: string; level: string; time: string }>
   >([]);
@@ -172,6 +176,8 @@ export default function App() {
     ])
       .then(([saved, defaults]) => {
         if (disposed) return;
+        emptySettingsRef.current =
+          !saved || typeof saved !== "object" || Object.keys(saved).length === 0;
         const savedPartial = saved as Partial<AppSettings>;
         const merged: AppSettings = {
           ...DEFAULT_SETTINGS,
@@ -204,6 +210,31 @@ export default function App() {
     if (!settingsLoaded) return;
     setSettings((s) => (s.lastPage === currentPage ? s : { ...s, lastPage: currentPage }));
   }, [currentPage, settingsLoaded]);
+
+  // B207：全新安装时自动打开一次环境体检向导
+  useEffect(() => {
+    if (settingsLoaded && emptySettingsRef.current && !showWizard) {
+      setShowWizard(true);
+    }
+  }, [settingsLoaded, showWizard]);
+
+  // B205：接收托盘命令（快速开页 / 打开设置 / 开关日志控制台）
+  useEffect(() => {
+    const off =
+      window.electronAPI?.app?.onTrayCommand?.((cmd) => {
+        if (!cmd) return;
+        if (cmd.type === "navigate" && typeof cmd.page === "string") {
+          if (VALID_PAGES.includes(cmd.page as Page)) {
+            setCurrentPage(cmd.page as Page);
+          }
+        } else if (cmd.type === "open-settings") {
+          setSettingsOpen(true);
+        } else if (cmd.type === "toggle-console") {
+          setSettings((s) => ({ ...s, consoleOpen: !s.consoleOpen }));
+        }
+      }) ?? (() => {});
+    return off;
+  }, []);
 
   // 把 addLog 注入刻度图队列
   useEffect(() => {
@@ -475,6 +506,20 @@ export default function App() {
       )}
 
       {/* 全局设置面板（从 TitleBar 设置按钮打开） */}
+      {showWizard && (
+        <FirstRunGuide
+          settings={settings}
+          onSettingsChange={(patch) => setSettings((s) => ({ ...s, ...patch }))}
+          onDone={() => {
+            setShowWizard(false);
+            addLog("首次运行体检完成，欢迎使用 AVPlayPro", "SUCCESS");
+          }}
+          onClose={() => {
+            setShowWizard(false);
+          }}
+        />
+      )}
+
       {settingsOpen && (
         <div
           className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center anim-fade-in"

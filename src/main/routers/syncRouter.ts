@@ -353,14 +353,14 @@ export async function executePushToCloud(
 
 // 供主进程在启动、退出、托盘最小化或定时调用的自动化备份函数
 export async function triggerAutoCloudBackup(
-  reason: "startup" | "exit" | "tray_hide" | "interval" = "startup",
+  reason: "startup" | "exit" | "tray_hide" | "interval" | "manual" = "startup",
 ): Promise<boolean> {
   try {
     const settingsPath = getUserDataPath("settings.json");
     const settings = readJsonFile<Record<string, any>>(settingsPath, {});
 
-    // 如果用户显式关闭了自动同步（默认开启），则跳过
-    if (settings.cloudSyncAutoSync === false) {
+    // 如果用户显式关闭了自动同步（默认开启），则跳过；托盘手动备份除外
+    if (reason !== "manual" && settings.cloudSyncAutoSync === false) {
       log.info(
         `[syncRouter] Auto cloud backup skipped (${reason}): cloudSyncAutoSync is false`,
       );

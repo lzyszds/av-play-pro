@@ -64,4 +64,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('cloud-sync:status', handler)
     },
   },
+  app: {
+    onTrayCommand: (callback: (data: any) => void) => {
+      const handler = (_event: any, data: any) => callback(data)
+      ipcRenderer.on('app:tray-command', handler)
+      return () => ipcRenderer.removeListener('app:tray-command', handler)
+    },
+  },
 })

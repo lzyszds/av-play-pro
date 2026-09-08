@@ -25,6 +25,11 @@ export interface ElectronAPI {
       ) => void,
     ) => () => void;
   };
+  app?: {
+    onTrayCommand: (
+      callback: (data: { type: string; page?: string }) => void,
+    ) => () => void;
+  };
   sync?: {
     onSyncStatus: (
       callback: (data: {

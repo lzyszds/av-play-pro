@@ -1484,8 +1484,8 @@ export function DownloadPage({
 
       {/* ====== Task List (scrollable) ====== */}
       <div className="relative z-10 flex-1 overflow-y-scroll pt-0 min-h-50 bg-white/4 dark:bg-slate-950/10">
-        {/* ====== Page Header（随列表上滚淡出，吸顶工具栏接管） ====== */}
-        <div className="px-3 pt-4 pb-2">
+        {/* ====== 统一单行头部标题栏（与其它 tab 一致）+ 队列操作，随列表吸顶 ====== */}
+        <div className="shrink-0 mb-4 px-3 pt-4 pb-3 sticky top-0 bg-white/85 dark:bg-slate-950/85 z-99">
           <PageHeader
             icon={<Download className="w-5 h-5" />}
             title="下载管理中心"
@@ -1495,138 +1495,118 @@ export function DownloadPage({
               (searchTerm.trim() ? ` · 已过滤「${searchTerm.trim()}」` : "")
             }
             actions={
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="搜索任务 / 链接…"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-44 sm:w-56 h-9 bg-surface-2 border border-hairline rounded-xl pl-8 pr-3 text-xs text-text-1 placeholder:text-text-3 focus:outline-none focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 transition-all shadow-2xs"
-                />
-                <Search className="w-3.5 h-3.5 text-text-3 absolute left-2.5 top-3" />
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {/* Search */}
+                <div className="relative mr-1">
+                  <input
+                    type="text"
+                    placeholder="搜索任务/链接..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-40 sm:w-48 h-9 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-3 text-xs text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:w-56 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all shadow-2xs"
+                  />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3" />
+                </div>
+
+                <Button
+                  variant="primary"
+                  size="md"
+                  icon={<Plus className="w-3.5 h-3.5" />}
+                  onClick={() => setShowNewTaskModal(true)}
+                  title="新建 M3U8 下载任务"
+                  aria-label="新建任务"
+                >
+                  新建任务
+                </Button>
+
+                <Tooltip content="立即开启隐私屏保，遮住下载内容" placement="bottom">
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    icon={<EyeOff className="w-3.5 h-3.5" />}
+                    onClick={showPrivacyScreen}
+                    aria-label="隐私屏保"
+                  >
+                    隐私屏保
+                  </Button>
+                </Tooltip>
+
+                {/* 队列下载开关 */}
+                <Button
+                  variant={queueEnabled ? "primary" : "secondary"}
+                  size="md"
+                  onClick={handleToggleQueue}
+                  title={
+                    queueEnabled
+                      ? "点击关闭队列下载"
+                      : "点击开启队列下载（完成自动下一个）"
+                  }
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      queueEnabled ? "bg-white" : "bg-slate-400"
+                    }`}
+                  />
+                  队列下载 {queueEnabled ? "ON" : "OFF"}
+                </Button>
+
+                <Tooltip content={widgetOpen ? "关闭桌面下载小组件" : "打开桌面下载小组件（屏幕右下角悬浮球）"} placement="bottom">
+                  <Button
+                    variant={widgetOpen ? "primary" : "secondary"}
+                    size="md"
+                    icon={<Move className="w-3.5 h-3.5" />}
+                    onClick={handleToggleWidget}
+                    aria-label="桌面小组件"
+                  >
+                    {widgetOpen ? "组件 ON" : "桌面组件"}
+                  </Button>
+                </Tooltip>
+
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={handleStartAll}
+                  title="全部开始下载"
+                  aria-label="全部开始"
+                >
+                  全部开始
+                </Button>
+
+                <Button
+                  variant="secondary"
+                  size="md"
+                  onClick={handlePauseAll}
+                  title="全部暂停下载"
+                  aria-label="全部暂停"
+                >
+                  全部暂停
+                </Button>
+
+                {taskCounts.completed > 0 && (
+                  <Button
+                    variant="danger-subtle"
+                    size="md"
+                    onClick={handleClearCompleted}
+                    title="从列表中清空已完成任务"
+                  >
+                    清空已完成
+                  </Button>
+                )}
+
+                <Tooltip content="下载与全局系统设置" placement="bottom">
+                  <IconButton
+                    variant="secondary"
+                    size="md"
+                    icon={<Settings className="w-3.5 h-3.5" />}
+                    onClick={() => setShowSettingsModal(true)}
+                    aria-label="系统设置"
+                  />
+                </Tooltip>
               </div>
             }
           />
         </div>
 
-        {/* ====== Sticky Toolbar ====== */}
-        <div className="shrink-0 mb-4 p-3 pt-3 sticky top-0 bg-surface-1/85 backdrop-blur-md border-b border-hairline z-99">
-          {/* Queue Control Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              {taskCounts.downloading > 0 && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono bg-accent-500/10 text-accent-600 dark:text-accent-400 border border-accent-500/25">
-                  <span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />
-                  {taskCounts.downloading} 任务下载中
-                </span>
-              )}
-              {taskCounts.pending > 0 && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono bg-slate-100 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                  {taskCounts.pending} 个排队中
-                </span>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="primary"
-                size="md"
-                icon={<Plus className="w-3.5 h-3.5" />}
-                onClick={() => setShowNewTaskModal(true)}
-                title="新建 M3U8 下载任务"
-                aria-label="新建任务"
-              >
-                新建任务
-              </Button>
-
-              <Tooltip content="立即开启隐私屏保，遮住下载内容" placement="bottom">
-                <Button
-                  variant="secondary"
-                  size="md"
-                  icon={<EyeOff className="w-3.5 h-3.5" />}
-                  onClick={showPrivacyScreen}
-                  aria-label="隐私屏保"
-                >
-                  隐私屏保
-                </Button>
-              </Tooltip>
-
-              {/* 队列下载开关 */}
-              <Button
-                variant={queueEnabled ? "primary" : "secondary"}
-                size="md"
-                onClick={handleToggleQueue}
-                title={
-                  queueEnabled
-                    ? "点击关闭队列下载"
-                    : "点击开启队列下载（完成自动下一个）"
-                }
-              >
-                <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    queueEnabled ? "bg-white" : "bg-slate-400"
-                  }`}
-                />
-                队列下载 {queueEnabled ? "ON" : "OFF"}
-              </Button>
-
-              <Tooltip content={widgetOpen ? "关闭桌面下载小组件" : "打开桌面下载小组件（屏幕右下角悬浮球）"} placement="bottom">
-                <Button
-                  variant={widgetOpen ? "primary" : "secondary"}
-                  size="md"
-                  icon={<Move className="w-3.5 h-3.5" />}
-                  onClick={handleToggleWidget}
-                  aria-label="桌面小组件"
-                >
-                  {widgetOpen ? "组件 ON" : "桌面组件"}
-                </Button>
-              </Tooltip>
-
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={handleStartAll}
-                title="全部开始下载"
-                aria-label="全部开始"
-              >
-                全部开始
-              </Button>
-
-              <Button
-                variant="secondary"
-                size="md"
-                onClick={handlePauseAll}
-                title="全部暂停下载"
-                aria-label="全部暂停"
-              >
-                全部暂停
-              </Button>
-
-              {taskCounts.completed > 0 && (
-                <Button
-                  variant="danger-subtle"
-                  size="md"
-                  onClick={handleClearCompleted}
-                  title="从列表中清空已完成任务"
-                >
-                  清空已完成
-                </Button>
-              )}
-
-              <Tooltip content="下载与全局系统设置" placement="bottom">
-                <IconButton
-                  variant="secondary"
-                  size="md"
-                  icon={<Settings className="w-3.5 h-3.5" />}
-                  onClick={() => setShowSettingsModal(true)}
-                  aria-label="系统设置"
-                />
-              </Tooltip>
-            </div>
-          </div>
-
-        </div>
         {/* Task Grid */}
         <div className="grid gap-4 p-3 pt-0 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
           {filteredTasks.map((task, index) => (

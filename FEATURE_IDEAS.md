@@ -46,6 +46,7 @@
 | **配置单一权威写通道与单实例互斥 (B195)** | 单实例锁(`requestSingleInstanceLock`):多开时第二实例直接退出并唤起已有窗口聚焦,杜绝双份自动备份/后处理·抓取与并发写库;新增 `lib/settingsFile.ts` 作为 settings.json 路径唯一来源与原子读写通道,`storageRouter`、`createMainWindow`(closeAction)、`syncRouter`(云端合并写)均统一走它 | `index.ts`、`lib/settingsFile.ts`、`storageRouter.ts`、`createMainWindow.ts`、`syncRouter.ts` |
 | **断点续播与观看完成态记录 (B196)** | 复活启动续播提示并真正消费上次播放秒位(同流就地 seek、关闭即清续播位);LAST_PLAYED 带 duration/finished,自然播完写完成态并清除续播位;stats 记录 `lastPosition/positionUpdatedAt/completedCount/lastCompletedAt`,播放中顺带上报秒位,完成时写入 activity-history「完整看完」供回顾 | `PlayerPage.tsx`、`ResumePrompt.tsx`、`statsRouter.ts`、`activityRouter.ts` |
 | **本机取帧封面/海报生成器 (B198)** | 缺封面时从本地正片约 45% 处取一帧生成 cover.jpg(离线兜底,不依赖脆弱外源猜测);`libraryRouter.generateLocalFrameCovers` 整库批量处理(已存在 cover 自动跳过、无 ffmpeg 明确提示);CommandCenter「元数据」子台新增「缺封面·本机取帧」按钮 | `libraryRouter.ts`、`CommandCenterPage.tsx` |
+| **下载中心行情列表重写 (UI)** | 下载管理页 UI 全面重构为「一列宽行行情卡」：左封面缩略 + 名称/番号/状态/大小·速度·分片元信息带 + 3px 玫红渐变进度条 + 状态化操作组（FAILED 左竖线/PAUSED 去色/定时 ⏰ 60s 刷新）；详情弹层改右侧 420px 侧滑抽屉（进度环/护照网格/终端命令折叠）；头部行动组收编为 IconButton 组+批量操作下拉（功能零删减）；空态三卡改行式引导；删旧 TaskCard/TaskDetailCard。业务调度/进度 IPC/隐私屏保/壁纸背景层原样保留 | `DownloadTaskRow.tsx`、`TaskDetailDrawer.tsx`、`DownloadPage.tsx` |
 
 ---
 

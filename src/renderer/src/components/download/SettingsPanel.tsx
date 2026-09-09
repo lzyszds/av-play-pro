@@ -495,8 +495,8 @@ export function SettingsPanel({
 
   const tabBtnClass = (active: boolean) =>
     `flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium transition cursor-pointer ${active
-      ? "bg-accent-500/10 text-accent-500 dark:text-accent-400 font-bold"
-      : "text-text-2 hover:bg-accent-500/5 hover:text-text-1"
+      ? "bg-accent-500/10 text-accent-700 dark:text-accent-400 font-bold"
+      : "text-slate-600 dark:text-slate-400 hover:bg-slate-100/50 dark:hover:bg-slate-800/50"
     }`;
 
   const segBtnClass = (active: boolean) =>
@@ -519,12 +519,12 @@ export function SettingsPanel({
     >
       <form
         onSubmit={handleSubmit}
-        className="glass rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col h-[600px] anim-scale-in"
+        className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col h-[600px] anim-scale-in"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-3">
-            <div className="bg-accent-500/10 p-2.5 rounded-xl border border-accent-500/20">
+            <div className="bg-accent-500/10 dark:bg-accent-500/20 p-2.5 rounded-xl border border-accent-500/20">
               <Cpu className="w-5 h-5 text-accent-500" />
             </div>
             <div>
@@ -551,7 +551,7 @@ export function SettingsPanel({
         {/* Body */}
         <div className="flex flex-1 overflow-hidden">
           {/* Sidebar */}
-          <div className="w-48 bg-surface-2 border-r border-hairline p-3 flex flex-col gap-1 shrink-0">
+          <div className="w-48 bg-slate-50/50 dark:bg-slate-900/50 border-r border-slate-100 dark:border-slate-800 p-3 flex flex-col gap-1 shrink-0">
             {tabs.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}

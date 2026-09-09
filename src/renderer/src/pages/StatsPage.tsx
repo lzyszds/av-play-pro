@@ -37,6 +37,7 @@ import {
 import { AchievementsPanel } from "../components/stats/AchievementsPanel";
 import { triggerAchievementToast } from "../components/achievements/AchievementToast";
 import { Button } from "../components/common/Button";
+import { PageHeader } from "../components/common/PageHeader";
 import {
   Area,
   AreaChart,
@@ -1058,60 +1059,48 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
     <div className="relative h-full overflow-y-auto bg-slate-50/50 dark:bg-slate-950 p-6 space-y-6 text-slate-800 dark:text-slate-100">
       <PageLoader active={!stats} label="正在汇聚多维数据中心..." />
 
-      {/* ================= 1. 顶部 Header & 工具栏 ================= */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/80 dark:border-slate-800/80 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shadow-xs shrink-0">
-            <BarChart3 className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-                数据洞察中心
-              </h2>
-              <span className="text-[10px] font-bold font-mono uppercase px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                {libraryVideos.length} 部片库
-              </span>
+      {/* ================= 1. 顶部 Header & 工具栏（统一 PageHeader） ================= */}
+      <div className="pb-4 border-b border-slate-200/80 dark:border-slate-800/80 shrink-0">
+        <PageHeader
+          icon={<BarChart3 className="w-5 h-5" />}
+          title="数据洞察中心"
+          micro={`${libraryVideos.length} 部片库`}
+          subtitle="实时聚合观影习惯、时段偏好、深度榜单与磁盘空间全景"
+          actions={
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <Button
+                variant="primary"
+                size="md"
+                icon={<Sparkles className="w-3.5 h-3.5 animate-pulse" />}
+                onClick={() => setShowReportModal(true)}
+                title="生成赛博朋克观影战斗力年度档案"
+              >
+                观影战力年报
+              </Button>
+
+              <Button
+                variant="secondary"
+                size="md"
+                icon={<History className="w-3.5 h-3.5 text-amber-500" />}
+                onClick={() => setShowHistoryModal(true)}
+                title="查看完整操作时间线"
+              >
+                操作历史
+              </Button>
+
+              <Button
+                variant="secondary"
+                size="md"
+                icon={<FolderArchive className="w-3.5 h-3.5 text-blue-500" />}
+                onClick={() => setShowOrganizerModal(true)}
+                className="text-blue-600 dark:text-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/20"
+                title="Emby/Plex 媒体库软链接归档"
+              >
+                Emby软链接
+              </Button>
             </div>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-              实时聚合观影习惯、时段偏好、深度榜单与磁盘空间全景
-            </p>
-          </div>
-        </div>
-
-        {/* 顶部三大高能入口与功能按钮 */}
-        <div className="flex items-center gap-2 shrink-0 flex-wrap">
-          <Button
-            variant="primary"
-            size="md"
-            icon={<Sparkles className="w-3.5 h-3.5 animate-pulse" />}
-            onClick={() => setShowReportModal(true)}
-            title="生成赛博朋克观影战斗力年度档案"
-          >
-            观影战力年报
-          </Button>
-
-          <Button
-            variant="secondary"
-            size="md"
-            icon={<History className="w-3.5 h-3.5 text-amber-500" />}
-            onClick={() => setShowHistoryModal(true)}
-            title="查看完整操作时间线"
-          >
-            操作历史
-          </Button>
-
-          <Button
-            variant="secondary"
-            size="md"
-            icon={<FolderArchive className="w-3.5 h-3.5 text-blue-500" />}
-            onClick={() => setShowOrganizerModal(true)}
-            className="text-blue-600 dark:text-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/20"
-            title="Emby/Plex 媒体库软链接归档"
-          >
-            Emby软链接
-          </Button>
-        </div>
+          }
+        />
       </div>
 
       {/* ================= 2. 标签页导航器 (Tabs) ================= */}

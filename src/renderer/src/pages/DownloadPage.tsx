@@ -1485,7 +1485,7 @@ export function DownloadPage({
       {/* ====== Task List (scrollable) ====== */}
       <div className="relative z-10 flex-1 overflow-y-scroll pt-0 min-h-50 bg-white/4 dark:bg-slate-950/10">
         {/* ====== 统一单行头部标题栏（与其它 tab 一致）+ 队列操作，随列表吸顶 ====== */}
-        <div className="shrink-0 mb-4 px-3 pt-4 pb-3 sticky top-0 bg-white/85 dark:bg-slate-950/85 z-99">
+        <div className="shrink-0 mb-4 px-6 pt-5 pb-3 sticky top-0 bg-white/85 dark:bg-slate-950/85 z-99">
           <PageHeader
             icon={<Download className="w-5 h-5" />}
             title="下载管理中心"
@@ -1608,7 +1608,7 @@ export function DownloadPage({
         </div>
 
         {/* Task Grid */}
-        <div className="grid gap-4 p-3 pt-0 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
+        <div className="grid gap-4 px-6 pb-6 pt-0 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
           {filteredTasks.map((task, index) => (
             <TaskCard
               key={task.id}

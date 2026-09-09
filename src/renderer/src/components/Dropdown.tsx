@@ -78,7 +78,8 @@ export function Dropdown<T extends string>({
     };
   }, [open]);
 
-  const defaultTriggerClass = "flex items-center justify-between gap-2 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50/40 transition cursor-pointer text-[11px] font-sans";
+  const defaultTriggerClass =
+    "flex items-center justify-between gap-2 px-2.5 py-1 rounded-lg border border-hairline bg-surface-1 text-text-2 hover:border-accent-400/60 hover:bg-accent-500/10 hover:text-text-1 transition cursor-pointer text-[11px] font-sans";
 
   return (
     <div className={`relative inline-block ${className}`}>
@@ -106,7 +107,7 @@ export function Dropdown<T extends string>({
           )}
         </span>
         <ChevronDown
-          className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${
+          className={`w-3.5 h-3.5 text-text-3 shrink-0 transition-transform duration-200 ${
             open ? "rotate-180" : ""
           }`}
         />
@@ -125,7 +126,7 @@ export function Dropdown<T extends string>({
             }}
             className="z-[1000] anim-scale-in origin-top-right"
           >
-            <ul className="py-1 rounded-lg border border-slate-200 bg-white shadow-lg shadow-slate-900/10 max-h-64 overflow-y-auto drop-scrollbar">
+            <ul className="py-1 rounded-lg border border-hairline bg-panel dark:bg-[#161016] shadow-xl shadow-black/15 dark:shadow-black/50 max-h-64 overflow-y-auto drop-scrollbar">
               {options.map((opt) => {
                 const active = opt.value === value;
                 return (
@@ -138,8 +139,8 @@ export function Dropdown<T extends string>({
                       }}
                       className={`w-full flex items-center justify-between gap-3 px-2.5 py-1.5 text-left text-[11px] transition cursor-pointer ${
                         active
-                          ? "bg-amber-50 text-amber-700 font-semibold"
-                          : "text-slate-600 hover:bg-slate-50"
+                          ? "bg-accent-500/10 text-accent-600 dark:text-accent-400 font-semibold"
+                          : "text-text-2 hover:bg-accent-500/5 hover:text-text-1"
                       }`}
                     >
                       <span className="flex items-center gap-1.5 whitespace-nowrap">
@@ -148,7 +149,7 @@ export function Dropdown<T extends string>({
                         )}
                         {opt.label}
                       </span>
-                      {active && <Check className="w-3 h-3 text-amber-600 shrink-0" />}
+                      {active && <Check className="w-3 h-3 text-accent-500 shrink-0" />}
                     </button>
                   </li>
                 );

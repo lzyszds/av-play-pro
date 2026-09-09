@@ -83,12 +83,12 @@ function TaskCardImpl({
       id={`task-card-${task.id}`}
       onClick={() => onSelectTask(task.id)}
       style={{ ["--i" as string]: Math.min(index, 12) }}
-      className={`anim-fade-stagger group relative flex flex-col bg-white rounded-xl border overflow-hidden cursor-pointer transition-transform duration-150 hover:-translate-y-0.5 will-change-transform ${
+      className={`anim-fade-stagger group relative flex flex-col bg-surface-1 rounded-xl border overflow-hidden cursor-pointer transition-transform duration-150 hover:-translate-y-0.5 will-change-transform ${
         isFlashing
-          ? "border-amber-500 ring-4 ring-amber-400/60 shadow-xl shadow-amber-500/30"
+          ? "border-accent-500 ring-4 ring-accent-400/60 shadow-xl shadow-accent-500/30"
           : isSelected
-            ? "border-amber-500 ring-2 ring-amber-500/30 shadow-sm"
-            : "border-slate-200 shadow-sm"
+            ? "border-accent-500 ring-2 ring-accent-500/30 shadow-sm"
+            : "border-hairline shadow-sm"
       }`}
     >
       {/* Cover / Preview */}
@@ -145,7 +145,7 @@ function TaskCardImpl({
       {/* Info + Actions */}
       <div className="flex flex-col gap-1.5 p-3">
         <div
-          className="font-semibold text-[13px] text-slate-800 truncate group-hover:text-amber-700 transition-colors"
+          className="font-semibold text-[13px] text-text-1 truncate group-hover:text-accent-600 transition-colors"
           title={task.name}
         >
           {task.name}
@@ -156,8 +156,8 @@ function TaskCardImpl({
           </div>
         )}
 
-        <div className="mt-1.5 rounded-lg border border-slate-100 bg-slate-50/80 px-2 py-1.5" title={task.status === "FAILED" ? "任务在当前节点前失败，可展开详情查看日志" : "下载链路"}>
-          <div className="mb-1 flex items-center justify-between text-[8px] font-bold tracking-[0.12em] text-slate-400">
+        <div className="mt-1.5 rounded-lg border-hairline bg-surface-2 px-2 py-1.5" title={task.status === "FAILED" ? "任务在当前节点前失败，可展开详情查看日志" : "下载链路"}>
+          <div className="mb-1 flex items-center justify-between text-[8px] font-bold tracking-[0.12em] text-text-3">
             <span>ASSET PIPELINE</span>
             <span>{task.status === "COMPLETED" ? "READY" : task.status}</span>
           </div>
@@ -180,7 +180,7 @@ function TaskCardImpl({
         </div>
 
         <div className="flex items-center justify-between mt-1">
-          <div className="flex items-center gap-2 text-[10px] text-black font-mono min-w-0">
+          <div className="flex items-center gap-2 text-[10px] text-text-1 font-mono min-w-0">
             <span className="truncate">
               {task.totalSize > 0
                 ? `${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)}`
@@ -189,18 +189,18 @@ function TaskCardImpl({
                   : "未知大小"}
             </span>
             {task.encryptionType && task.encryptionType !== "NONE" && (
-              <span className="text-slate-500">* {task.encryptionType}</span>
+              <span className="text-text-3">* {task.encryptionType}</span>
             )}
           </div>
 
           <div
-            className="flex items-center gap-1.5 text-black shrink-0"
+            className="flex items-center gap-1.5 text-text-3 shrink-0"
             onClick={(e) => e.stopPropagation()}
           >
             <Tooltip content="复制 N_m3u8DL-RE 调取指令" placement="top">
               <button
                 onClick={(e) => onCopyCommand(e, task)}
-                className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:bg-amber-50 hover:text-amber-700 transition cursor-pointer"
+                className="p-1.5 rounded-lg bg-surface-2 border-hairline hover:bg-accent-500/10 hover:text-accent-500 transition cursor-pointer"
               >
                 {copiedTaskId === task.id ? (
                   <Check className="w-3.5 h-3.5 text-emerald-500" />
@@ -215,7 +215,7 @@ function TaskCardImpl({
                 <Tooltip content="重新下载（覆盖已下载文件）" placement="top">
                   <button
                     onClick={() => onRedownload?.(task.id)}
-                    className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 hover:text-amber-700 hover:bg-amber-50 transition cursor-pointer"
+                    className="p-1.5 rounded-lg bg-surface-2 border-hairline text-text-3 hover:text-accent-500 hover:bg-accent-500/10 transition cursor-pointer"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                   </button>
@@ -245,10 +245,10 @@ function TaskCardImpl({
               >
                 <button
                   onClick={() => onTriggerPauseResume(task.id)}
-                  className={`p-1.5 rounded-lg bg-slate-50 border border-slate-200 transition cursor-pointer ${
+                  className={`p-1.5 rounded-lg bg-surface-2 border-hairline transition cursor-pointer ${
                     task.status === "DOWNLOADING"
-                      ? "text-amber-600 hover:bg-amber-50"
-                      : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                      ? "text-accent-500 hover:bg-accent-500/10"
+                      : "text-text-3 hover:text-text-1 hover:bg-accent-500/5"
                   }`}
                 >
                   {task.status === "DOWNLOADING" ? (
@@ -263,7 +263,7 @@ function TaskCardImpl({
             <Tooltip content="删除任务" placement="top">
               <button
                 onClick={() => onDeleteTask(task.id)}
-                className="p-1.5 rounded-lg bg-slate-50 border border-slate-200 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                className="p-1.5 rounded-lg bg-surface-2 border-hairline hover:text-rose-500 hover:bg-rose-500/10 transition cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>

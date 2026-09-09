@@ -15,6 +15,7 @@ import { NewsPage } from "./pages/NewsPage";
 import { ScraperWebview } from "./components/ScraperWebview";
 import { AchievementToast } from "./components/achievements/AchievementToast";
 import { trpc } from "./lib/trpc";
+import { wallpaperScreenUrl } from "./lib/wallpaper";
 import type { AppSettings, LogMessage } from "./pages/download/types";
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -51,6 +52,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   newsApiKey: "Aa395878870",
   autoArousalOnPlay: true,
   playerLayout: "classic",
+  downloadBgVisible: true,
+  downloadBgOpacity: 42,
+  downloadBgDim: 0,
+  achievementToast: true,
+  uiZoom: 100,
 };
 
 // 合法的页面 key，用于校验持久化的 lastPage
@@ -69,9 +75,10 @@ function applyLoaderStyle(style: AppSettings["loaderStyle"]): void {
 }
 
 function applyWallpaperScene(background: AppSettings["downloadBackground"]): void {
+  // 全局壁纸/加载遮罩走分级档：按窗口实际像素需要选 HD(2560) 或原图，避免常驻解码 4K~6K
   document.documentElement.style.setProperty(
     "--app-wallpaper-image",
-    `url("./${background ?? "1"}.webp")`,
+    `url("${wallpaperScreenUrl(background ?? "1")}")`,
   );
 }
 
@@ -369,6 +376,14 @@ export default function App() {
     applyWallpaperScene(settings.downloadBackground ?? "1");
   }, [settings.downloadBackground]);
 
+  // 全局界面缩放：经主进程 webContents.setZoomFactor 生效（设置里 85%–120%）
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    const pct = Math.max(85, Math.min(120, settings.uiZoom ?? 100));
+    const setZoom = window.electronAPI?.app?.setZoom;
+    if (setZoom) void setZoom(pct / 100);
+  }, [settings.uiZoom, settingsLoaded]);
+
   // 设置变更落盘（防抖 500ms）
   useEffect(() => {
     if (!settingsLoaded) return;
@@ -381,7 +396,7 @@ export default function App() {
   }, [settings, settingsLoaded]);
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#f4f6f9] text-slate-600 dark:bg-slate-950 dark:text-slate-300 overflow-hidden select-none">
+    <div className="h-screen w-screen flex flex-col bg-canvas text-text-2 overflow-hidden select-none">
       <TitleBar
         currentPage={currentPage}
         onPageChange={(page) => setCurrentPage(page)}
@@ -521,36 +536,27 @@ export default function App() {
       )}
 
       {settingsOpen && (
-        <div
-          className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center anim-fade-in"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setSettingsOpen(false);
+        <SettingsPanel
+          settings={settings}
+          onSaveSettings={(next) => {
+            // 保存时保证 maxConcurrentTasks 保持无上限（若用户手动设了值，也尊重；0 / 空 / 负数 → Infinity）
+            const merged: AppSettings = {
+              ...next,
+              maxConcurrentTasks:
+                next.maxConcurrentTasks && next.maxConcurrentTasks > 0
+                  ? next.maxConcurrentTasks
+                  : Infinity,
+            };
+            setSettings(merged);
+            setSettingsOpen(false);
           }}
-        >
-          <div className="anim-pop-in" style={{ width: "100%", maxWidth: 1080 }}>
-            <SettingsPanel
-              settings={settings}
-              onSaveSettings={(next) => {
-                // 保存时保证 maxConcurrentTasks 保持无上限（若用户手动设了值，也尊重；0 / 空 / 负数 → Infinity）
-                const merged: AppSettings = {
-                  ...next,
-                  maxConcurrentTasks:
-                    next.maxConcurrentTasks && next.maxConcurrentTasks > 0
-                      ? next.maxConcurrentTasks
-                      : Infinity,
-                };
-                setSettings(merged);
-                setSettingsOpen(false);
-              }}
-              onAddSystemLog={addLog}
-              onClose={() => setSettingsOpen(false)}
-            />
-          </div>
-        </div>
+          onAddSystemLog={addLog}
+          onClose={() => setSettingsOpen(false)}
+        />
       )}
 
       {/* 全局成就解锁跳杯提示 */}
-      <AchievementToast />
+      <AchievementToast enabled={settings.achievementToast !== false} />
     </div>
   );
 }

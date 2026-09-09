@@ -34,7 +34,7 @@ export interface ButtonProps
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    "bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold border border-amber-500/40 shadow-sm shadow-amber-500/20 active:scale-[0.98]",
+    "bg-gradient-to-r from-accent-500 to-accent-600 hover:from-accent-600 hover:to-accent-700 text-white font-bold border border-accent-500/40 shadow-sm shadow-accent-500/20 active:scale-[0.98]",
   secondary:
     "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 font-semibold shadow-2xs active:scale-[0.98]",
   outline:
@@ -46,18 +46,18 @@ const variantStyles: Record<ButtonVariant, string> = {
   "danger-subtle":
     "bg-rose-50 hover:bg-rose-100/80 dark:bg-rose-950/30 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 border border-rose-200/80 dark:border-rose-900/50 font-semibold active:scale-[0.98]",
   subtle:
-    "bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/25 font-semibold active:scale-[0.98]",
+    "bg-accent-500/10 hover:bg-accent-500/20 text-accent-600 dark:text-accent-400 border border-accent-500/25 font-semibold active:scale-[0.98]",
   accent:
-    "bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border border-amber-500/35 font-bold active:scale-[0.98]",
+    "bg-accent-500/15 hover:bg-accent-500/25 text-accent-700 dark:text-accent-300 border border-accent-500/35 font-bold active:scale-[0.98]",
 };
 
 const activeVariantStyles: Partial<Record<ButtonVariant, string>> = {
   secondary:
-    "bg-amber-50 dark:bg-amber-950/30 border-amber-500/60 text-amber-600 dark:text-amber-400 shadow-xs",
+    "bg-accent-50 dark:bg-accent-950/30 border-accent-500/60 text-accent-600 dark:text-accent-400 shadow-xs",
   outline:
-    "bg-amber-50 dark:bg-amber-950/30 border-amber-500/60 text-amber-600 dark:text-amber-400",
+    "bg-accent-50 dark:bg-accent-950/30 border-accent-500/60 text-accent-600 dark:text-accent-400",
   ghost:
-    "bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold",
+    "bg-accent-500/10 text-accent-600 dark:text-accent-400 font-bold",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
@@ -101,7 +101,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         type={type}
         disabled={disabled || loading}
-        className={`inline-flex items-center justify-center select-none transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 ${
+        className={`inline-flex items-center justify-center select-none transition-all duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/40 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 ${
           pill ? "rounded-full" : ""
         } ${sizeStyles[size]} ${effectiveVariantStyle} ${className}`}
         {...props}

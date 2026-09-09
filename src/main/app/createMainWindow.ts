@@ -1,4 +1,4 @@
-import { BrowserWindow, shell, app, dialog } from "electron";
+import { BrowserWindow, shell, app, dialog, ipcMain } from "electron";
 import { join } from "path";
 import { existsSync } from "fs";
 import { readSettingsJson, writeSettingsJson } from "../lib/settingsFile";
@@ -61,6 +61,13 @@ export function createMainWindow(): void {
   setMainWindow(window);
 
   createIPCHandler({ router: appRouter, windows: [window] });
+
+  // 全局界面缩放（设置页个性化里 85%–120%）：避免重复注册，先移除再挂载
+  ipcMain.removeHandler("app:set-zoom");
+  ipcMain.handle("app:set-zoom", (_event, factor: unknown) => {
+    const zoom = typeof factor === "number" ? factor : 1;
+    window.webContents.setZoomFactor(Math.max(0.6, Math.min(2, zoom)));
+  });
 
   // 注入刮削实现，供下载后处理队列调用（通过 trpc createCaller 复用 metaRouter 逻辑）
   setScrapeImpl(async (folderPath: string) => {

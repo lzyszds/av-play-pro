@@ -29,6 +29,7 @@ export interface ElectronAPI {
     onTrayCommand: (
       callback: (data: { type: string; page?: string }) => void,
     ) => () => void;
+    setZoom: (factor: number) => Promise<void>;
   };
   sync?: {
     onSyncStatus: (

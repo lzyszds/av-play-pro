@@ -158,7 +158,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
 
   return (
     <div
-      className="h-9 bg-slate-900 flex items-center justify-between select-none shrink-0"
+      className="h-9 bg-canvas border-b border-hairline flex items-center justify-between select-none shrink-0"
       style={drag}
     >
       <div className="flex items-center h-full min-w-0">
@@ -170,7 +170,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             alt="AVPlayPro"
             className="w-4 h-4 rounded-sm object-contain"
           />
-          <span className="text-xs text-slate-300 font-medium truncate">
+          <span className="text-xs text-text-1 font-medium truncate">
             AVPlayPro
           </span>
         </div>
@@ -181,8 +181,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
                 type="button"
                 onClick={() => onPageChange(key)}
                 className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${currentPage === key
-                    ? "bg-amber-500 text-white shadow-sm"
-                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800"
+                    ? "bg-accent-500 text-white shadow-sm"
+                    : "text-text-2 hover:text-text-1 hover:bg-accent-500/10"
                   }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -199,7 +199,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
         style={drag}
       >
         {systemLogs.length > 0 && (
-          <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500 max-w-md truncate">
+          <div className="flex items-center gap-2 text-[10px] font-mono text-text-3 max-w-md truncate">
             <Terminal className="w-3 h-3 text-emerald-500 shrink-0" />
             <span className="truncate">
               {systemLogs[systemLogs.length - 1].text}
@@ -225,7 +225,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             onContextMenu={handleHeartContextMenu}
             className={`h-full flex items-center gap-1.5 px-2.5 transition cursor-pointer ${arousalActive
                 ? "bg-rose-600 text-white shadow-sm"
-                : "text-slate-400 hover:text-rose-400 hover:bg-slate-800"
+                : "text-text-2 hover:text-accent-400 hover:bg-accent-500/10"
               }`}
           >
             <Heart
@@ -251,8 +251,8 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             title={consoleOpen ? "隐藏底部实时日志控制台" : "展开底部实时日志控制台"}
             aria-label="实时日志控制台"
             className={`w-9 h-full flex items-center justify-center transition cursor-pointer ${consoleOpen
-                ? "text-amber-400 bg-slate-800"
-                : "text-slate-400 hover:text-amber-400 hover:bg-slate-800"
+                ? "text-accent-400 bg-accent-500/15"
+                : "text-text-2 hover:text-accent-400 hover:bg-accent-500/10"
               }`}
           >
             <TerminalSquare className="w-3.5 h-3.5" />
@@ -269,7 +269,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             onClick={onToggleSound}
             title={notifySound ? "任务完成提示音：已开启 (点击静音)" : "任务完成提示音：已关闭 (点击开启)"}
             aria-label="提示音开关"
-            className="w-9 h-full flex items-center justify-center text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition cursor-pointer"
+            className="w-9 h-full flex items-center justify-center text-text-2 hover:text-accent-400 hover:bg-accent-500/10 transition cursor-pointer"
           >
             {notifySound ? (
               <Volume2 className="w-3.5 h-3.5" />
@@ -286,7 +286,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             onClick={onCycleTheme}
             title={`当前外观：${themeMeta[theme].label} (点击切换深/浅/系统)`}
             aria-label="切换外观主题"
-            className="w-9 h-full flex items-center justify-center text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition cursor-pointer"
+            className="w-9 h-full flex items-center justify-center text-text-2 hover:text-accent-400 hover:bg-accent-500/10 transition cursor-pointer"
           >
             <ThemeIcon className="w-3.5 h-3.5" />
           </button>
@@ -299,13 +299,13 @@ export const TitleBar: React.FC<TitleBarProps> = ({
             onClick={onOpenSettings}
             title="偏好设置与 Cloudflare 云端同步"
             aria-label="系统设置"
-            className="w-9 h-full flex items-center justify-center text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition cursor-pointer"
+            className="w-9 h-full flex items-center justify-center text-text-2 hover:text-accent-400 hover:bg-accent-500/10 transition cursor-pointer"
           >
             <SettingsIcon className="w-3.5 h-3.5" />
           </button>
         </Tooltip>
 
-        <div className="w-px h-4 bg-slate-700 mx-1" />
+        <div className="w-px h-4 bg-hairline mx-1" />
 
         {/* 窗口控制按钮：macOS 由系统红绿灯提供，仅 Windows/Linux 显示 */}
         {!isMac && (
@@ -316,7 +316,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
                 onClick={() => trpc.window.minimize.mutate()}
                 title="最小化窗口"
                 aria-label="最小化窗口"
-                className="w-10 h-full flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                className="w-10 h-full flex items-center justify-center text-text-2 hover:text-text-1 hover:bg-accent-500/10 transition cursor-pointer"
               >
                 <Minus className="w-3.5 h-3.5" />
               </button>
@@ -327,7 +327,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
                 onClick={() => trpc.window.maximize.mutate()}
                 title="最大化 / 还原窗口"
                 aria-label="最大化窗口"
-                className="w-10 h-full flex items-center justify-center text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition cursor-pointer"
+                className="w-10 h-full flex items-center justify-center text-text-2 hover:text-text-1 hover:bg-accent-500/10 transition cursor-pointer"
               >
                 <Square className="w-3 h-3" />
               </button>
@@ -356,11 +356,11 @@ export const TitleBar: React.FC<TitleBarProps> = ({
               left: Math.min(window.innerWidth - 200, arousalMenu.x - 100),
               zIndex: 999999,
             }}
-            className="w-48 bg-slate-900 border border-slate-700 rounded-xl p-1.5 shadow-2xl backdrop-blur-xl text-white text-xs animate-in fade-in zoom-in-95 duration-150"
+            className="w-48 bg-panel dark:bg-[#161016] border border-hairline rounded-xl p-1.5 shadow-2xl text-text-1 text-xs animate-in fade-in zoom-in-95 duration-150"
           >
-            <div className="px-2.5 py-1 text-[10px] font-bold text-slate-400 border-b border-slate-800 mb-1 flex items-center justify-between">
+            <div className="px-2.5 py-1 text-[10px] font-bold text-text-3 border-b border-hairline mb-1 flex items-center justify-between">
               <span>私密时间追溯调整</span>
-              <Clock className="w-3 h-3 text-rose-400" />
+              <Clock className="w-3 h-3 text-accent-400" />
             </div>
             <button
               type="button"
@@ -368,10 +368,10 @@ export const TitleBar: React.FC<TitleBarProps> = ({
                 onAdjustArousal?.((arousalActive ? arousalElapsed : 0) + 300);
                 setArousalMenu(null);
               }}
-              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-amber-300 transition flex items-center justify-between cursor-pointer"
+              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-accent-500/10 text-text-2 hover:text-accent-500 transition flex items-center justify-between cursor-pointer"
             >
               <span>推前 5 分钟 (已开始5m)</span>
-              <span className="text-[10px] font-mono text-slate-500">+5m</span>
+              <span className="text-[10px] font-mono text-text-3">+5m</span>
             </button>
             <button
               type="button"
@@ -379,10 +379,10 @@ export const TitleBar: React.FC<TitleBarProps> = ({
                 onAdjustArousal?.((arousalActive ? arousalElapsed : 0) + 900);
                 setArousalMenu(null);
               }}
-              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-amber-300 transition flex items-center justify-between cursor-pointer"
+              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-accent-500/10 text-text-2 hover:text-accent-500 transition flex items-center justify-between cursor-pointer"
             >
               <span>推前 15 分钟 (已开始15m)</span>
-              <span className="text-[10px] font-mono text-slate-500">+15m</span>
+              <span className="text-[10px] font-mono text-text-3">+15m</span>
             </button>
             <button
               type="button"
@@ -390,21 +390,21 @@ export const TitleBar: React.FC<TitleBarProps> = ({
                 onAdjustArousal?.((arousalActive ? arousalElapsed : 0) + 1800);
                 setArousalMenu(null);
               }}
-              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-200 hover:text-amber-300 transition flex items-center justify-between cursor-pointer"
+              className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-accent-500/10 text-text-2 hover:text-accent-500 transition flex items-center justify-between cursor-pointer"
             >
               <span>推前 30 分钟 (已开始30m)</span>
-              <span className="text-[10px] font-mono text-slate-500">+30m</span>
+              <span className="text-[10px] font-mono text-text-3">+30m</span>
             </button>
             {arousalActive && (
               <>
-                <div className="my-1 border-t border-slate-800" />
+                <div className="my-1 border-t border-hairline" />
                 <button
                   type="button"
                   onClick={() => {
                     onAdjustArousal?.(0);
                     setArousalMenu(null);
                   }}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-rose-400 transition flex items-center gap-1.5 cursor-pointer"
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-accent-500/10 text-text-2 hover:text-accent-400 transition flex items-center gap-1.5 cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" />
                   <span>清零重新计时</span>

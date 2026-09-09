@@ -92,7 +92,9 @@ export function triggerAchievementToast(ach: UnlockedAchievement): void {
   );
 }
 
-export const AchievementToast: React.FC = () => {
+export const AchievementToast: React.FC<{ enabled?: boolean }> = ({
+  enabled = true,
+}) => {
   const [current, setCurrent] = useState<UnlockedAchievement | null>(null);
   const [queue, setQueue] = useState<UnlockedAchievement[]>([]);
 
@@ -100,6 +102,7 @@ export const AchievementToast: React.FC = () => {
     const onUnlocked = (e: Event) => {
       const ach = (e as CustomEvent<UnlockedAchievement>).detail;
       if (!ach) return;
+      if (!enabled) return; // 关闭弹杯时只记录不展示，避免积压后突然弹出
       setQueue((prev) => [...prev, ach]);
     };
 
@@ -107,7 +110,14 @@ export const AchievementToast: React.FC = () => {
     return () => {
       window.removeEventListener("avplay:achievement-unlocked", onUnlocked);
     };
-  }, []);
+  }, [enabled]);
+
+  // 从开切到关：清空正在展示 / 排队中的弹杯
+  useEffect(() => {
+    if (enabled) return;
+    setQueue([]);
+    setCurrent(null);
+  }, [enabled]);
 
   useEffect(() => {
     if (!current && queue.length > 0) {

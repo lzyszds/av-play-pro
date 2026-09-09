@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { trpc } from "../lib/trpc";
 import { thumbnailQueue } from "../lib/thumbnailQueue";
+import { wallpaperScreenUrl } from "../lib/wallpaper";
 import {
   Plus,
   FileVideo,
@@ -25,6 +26,7 @@ import { TaskDetailCard } from "../components/download/TaskDetailCard";
 import { DownloadFloatingBall } from "../components/download/DownloadFloatingBall";
 import { Tooltip } from "../components/common/Tooltip";
 import { Button, IconButton } from "../components/common/Button";
+import { PageHeader } from "../components/common/PageHeader";
 import { PageLoader } from "../components/PageLoader";
 import type {
   AppSettings,
@@ -1409,8 +1411,9 @@ export function DownloadPage({
         t.name.toLowerCase().includes(q) || t.url.toLowerCase().includes(q),
     );
   }, [tasks, searchTerm]);
-  const downloadBackgroundUrl = `./${settings.downloadBackground ?? "1"}.webp`;
-  const privacyBackgroundUrl = `./${privacyBackground}.webp`;
+  // 全屏装饰性背景按窗口物理像素选择 HD(2560) 或原图，避免无谓解码 4K~6K 整幅壁纸
+  const downloadBackgroundUrl = wallpaperScreenUrl(settings.downloadBackground ?? "1");
+  const privacyBackgroundUrl = wallpaperScreenUrl(privacyBackground);
   const legacyPrivacySettings = settings as AppSettings & {
     privacyScreenDim?: number;
   };
@@ -1451,54 +1454,81 @@ export function DownloadPage({
     <div className="relative h-full flex flex-col min-h-0 overflow-hidden">
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {/* 单层背景：去掉 blur-2xl 的全屏高斯模糊层，列表滚动时合成器不再每帧重栅格化 */}
-        <div
-          key={`main-${downloadBackgroundUrl}`}
-          className="download-bg-layer absolute inset-0 bg-cover bg-center"
-          style={{
-            ["--bg-opacity" as string]: 0.42,
-            ["--bg-scale" as string]: 1.03,
-            backgroundImage: `url("${downloadBackgroundUrl}")`,
-          }}
-        />
+        {settings.downloadBgVisible !== false && (
+          <div
+            key={`main-${downloadBackgroundUrl}`}
+            className="download-bg-layer absolute inset-0 bg-cover bg-center"
+            style={{
+              // 背景浓度可调（默认 42 = 原写死的 0.42）
+              ["--bg-opacity" as string]: Math.max(
+                0,
+                Math.min(100, settings.downloadBgOpacity ?? 42),
+              ) / 100,
+              ["--bg-scale" as string]: 1.03,
+              backgroundImage: `url("${downloadBackgroundUrl}")`,
+            }}
+          />
+        )}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(255,255,255,0.20),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.12),transparent_30%),linear-gradient(135deg,rgba(255,250,245,0.38),rgba(248,250,252,0.22)_52%,rgba(255,241,242,0.24))] dark:bg-[radial-gradient(circle_at_18%_16%,rgba(244,63,94,0.08),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(14,165,233,0.08),transparent_30%),linear-gradient(135deg,rgba(2,6,23,0.58),rgba(15,23,42,0.42)_52%,rgba(25,7,17,0.38))]" />
+        {/* 暗化蒙层：可调的额外黑色压暗，默认 0 = 与升级前外观完全一致 */}
+        {settings.downloadBgDim !== undefined && settings.downloadBgDim > 0 && (
+          <div
+            className="absolute inset-0 bg-black"
+            style={{
+              opacity: Math.max(0, Math.min(100, settings.downloadBgDim)) / 200,
+            }}
+          />
+        )}
       </div>
       <PageLoader active={!storageLoaded} label="加载任务列表" />
 
       {/* ====== Task List (scrollable) ====== */}
       <div className="relative z-10 flex-1 overflow-y-scroll pt-0 min-h-50 bg-white/4 dark:bg-slate-950/10">
+        {/* ====== Page Header（随列表上滚淡出，吸顶工具栏接管） ====== */}
+        <div className="px-3 pt-4 pb-2">
+          <PageHeader
+            icon={<Download className="w-5 h-5" />}
+            title="下载管理中心"
+            micro={tasks.length > 0 ? `${tasks.length} 项` : undefined}
+            subtitle={
+              `${taskCounts.downloading} 下载中 · ${taskCounts.pending} 排队 · ${taskCounts.completed} 已完成` +
+              (searchTerm.trim() ? ` · 已过滤「${searchTerm.trim()}」` : "")
+            }
+            actions={
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="搜索任务 / 链接…"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-44 sm:w-56 h-9 bg-surface-2 border border-hairline rounded-xl pl-8 pr-3 text-xs text-text-1 placeholder:text-text-3 focus:outline-none focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 transition-all shadow-2xs"
+                />
+                <Search className="w-3.5 h-3.5 text-text-3 absolute left-2.5 top-3" />
+              </div>
+            }
+          />
+        </div>
+
         {/* ====== Sticky Toolbar ====== */}
-        <div className="shrink-0 mb-4 p-3 pt-4 sticky top-0 bg-white/85 dark:bg-slate-950/85 z-99">
+        <div className="shrink-0 mb-4 p-3 pt-3 sticky top-0 bg-surface-1/85 backdrop-blur-md border-b border-hairline z-99">
           {/* Queue Control Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <span className="text-xs font-bold text-slate-500 dark:text-white bg-slate-200/50 rounded-full px-2.5 py-0.5">
-                当前任务队列 ({tasks.length})
-              </span>
               {taskCounts.downloading > 0 && (
-                <span className="text-[10px] bg-amber-100 text-amber-700 rounded-full px-2.5 py-0.5 font-mono font-bold">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono bg-accent-500/10 text-accent-600 dark:text-accent-400 border border-accent-500/25">
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent-500 animate-pulse" />
                   {taskCounts.downloading} 任务下载中
                 </span>
               )}
               {taskCounts.pending > 0 && (
-                <span className="text-[10px] bg-slate-200 text-slate-600 rounded-full px-2.5 py-0.5 font-mono font-bold">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono bg-slate-100 text-slate-600 dark:bg-slate-800/70 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                   {taskCounts.pending} 个排队中
                 </span>
               )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* Search */}
-              <div className="relative mr-2">
-                <input
-                  type="text"
-                  placeholder="搜索任务/链接..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-40 sm:w-48 h-9 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-3 text-xs text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:w-56 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all shadow-2xs"
-                />
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3" />
-              </div>
-
               <Button
                 variant="primary"
                 size="md"
@@ -1620,22 +1650,23 @@ export function DownloadPage({
           {/* 当搜索无匹配项时 */}
           {searchTerm && filteredTasks.length === 0 && (
             <div className="col-span-full py-16 flex flex-col items-center justify-center text-center">
-              <div className="w-12 h-12 rounded-2xl bg-white/70 dark:bg-slate-800/70 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-center mb-3 text-slate-400 shadow-sm">
+              <div className="w-12 h-12 rounded-2xl bg-accent-500/10 border border-accent-500/20 flex items-center justify-center mb-3 text-accent-500">
                 <Search className="w-5 h-5" />
               </div>
-              <p className="font-bold text-sm text-slate-700 dark:text-slate-200">
+              <p className="font-bold text-sm text-text-1">
                 未找到符合搜索条件的项目
               </p>
-              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+              <p className="text-xs text-text-3 mt-1">
                 没有找到与「{searchTerm}」相关的任务，试着更改关键字
               </p>
-              <button
-                type="button"
+              <Button
+                variant="primary"
+                size="sm"
+                className="mt-3"
                 onClick={() => setSearchTerm("")}
-                className="mt-3 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-semibold shadow-sm transition cursor-pointer"
               >
                 清除搜索
-              </button>
+              </Button>
             </div>
           )}
 
@@ -1648,29 +1679,29 @@ export function DownloadPage({
                   setInitialTaskUrl("");
                   setShowNewTaskModal(true);
                 }}
-                className="group relative flex flex-col bg-white/85 dark:bg-slate-900/85 backdrop-blur-sm rounded-xl border-2 border-dashed border-amber-400/80 dark:border-amber-500/60 overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-amber-500 hover:shadow-lg hover:shadow-amber-500/10 shadow-sm will-change-transform"
+                className="group relative flex flex-col bg-surface-1 backdrop-blur-sm rounded-xl border-2 border-dashed border-accent-400/70 dark:border-accent-500/60 overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-accent-500 hover:shadow-lg hover:shadow-accent-500/10 shadow-sm will-change-transform"
               >
-                <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-transparent dark:from-amber-500/20 dark:via-slate-800 dark:to-slate-900 flex flex-col items-center justify-center gap-2">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/30 group-hover:scale-110 transition-transform">
+                <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-accent-500/15 via-accent-500/5 to-transparent dark:from-accent-500/20 dark:via-surface-2 dark:to-transparent flex flex-col items-center justify-center gap-2">
+                  <div className="w-10 h-10 rounded-xl bg-accent-500 text-white flex items-center justify-center shadow-md shadow-accent-500/30 group-hover:scale-110 transition-transform">
                     <Plus className="w-5 h-5 stroke-[2.5]" />
                   </div>
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                  <span className="text-xs font-bold text-text-1">
                     新建下载任务
                   </span>
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-[10px] text-text-3">
                     支持 M3U8 / MP4 链接
                   </span>
                 </div>
                 <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
                   <div className="space-y-0.5">
-                    <div className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                    <div className="text-xs font-bold text-text-2">
                       派发新下载流
                     </div>
-                    <div className="text-[10px] text-slate-400 leading-tight">
+                    <div className="text-[10px] text-text-3 leading-tight">
                       手动输入番号或视频直链创建下载
                     </div>
                   </div>
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                  <div className="pt-2 border-t border-hairline flex items-center justify-between text-[11px] text-accent-600 dark:text-accent-400 font-semibold">
                     <span>点击创建</span>
                     <span className="group-hover:translate-x-0.5 transition-transform">→</span>
                   </div>
@@ -1692,29 +1723,29 @@ export function DownloadPage({
                   }
                   setShowNewTaskModal(true);
                 }}
-                className="group relative flex flex-col bg-white/85 dark:bg-slate-900/85 backdrop-blur-sm rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-sky-400 dark:hover:border-sky-500 hover:shadow-lg hover:shadow-sky-500/10 shadow-sm will-change-transform"
+                className="group relative flex flex-col bg-surface-1 backdrop-blur-sm rounded-xl border border-hairline overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-sky-400 dark:hover:border-sky-500 hover:shadow-lg hover:shadow-sky-500/10 shadow-sm will-change-transform"
               >
-                <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-sky-500/15 via-sky-500/5 to-transparent dark:from-sky-500/20 dark:via-slate-800 dark:to-slate-900 flex flex-col items-center justify-center gap-2">
+                <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-sky-500/15 via-sky-500/5 to-transparent dark:from-sky-500/20 dark:via-surface-2 dark:to-transparent flex flex-col items-center justify-center gap-2">
                   <div className="w-10 h-10 rounded-xl bg-sky-500/15 dark:bg-sky-500/25 text-sky-600 dark:text-sky-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Copy className="w-5 h-5" />
                   </div>
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                  <span className="text-xs font-bold text-text-1">
                     剪贴板极速导入
                   </span>
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-[10px] text-text-3">
                     自动读取复制的播放链接
                   </span>
                 </div>
                 <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
                   <div className="space-y-0.5">
-                    <div className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                    <div className="text-xs font-bold text-text-2">
                       智能识别 URL
                     </div>
-                    <div className="text-[10px] text-slate-400 leading-tight">
+                    <div className="text-[10px] text-text-3 leading-tight">
                       无需手动打字，读取剪贴板直链
                     </div>
                   </div>
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-sky-600 dark:text-sky-400 font-semibold">
+                  <div className="pt-2 border-t border-hairline flex items-center justify-between text-[11px] text-sky-600 dark:text-sky-400 font-semibold">
                     <span>粘贴并新建</span>
                     <span className="group-hover:translate-x-0.5 transition-transform">→</span>
                   </div>
@@ -1727,29 +1758,29 @@ export function DownloadPage({
                   setInitialTaskUrl("");
                   setShowNewTaskModal(true);
                 }}
-                className="group relative flex flex-col bg-white/85 dark:bg-slate-900/85 backdrop-blur-sm rounded-xl border border-slate-200/80 dark:border-slate-800 overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-lg hover:shadow-violet-500/10 shadow-sm will-change-transform"
+                className="group relative flex flex-col bg-surface-1 backdrop-blur-sm rounded-xl border border-hairline overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-violet-400 dark:hover:border-violet-500 hover:shadow-lg hover:shadow-violet-500/10 shadow-sm will-change-transform"
               >
-                <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-violet-500/15 via-violet-500/5 to-transparent dark:from-violet-500/20 dark:via-slate-800 dark:to-slate-900 flex flex-col items-center justify-center gap-2">
+                <div className="relative aspect-video w-full overflow-hidden bg-gradient-to-br from-violet-500/15 via-violet-500/5 to-transparent dark:from-violet-500/20 dark:via-surface-2 dark:to-transparent flex flex-col items-center justify-center gap-2">
                   <div className="w-10 h-10 rounded-xl bg-violet-500/15 dark:bg-violet-500/25 text-violet-600 dark:text-violet-400 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <Download className="w-5 h-5" />
                   </div>
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                  <span className="text-xs font-bold text-text-1">
                     队列批量下载
                   </span>
-                  <span className="text-[10px] text-slate-400">
+                  <span className="text-[10px] text-text-3">
                     多线程极速并发下载
                   </span>
                 </div>
                 <div className="p-3 flex-1 flex flex-col justify-between space-y-2">
                   <div className="space-y-0.5">
-                    <div className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                    <div className="text-xs font-bold text-text-2">
                       自动队列调度
                     </div>
-                    <div className="text-[10px] text-slate-400 leading-tight">
+                    <div className="text-[10px] text-text-3 leading-tight">
                       支持完成后自动转码并归档
                     </div>
                   </div>
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-violet-600 dark:text-violet-400 font-semibold">
+                  <div className="pt-2 border-t border-hairline flex items-center justify-between text-[11px] text-violet-600 dark:text-violet-400 font-semibold">
                     <span>开始下载</span>
                     <span className="group-hover:translate-x-0.5 transition-transform">→</span>
                   </div>

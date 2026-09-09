@@ -70,5 +70,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.on('app:tray-command', handler)
       return () => ipcRenderer.removeListener('app:tray-command', handler)
     },
+    setZoom: (factor: number) => ipcRenderer.invoke('app:set-zoom', factor),
   },
 })

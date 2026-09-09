@@ -107,24 +107,24 @@ export function GlobalConsole({
 
   return (
     <div
-      className="shrink-0 bg-[#fffaf5] dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex flex-col text-slate-600 dark:text-slate-300"
+      className="shrink-0 bg-canvas border-t border-hairline flex flex-col text-text-2"
       style={{ height }}
     >
       {/* 拖拽手柄 */}
       <div
         onMouseDown={startDrag}
         title="拖动调整高度"
-        className="group h-1.5 -mt-0.5 bg-transparent hover:bg-amber-500/40 cursor-row-resize flex items-center justify-center shrink-0"
+        className="group h-1.5 -mt-0.5 bg-transparent hover:bg-accent-500/40 cursor-row-resize flex items-center justify-center shrink-0"
       >
-        <GripHorizontal className="w-4 h-2 text-transparent group-hover:text-amber-600 transition" />
+        <GripHorizontal className="w-4 h-2 text-transparent group-hover:text-accent-500 transition" />
       </div>
 
       {/* 工具栏 */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-100 dark:border-slate-800 shrink-0">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-hairline shrink-0">
         <div className="flex items-center gap-2 text-xs font-bold">
-          <Terminal className="w-3.5 h-3.5 text-amber-500" />
-          <span className="text-slate-700 dark:text-slate-200">控制台日志</span>
-          <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+          <Terminal className="w-3.5 h-3.5 text-accent-500" />
+          <span className="text-text-1">控制台日志</span>
+          <span className="text-[10px] text-text-3 font-mono">
             ({filteredLogs.length}
             {filter !== "ALL" && `/${logs.length}`})
           </span>
@@ -132,7 +132,7 @@ export function GlobalConsole({
 
         <div className="flex items-center gap-3 text-[10px]">
           <div className="flex items-center gap-1.5">
-            <span className="text-slate-500 dark:text-slate-400">过滤:</span>
+            <span className="text-text-3">过滤:</span>
             <Dropdown
               value={filter}
               onChange={(v: any) => setFilter(v)}
@@ -146,12 +146,12 @@ export function GlobalConsole({
             />
           </div>
 
-          <label className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 cursor-pointer">
+          <label className="flex items-center gap-1.5 text-text-3 cursor-pointer">
             <input
               type="checkbox"
               checked={autoScroll}
               onChange={(e) => setAutoScroll(e.target.checked)}
-              className="rounded border-slate-300 text-amber-500"
+              className="rounded border-hairline text-accent-500"
             />
             自动滚动
           </label>
@@ -159,7 +159,7 @@ export function GlobalConsole({
           <Tooltip content="清空控制台日志" placement="top">
             <button
               onClick={() => setLogs([])}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition cursor-pointer"
+              className="p-1.5 rounded-lg text-text-3 hover:text-rose-500 hover:bg-rose-500/10 transition cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -168,7 +168,7 @@ export function GlobalConsole({
             <Tooltip content="关闭控制台" placement="top">
               <button
                 onClick={onClose}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                className="p-1.5 rounded-lg text-text-3 hover:text-text-1 hover:bg-accent-500/10 transition cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -183,7 +183,7 @@ export function GlobalConsole({
         className="flex-1 overflow-y-auto p-3 space-y-1 text-[10.5px] leading-relaxed font-mono select-text"
       >
         {filteredLogs.length === 0 ? (
-          <div className="text-slate-400 dark:text-slate-600 text-center py-6">
+          <div className="text-text-3 text-center py-6">
             暂无日志。执行操作后,日志将在此实时刷新。
           </div>
         ) : (
@@ -192,7 +192,7 @@ export function GlobalConsole({
               key={log.id + idx}
               className="flex gap-2.5 items-start"
             >
-              <span className="text-slate-400 dark:text-slate-600 font-extralight shrink-0">
+              <span className="text-text-3 font-extralight shrink-0">
                 [{log.timestamp}]
               </span>
               <span

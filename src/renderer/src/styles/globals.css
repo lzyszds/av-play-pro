@@ -4,7 +4,13 @@
 /* Tailwind v4：class 策略的深色模式（与 .dark on <html> 配合） */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* 主色调：将 amber 整条色阶重映射为玫瑰金 (rose)，全局生效 */
+/* ================================================================
+   主色调：amber == rose == accent 同一支「玫瑰金/霓虹玫瑰」。
+   - 将 amber 整条色阶重映射为玫瑰 (rose)，全局生效（历史别名，保留）。
+   - accent-* 为语义强调 ramp（纯增量，新代码优先用 accent）。
+   - amber-950 补洞：否则落到默认棕 #451a03（波及按钮激活态/成就弹杯等）。
+   - accent-glow / accent-glow-2 承载胶囊霓虹 (#FF466B / #FF758C)，不改 ramp。
+   ================================================================ */
 @theme {
   --color-amber-50: #fff1f2;
   --color-amber-100: #ffe4e6;
@@ -16,6 +22,35 @@
   --color-amber-700: #be123c;
   --color-amber-800: #9f1239;
   --color-amber-900: #881337;
+  --color-amber-950: #4c0519;
+
+  --color-accent-50: #fff1f2;
+  --color-accent-100: #ffe4e6;
+  --color-accent-200: #fecdd3;
+  --color-accent-300: #fda4af;
+  --color-accent-400: #fb7185;
+  --color-accent-500: #f43f5e;
+  --color-accent-600: #e11d48;
+  --color-accent-700: #be123c;
+  --color-accent-800: #9f1239;
+  --color-accent-900: #881337;
+  --color-accent-glow: #FF466B;
+  --color-accent-glow-2: #FF758C;
+}
+
+/* ---- 语义表面 / 文本 / 描边令牌（浅色默认值；深色在文件末尾 .dark 覆盖） ---- */
+@theme {
+  --color-canvas: #f7f1ef; /* 暖白画布 */
+  --color-surface-1: rgb(255 255 255 / 0.72); /* 玻璃面板 */
+  --color-surface-2: rgb(255 255 255 / 0.5); /* 柔和内嵌 */
+  --color-panel: #ffffff; /* 不透明兜底 */
+  --color-hairline: rgb(122 66 88 / 0.14); /* 暖玫瑰细描边 */
+  --color-hairline-strong: rgb(122 66 88 / 0.22);
+  --color-text-1: #261b21; /* 主文本（近黑暖） */
+  --color-text-2: #6e5f66; /* 次文本 */
+  --color-text-3: #a3929b; /* 弱化说明 */
+  --color-on-accent: #ffffff;
+  --color-focus-ring: rgb(244 63 94 / 0.35);
 }
 
 @font-face {
@@ -2324,3 +2359,56 @@ button:active:not(:disabled):not(.plyr__control) {
   background: rgba(255, 255, 255, 0.2);
   border-radius: 9999px;
 }
+
+/* ================================================================
+   Rose Noir Glass 设计语言（浅色默认为暖白玻璃、深色为近胶囊 noir glass）
+   语义令牌深色值：无层 .dark 覆盖压过 Tailwind theme 层，运行时随主题生效。
+   ================================================================ */
+.dark {
+  --color-canvas: #0b090b;
+  --color-surface-1: rgb(30 24 28 / 0.62);
+  --color-surface-2: rgb(255 255 255 / 0.045);
+  --color-panel: #161016;
+  --color-hairline: rgb(255 255 255 / 0.1);
+  --color-hairline-strong: rgb(255 255 255 / 0.16);
+  --color-text-1: #f4edf1;
+  --color-text-2: rgb(244 237 241 / 0.68);
+  --color-text-3: rgb(244 237 241 / 0.42);
+  --color-on-accent: #ffffff;
+  --color-focus-ring: rgb(251 113 133 / 0.45);
+}
+
+/* 强玻璃：弹窗框 / 吸顶条（唯一允许 20px 级 blur 的场景） */
+.glass {
+  background: var(--color-surface-1);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid var(--color-hairline);
+  box-shadow:
+    0 16px 40px -16px rgb(0 0 0 / 0.35),
+    inset 0 1px 0 rgb(255 255 255 / 0.35);
+}
+.dark .glass {
+  box-shadow:
+    0 16px 40px -16px rgb(0 0 0 / 0.6),
+    inset 0 1px 0 rgb(255 255 255 / 0.06);
+}
+
+/* 软玻璃：大滚动列表/卡片区用，默认不带 backdrop-filter（避免逐卡 blur 掉帧） */
+.glass-soft {
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-hairline);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22);
+}
+.dark .glass-soft {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+
+/* 霓虹玫瑰光环：胶囊级 hero 强调，深色为主力 */
+.glow-accent {
+  box-shadow: 0 0 18px rgb(255 70 107 / 0.45);
+}
+.glow-accent:hover {
+  box-shadow: 0 0 26px rgb(255 70 107 / 0.6);
+}
+

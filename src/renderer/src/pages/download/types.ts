@@ -99,6 +99,16 @@ export interface AppSettings {
   privacyScreenImageOpacity: number;
   /** 隐私屏保切换图片间隔秒数 */
   privacyScreenChangeSeconds: number;
+  /** 下载页主背景是否显示（简洁模式） */
+  downloadBgVisible?: boolean;
+  /** 下载页主背景图片浓度 %（默认 42，对应原写死的 0.42 不透明度） */
+  downloadBgOpacity?: number;
+  /** 下载页主背景暗化强度 %（0-100，默认 0 = 不追加额外黑色蒙层） */
+  downloadBgDim?: number;
+  /** 成就解锁弹杯 Toast 是否显示（成就仍正常记录，只是不弹） */
+  achievementToast?: boolean;
+  /** 全局界面缩放 %（85-120，经 webContents.setZoomFactor 生效） */
+  uiZoom?: number;
   /** 上次所在的页面（重启后恢复） */
   lastPage?: string;
   /** Cloudflare Workers 云端同步端点地址 */

@@ -1,5 +1,5 @@
 import React from "react";
-import { Play, Pause, Trash2, Copy, Check, RotateCcw } from "lucide-react";
+import { Play, Pause, Trash2, Copy, Check, RotateCcw, FolderOpen } from "lucide-react";
 import { CoverImage } from "../CoverImage";
 import type { DownloadTask } from "../../pages/download/types";
 import {
@@ -8,7 +8,6 @@ import {
   extractVideoCode,
   resolveTaskCoverUrl,
 } from "../../pages/download/utils";
-import { getStatusBadge } from "./StatusBadge";
 import { Tooltip } from "../common/Tooltip";
 
 export interface DownloadTaskRowProps {
@@ -50,22 +49,21 @@ function useScheduleTick(enabled: boolean) {
   }, [enabled]);
 }
 
-/** 行内状态色映射的 3px 进度条（玫瑰渐变 / 完成绿 / 暂停灰 / 失败暗红） */
+/** 日系素雅细长进度条： downloading 玫瑰→粉渐变；完成绿；暂停灰；失败暗红 */
 function RowProgress({ progress, status }: { progress: number; status: DownloadTask["status"] }) {
-  const barBg =
+  const bar =
     status === "COMPLETED"
-      ? "bg-emerald-500"
+      ? "h-full bg-emerald-500/90 rounded-full"
       : status === "FAILED"
-        ? "bg-rose-800"
+        ? "h-full bg-rose-800/90 rounded-full"
         : status === "PAUSED"
-          ? "bg-slate-400/70"
-          : "bg-linear-to-r from-accent-400 to-accent-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]";
-  const trackBg = status === "COMPLETED" ? "bg-emerald-500/15" : "bg-slate-950/15 dark:bg-white/10";
+          ? "h-full bg-white/30 rounded-full"
+          : "h-full bg-gradient-to-r from-rose-500 to-pink-400 rounded-full transition-all";
   return (
-    <div className={`w-full h-[3px] ${trackBg} overflow-hidden rounded-full`}>
+    <div className="w-full h-1.5 bg-white/10 dark:bg-white/10 rounded-full overflow-hidden">
       <div
-        className={`h-full ${barBg} transition-all duration-300`}
-        style={{ width: `${Math.max(progress, status === "PENDING" || status === "PARSING" ? 4 : progress)}%` }}
+        className={bar}
+        style={{ width: `${Math.min(Math.max(progress, status === "PENDING" || status === "PARSING" ? 3 : 0), 100)}%` }}
       />
     </div>
   );
@@ -85,9 +83,37 @@ function DownloadTaskRowImpl({
   onPlayCompleted,
   onRedownload,
 }: DownloadTaskRowProps) {
-  const coverUrl = resolveTaskCoverUrl(task, { allowRemote: allowRemoteCovers });
+  const coverUrl = resolveTaskCoverUrl(task, {
+    allowRemote: allowRemoteCovers,
+  });
   useScheduleTick(task.taskTag === "SCHEDULED" && !!task.scheduledAt);
   const code = extractVideoCode(task.name);
+
+  // 左侧缩略：有封面用封面，无封面显示番号字母占位
+  const hasCover = Boolean(coverUrl);
+
+  // 主信息行右侧关键值：下载中给速率，已完成给绿勾语义
+  const highlight =
+    task.status === "DOWNLOADING"
+      ? `${formatSpeed(task.speed)}`
+      : task.status === "COMPLETED"
+        ? "已完成"
+        : task.status === "FAILED"
+          ? "下载失败"
+          : task.taskTag === "SCHEDULED" && task.scheduledAt
+            ? `⏰ ${formatScheduledAt(task.scheduledAt)}`
+            : task.status === "PARSING"
+              ? "解析分片中"
+              : "排队中";
+
+  const highlightCls =
+    task.status === "DOWNLOADING"
+      ? "text-rose-400"
+      : task.status === "COMPLETED"
+        ? "text-emerald-400"
+        : task.status === "FAILED"
+          ? "text-rose-500/90"
+          : "text-white/40 dark:text-white/40";
 
   return (
     <div
@@ -96,150 +122,140 @@ function DownloadTaskRowImpl({
       aria-label={`选择任务 ${task.name}`}
       onClick={() => onSelectTask(task.id)}
       style={{ ["--i" as string]: Math.min(index, 14) }}
-      className={`anim-fade-stagger group relative flex items-center gap-3.5 h-24 px-4 rounded-xl border bg-surface-1 overflow-hidden cursor-pointer transition-all duration-150 hover:-translate-y-px hover:shadow-lg will-change-transform ${
+      className={`anime-glass-card anim-fade-stagger group flex items-center gap-4 rounded-2xl p-4 transition-all duration-200 cursor-pointer ${
         isFlashing
-          ? "border-accent-500 ring-4 ring-accent-400/60 shadow-xl shadow-accent-500/30"
+          ? "!bg-white/12 !border-accent-500 ring-2 ring-accent-500/50"
           : isSelected
-            ? "border-accent-500/70 ring-2 ring-accent-500/25 shadow-sm"
-            : "border-hairline shadow-sm"
-      } ${task.status === "FAILED" ? "before:absolute before:left-0 before:top-0 before:bottom-0 before:w-[2px] before:bg-rose-500" : ""} ${
-        task.status === "PAUSED" ? "opacity-60 saturate-50" : ""
-      }`}
+            ? "!bg-white/10 !border-accent-500/50 ring-1 ring-accent-500/30"
+            : ""
+      } ${task.status === "PAUSED" ? "opacity-60" : ""}`}
     >
-      {/* 封面缩略 */}
-      <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-slate-900 shrink-0">
-        <CoverImage src={coverUrl} alt={task.name} logoSize={32} />
+      {/* 缩略图 / 番号占位 */}
+      <div className="w-20 h-14 rounded-xl bg-slate-900/80 border border-white/10 overflow-hidden shrink-0 flex items-center justify-center relative">
+        {hasCover ? (
+          <CoverImage src={coverUrl} alt={task.name} logoSize={32} />
+        ) : (
+          <span className="font-mono-num text-[11px] font-bold text-text-3">
+            {code ? code.slice(0, 6) : "AV"}
+          </span>
+        )}
+        {task.resolution && (
+          <span className="absolute bottom-1 right-1 text-[9px] font-mono-num px-1 rounded bg-black/60 text-rose-300">
+            {task.resolution}
+          </span>
+        )}
       </div>
 
-      {/* 中段：名称 / 番号 / 元信息 / 进度 */}
-      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-        <div className="flex items-center gap-2 min-w-0">
-          <span
-            className="font-semibold text-[13px] text-text-1 truncate group-hover:text-accent-600 transition-colors"
-            title={task.name}
-          >
-            {task.name}
-          </span>
-          {code && (
-            <span className="shrink-0 text-[10px] font-mono font-bold text-accent-500/90">{code}</span>
-          )}
-          <span className="ml-auto shrink-0 flex items-center gap-1">
-            <span className="text-[9px] bg-slate-950/60 dark:bg-black/60 text-white px-1.5 py-0.5 font-mono rounded">
+      {/* 主信息与进度 */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-1.5 gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xs font-semibold text-text-1 truncate" title={task.name}>
+              {task.name}
+            </span>
+            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-white/5 dark:bg-white/5 text-text-3 border border-hairline">
               {task.format}
             </span>
-            {task.resolution && (
-              <span className="text-[9px] bg-slate-950/60 dark:bg-black/60 text-accent-300 px-1.5 py-0.5 font-mono rounded">
-                {task.resolution}
-              </span>
+            {code && (
+              <span className="shrink-0 font-mono-num text-[10px] text-accent-400/80">{code}</span>
             )}
+          </div>
+          <span className={`shrink-0 font-mono-num text-xs font-semibold ${highlightCls}`}>
+            {highlight}
           </span>
-        </div>
-
-        <div className="flex items-center gap-2.5 text-[10px] font-mono text-text-2 min-w-0">
-          {getStatusBadge(task.status)}
-          <span className="truncate">
-            {task.status === "DOWNLOADING" && task.speed > 0
-              ? formatSpeed(task.speed)
-              : task.totalSize > 0
-                ? `${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)}`
-                : task.fileSize > 0
-                  ? formatBytes(task.fileSize)
-                  : "未知大小"}
-          </span>
-          {task.totalSegments > 0 && (
-            <span className="truncate">
-              分片 {task.downloadedSegments}/{task.totalSegments}
-            </span>
-          )}
-          {task.encryptionType && task.encryptionType !== "NONE" && (
-            <span className="text-text-3">*{task.encryptionType}</span>
-          )}
-          {task.taskTag === "SCHEDULED" && task.scheduledAt && (
-            <span
-              className="inline-flex items-center gap-1 text-[10px] font-bold text-accent-600 dark:text-accent-400 whitespace-nowrap"
-              title={`定时下载: ${new Date(task.scheduledAt).toLocaleString()}`}
-            >
-              ⏰ {formatScheduledAt(task.scheduledAt)}
-            </span>
-          )}
-        </div>
-
-        <RowProgress progress={task.progress} status={task.status} />
-      </div>
-
-      {/* 操作组 */}
-      <div
-        className="flex items-center gap-1.5 shrink-0"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Tooltip content="复制 N_m3u8DL-RE 调用指令" placement="top">
-          <button
-            onClick={(e) => onCopyCommand(e, task)}
-            className="p-2 rounded-lg bg-surface-2 border-hairline hover:bg-accent-500/10 hover:text-accent-500 transition cursor-pointer"
+          <div
+            className="flex items-center gap-1 shrink-0 opacity-60 group-hover:opacity-100 transition"
+            onClick={(e) => e.stopPropagation()}
           >
-            {copiedTaskId === task.id ? (
-              <Check className="w-3.5 h-3.5 text-emerald-500" />
+            <Tooltip content="复制 N_m3u8DL-RE 指令" placement="top">
+              <button
+                onClick={(e) => onCopyCommand(e, task)}
+                className="p-2 hover:bg-white/10 dark:hover:bg-white/10 rounded-xl text-text-2 hover:text-text-1 transition cursor-pointer"
+                title="复制指令"
+              >
+                {copiedTaskId === task.id ? (
+                  <Check className="w-4 h-4 text-emerald-400" />
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )}
+              </button>
+            </Tooltip>
+
+            {task.status === "COMPLETED" ? (
+              <>
+                <Tooltip content="重新下载（覆盖已下载文件）" placement="top">
+                  <button
+                    onClick={() => onRedownload?.(task.id)}
+                    className="p-2 hover:bg-white/10 dark:hover:bg-white/10 rounded-xl text-text-2 hover:text-text-1 transition cursor-pointer"
+                    title="重新下载"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                  </button>
+                </Tooltip>
+                <Tooltip content="立即查看" placement="top">
+                  <button
+                    onClick={() => onPlayCompleted?.(task)}
+                    className="p-2 hover:bg-rose-500/20 text-rose-400 rounded-xl transition cursor-pointer"
+                    title="立即查看"
+                  >
+                    <Play className="w-4 h-4 fill-current" />
+                  </button>
+              </Tooltip>
+              </>
+            ) : task.status === "FAILED" ? (
+              <Tooltip content="重试下载（清零进度后重新入队）" placement="top">
+                <button
+                  onClick={() => onTriggerPauseResume(task.id)}
+                  className="p-2 hover:bg-rose-500/20 text-rose-400 rounded-xl transition cursor-pointer"
+                  title="重试下载"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                </button>
+              </Tooltip>
             ) : (
-              <Copy className="w-3.5 h-3.5" />
+              <Tooltip content={task.status === "DOWNLOADING" ? "暂停下载" : "继续下载"} placement="top">
+                <button
+                  onClick={() => onTriggerPauseResume(task.id)}
+                  className="p-2 hover:bg-white/10 dark:hover:bg-white/10 rounded-xl text-text-2 hover:text-text-1 transition cursor-pointer"
+                  title={task.status === "DOWNLOADING" ? "暂停" : "继续"}
+                >
+                  {task.status === "DOWNLOADING" ? (
+                    <Pause className="w-4 h-4" />
+                  ) : (
+                    <Play className="w-4 h-4 fill-current" />
+                  )}
+                </button>
+              </Tooltip>
             )}
-          </button>
-        </Tooltip>
 
-        {task.status === "COMPLETED" ? (
-          <>
-            <Tooltip content="重新下载（覆盖已下载文件）" placement="top">
+            <Tooltip content="删除任务" placement="top">
               <button
-                onClick={() => onRedownload?.(task.id)}
-                className="p-2 rounded-lg bg-surface-2 border-hairline text-text-3 hover:text-accent-500 hover:bg-accent-500/10 transition cursor-pointer"
+                onClick={() => onDeleteTask(task.id)}
+                className="p-2 hover:bg-rose-500/20 rounded-xl text-white/40 hover:text-rose-400 transition cursor-pointer"
+                title="取消"
               >
-                <RotateCcw className="w-3.5 h-3.5" />
+                <Trash2 className="w-4 h-4" />
               </button>
             </Tooltip>
-            <Tooltip content="立即查看" placement="top">
-              <button
-                onClick={() => onPlayCompleted?.(task)}
-                className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition cursor-pointer"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-              </button>
-            </Tooltip>
-          </>
-        ) : task.status === "FAILED" ? (
-          <Tooltip content="重试下载（清零进度后重新入队）" placement="top">
-            <button
-              onClick={() => onTriggerPauseResume(task.id)}
-              className="p-2 rounded-lg bg-rose-50 border border-rose-200 dark:bg-rose-500/10 dark:border-rose-500/30 text-rose-600 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-500/20 transition cursor-pointer"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </Tooltip>
-        ) : (
-          <Tooltip content={task.status === "DOWNLOADING" ? "暂停下载" : "继续下载"} placement="top">
-            <button
-              onClick={() => onTriggerPauseResume(task.id)}
-              className={`p-2 rounded-lg bg-surface-2 border-hairline transition cursor-pointer ${
-                task.status === "DOWNLOADING"
-                  ? "text-accent-500 hover:bg-accent-500/10"
-                  : "text-text-3 hover:text-text-1 hover:bg-accent-500/5"
-              }`}
-            >
-              {task.status === "DOWNLOADING" ? (
-                <Pause className="w-3.5 h-3.5" />
-              ) : (
-                <Play className="w-3.5 h-3.5 fill-current" />
-              )}
-            </button>
-          </Tooltip>
-        )}
+          </div>
+        </div>
 
-        <Tooltip content="删除任务" placement="top">
-          <button
-            onClick={() => onDeleteTask(task.id)}
-            className="p-2 rounded-lg bg-surface-2 border-hairline hover:text-rose-500 hover:bg-rose-500/10 transition cursor-pointer"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </Tooltip>
+        {/* 进度条 */}
+        <RowProgress progress={task.progress} status={task.status} />
+
+        {/* 底部元数据行 */}
+        <div className="flex justify-between items-center text-[11px] font-mono-num text-text-3 mt-1.5">
+          <span className="truncate">
+            {task.totalSize > 0
+              ? `${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)} (${Math.round(task.progress)}%)`
+              : task.fileSize > 0
+                ? formatBytes(task.fileSize)
+                : "大小未知"}
+            {task.totalSegments > 0 ? ` · ${task.downloadedSegments}/${task.totalSegments} 分片` : ""}
+            {task.encryptionType && task.encryptionType !== "NONE" ? ` · ${task.encryptionType}` : ""}
+            {task.taskTag === "SCHEDULED" && task.scheduledAt ? ` · ⏰ ${new Date(task.scheduledAt).toLocaleString()}` : ""}
+          </span>
+        </div>
       </div>
     </div>
   );

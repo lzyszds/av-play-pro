@@ -11,10 +11,8 @@ import {
   Play,
   Pause,
   Trash2,
-  MoreHorizontal,
   ListOrdered,
   Plus,
-  FileVideo,
   Copy,
   Check,
   Search,
@@ -26,12 +24,11 @@ import {
 } from "lucide-react";
 import { NewTaskModal } from "../components/download/NewTaskModal";
 import { SettingsPanel } from "../components/download/SettingsPanel";
+import { Button } from "../components/common/Button";
 import { DownloadTaskRow } from "../components/download/DownloadTaskRow";
 import { TaskDetailDrawer } from "../components/download/TaskDetailDrawer";
 import { DownloadFloatingBall } from "../components/download/DownloadFloatingBall";
 import { Tooltip } from "../components/common/Tooltip";
-import { Button, IconButton } from "../components/common/Button";
-import { PageHeader } from "../components/common/PageHeader";
 import { PageLoader } from "../components/PageLoader";
 import type {
   AppSettings,
@@ -133,6 +130,8 @@ export function DownloadPage({
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   // 头部「批量操作」更多菜单开合
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  // 任务列表分类 Tab 过滤（全部/正在下载/排队/已完成）
+  const [listFilter, setListFilter] = useState<"all" | "downloading" | "pending" | "completed">("all");
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
@@ -1417,6 +1416,18 @@ export function DownloadPage({
         t.name.toLowerCase().includes(q) || t.url.toLowerCase().includes(q),
     );
   }, [tasks, searchTerm]);
+  // 分类 Tab × 搜索框的联合过滤
+  const statusFilteredTasks = useMemo(() => {
+    if (listFilter === "all") return filteredTasks;
+    if (listFilter === "downloading") return filteredTasks.filter((t) => t.status === "DOWNLOADING" || t.status === "PARSING");
+    if (listFilter === "pending") return filteredTasks.filter((t) => t.status === "PENDING" || t.status === "PAUSED");
+    return filteredTasks.filter((t) => t.status === "COMPLETED");
+  }, [filteredTasks, listFilter]);
+  // 速率看板：所有下载中任务的实时速率之和
+  const totalSpeed = useMemo(
+    () => tasks.reduce((sum, t) => (t.status === "DOWNLOADING" ? sum + (t.speed || 0) : sum), 0),
+    [tasks],
+  );
   // 全屏装饰性背景按窗口物理像素选择 HD(2560) 或原图，避免无谓解码 4K~6K 整幅壁纸
   const downloadBackgroundUrl = wallpaperScreenUrl(settings.downloadBackground ?? "1");
   const privacyBackgroundUrl = wallpaperScreenUrl(privacyBackground);
@@ -1481,101 +1492,179 @@ export function DownloadPage({
 
       {/* ====== Task List (scrollable) ====== */}
       <div className="relative z-10 flex-1 overflow-y-scroll pt-0 min-h-50 bg-white/4 dark:bg-slate-950/10">
-        {/* ====== 统一单行头部标题栏（与其它 tab 一致）+ 行动组，随列表吸顶 ====== */}
-        <div className="shrink-0 mb-4 px-6 pt-5 pb-3 sticky top-0 bg-white/85 dark:bg-slate-950/85 z-99">
-          <PageHeader
-            icon={<Download className="w-5 h-5" />}
-            title="下载管理中心"
-            micro={tasks.length > 0 ? `${tasks.length} 项` : undefined}
-            subtitle={
-              `${taskCounts.downloading} 下载中 · ${taskCounts.pending} 排队 · ${taskCounts.completed} 已完成` +
-              (searchTerm.trim() ? ` · 已过滤「${searchTerm.trim()}」` : "")
-            }
-            actions={
-              <div className="flex flex-wrap items-center justify-end gap-1.5">
-                <div className="relative mr-1">
-                  <input
-                    type="text"
-                    placeholder="搜索任务/链接..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-40 sm:w-48 h-9 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-3 text-xs text-slate-700 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:w-56 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 transition-all shadow-2xs"
-                  />
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-3" />
-                </div>
-
-                <Button variant="primary" size="md" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setShowNewTaskModal(true)} title="新建 M3U8 下载任务" aria-label="新建任务">
-                  新建任务
-                </Button>
-
-                <Tooltip content="立即开启隐私屏保，遮住下载内容" placement="bottom">
-                  <IconButton variant="secondary" size="md" icon={<EyeOff className="w-3.5 h-3.5" />} onClick={showPrivacyScreen} aria-label="隐私屏保" />
-                </Tooltip>
-
-                <Tooltip content={queueEnabled ? "队列下载 ON：完成后自动开始下一个" : "队列下载 OFF：按最大并发数同时下载"} placement="bottom">
-                  <IconButton
-                    variant={queueEnabled ? "primary" : "secondary"}
-                    size="md"
-                    icon={<ListOrdered className="w-3.5 h-3.5" />}
-                    onClick={handleToggleQueue}
-                    aria-label="队列下载开关"
-                  />
-                </Tooltip>
-
-                <Tooltip content={widgetOpen ? "关闭桌面下载小组件" : "打开桌面下载小组件（屏幕右下角悬浮球）"} placement="bottom">
-                  <IconButton
-                    variant={widgetOpen ? "primary" : "secondary"}
-                    size="md"
-                    icon={<Move className="w-3.5 h-3.5" />}
-                    onClick={handleToggleWidget}
-                    aria-label="桌面小组件"
-                  />
-                </Tooltip>
-
-                <div className="relative">
-                  <Tooltip content="批量操作（全部开始 / 全部暂停 / 清空已完成）" placement="bottom">
-                    <IconButton
-                      variant="secondary"
-                      size="md"
-                      icon={<MoreHorizontal className="w-3.5 h-3.5" />}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMoreMenuOpen((v) => !v);
-                      }}
-                      aria-label="批量操作"
-                    />
-                  </Tooltip>
-                  {moreMenuOpen && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setMoreMenuOpen(false)} />
-                      <div className="absolute right-0 top-10 z-20 w-40 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl anim-fade-in">
-                        <button type="button" onClick={() => { setMoreMenuOpen(false); handleStartAll(); }} className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-accent-500/10 hover:text-accent-600 dark:hover:text-accent-400 transition cursor-pointer flex items-center gap-2">
-                          <Play className="w-3.5 h-3.5" />全部开始
-                        </button>
-                        <button type="button" onClick={() => { setMoreMenuOpen(false); handlePauseAll(); }} className="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-accent-500/10 hover:text-accent-600 dark:hover:text-accent-400 transition cursor-pointer flex items-center gap-2">
-                          <Pause className="w-3.5 h-3.5" />全部暂停
-                        </button>
-                        {taskCounts.completed > 0 && (
-                          <button type="button" onClick={() => { setMoreMenuOpen(false); handleClearCompleted(); }} className="w-full px-3 py-2 text-left text-xs font-semibold text-rose-600 dark:text-rose-300 hover:bg-rose-500/10 transition cursor-pointer flex items-center gap-2 border-t border-slate-100 dark:border-slate-800 mt-1 pt-2">
-                            <Trash2 className="w-3.5 h-3.5" />清空已完成（{taskCounts.completed}）
-                          </button>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <Tooltip content="下载与全局系统设置" placement="bottom">
-                  <IconButton variant="secondary" size="md" icon={<Settings className="w-3.5 h-3.5" />} onClick={() => setShowSettingsModal(true)} aria-label="系统设置" />
-                </Tooltip>
+        {/* ====== 设计稿头部：状态指示条 + 速率看板 + 主操作（随列表吸顶） ====== */}
+        <div className="shrink-0 sticky top-0 z-99 bg-white/70 dark:bg-slate-950/70 backdrop-blur-xl">
+          <div className="flex items-center justify-between px-6 pt-5 pb-3 flex-wrap gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-xl font-bold tracking-tight text-text-1 flex items-center gap-2 truncate">
+                  下载管理
+                  <span className="w-1.5 h-1.5 rounded-full bg-accent-500 shrink-0" />
+                </h1>
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-accent-500/15 text-accent-500 dark:text-accent-300 border border-accent-500/20 shrink-0">
+                  极速模式就绪
+                </span>
               </div>
-            }
-          />
+              <p className="text-xs text-text-3 mt-1 flex items-center gap-2 font-mono-num">
+                <span>{taskCounts.downloading} 正在下载</span>
+                <span className="opacity-20">·</span>
+                <span>{taskCounts.pending} 排队中</span>
+                <span className="opacity-20">·</span>
+                <span>{taskCounts.completed} 已完成</span>
+                {searchTerm.trim() && (
+                  <>
+                    <span className="opacity-20">·</span>
+                    <span>已过滤「{searchTerm.trim()}」</span>
+                  </>
+                )}
+              </p>
+            </div>
+
+            {/* 速率看板与操作按钮 */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="text-right">
+                <span className="text-[11px] text-text-3 block">当前下行速率</span>
+                <span className="font-mono-num text-lg font-bold text-accent-400">
+                  {totalSpeed > 0 ? formatSpeed(totalSpeed).split("|")[0].trim() : "0"}
+                </span>
+              </div>
+              <div className="h-8 w-px bg-black/10 dark:bg-white/10 mx-1" />
+
+              <Tooltip content="全部开始（恢复所有暂停任务）" placement="bottom">
+                <button type="button" onClick={handleStartAll} className="px-3 py-2 rounded-xl anime-glass-card text-xs text-text-2 hover:text-text-1 transition flex items-center gap-1.5 cursor-pointer">
+                  <Play className="w-3.5 h-3.5" />全部开始
+                </button>
+              </Tooltip>
+              <Tooltip content="全部暂停下载" placement="bottom">
+                <button type="button" onClick={handlePauseAll} className="px-3 py-2 rounded-xl anime-glass-card text-xs text-text-2 hover:text-text-1 transition flex items-center gap-1.5 cursor-pointer">
+                  <Pause className="w-3.5 h-3.5" />全部暂停
+                </button>
+              </Tooltip>
+              <button
+                type="button"
+                onClick={() => setShowNewTaskModal(true)}
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-accent-500 to-pink-500 hover:opacity-95 text-xs font-semibold text-white shadow-lg shadow-accent-500/20 transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />新建任务
+              </button>
+              <Tooltip content={queueEnabled ? "队列下载 ON：完成后自动下一个" : "队列下载 OFF：按最大并发同时下载"} placement="bottom">
+                <button
+                  type="button"
+                  onClick={handleToggleQueue}
+                  className={`px-3 py-2 rounded-xl text-xs font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                    queueEnabled
+                      ? "bg-accent-500/15 text-accent-600 dark:text-accent-300 border border-accent-500/30"
+                      : "anime-glass-card text-text-2 hover:text-text-1"
+                  }`}
+                >
+                  <ListOrdered className="w-3.5 h-3.5" />
+                  队列 {queueEnabled ? "ON" : "OFF"}
+                </button>
+              </Tooltip>
+              <Tooltip content="打开桌面下载小组件" placement="bottom">
+                <button
+                  type="button"
+                  onClick={handleToggleWidget}
+                  className={`px-3 py-2 rounded-xl text-xs font-medium transition flex items-center gap-1.5 cursor-pointer ${
+                    widgetOpen
+                      ? "bg-accent-500/15 text-accent-600 dark:text-accent-300 border border-accent-500/30"
+                      : "anime-glass-card text-text-2 hover:text-text-1"
+                  }`}
+                >
+                  <Move className="w-3.5 h-3.5" />桌面组件
+                </button>
+              </Tooltip>
+              <Tooltip content="隐私屏保：立即遮挡下载内容" placement="bottom">
+                <button type="button" onClick={showPrivacyScreen} className="p-2 rounded-xl anime-glass-card text-text-2 hover:text-text-1 transition cursor-pointer" aria-label="隐私屏保">
+                  <EyeOff className="w-3.5 h-3.5" />
+                </button>
+              </Tooltip>
+              <Tooltip content="清空已完成任务" placement="bottom">
+                <button
+                  type="button"
+                  onClick={handleClearCompleted}
+                  disabled={taskCounts.completed === 0}
+                  className="p-2 rounded-xl anime-glass-card text-text-2 hover:text-rose-500 transition cursor-pointer disabled:opacity-35 disabled:cursor-default"
+                  aria-label="清空已完成"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </Tooltip>
+              <Tooltip content="下载与全局系统设置" placement="bottom">
+                <button type="button" onClick={() => setShowSettingsModal(true)} className="p-2 rounded-xl anime-glass-card text-text-2 hover:text-text-1 transition cursor-pointer" aria-label="系统设置">
+                  <Settings className="w-3.5 h-3.5" />
+                </button>
+              </Tooltip>
+
+              {/* 搜索框 */}
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="搜索任务/链接..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-40 sm:w-48 h-9 bg-white/60 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl pl-8 pr-3 text-xs text-text-1 placeholder:text-text-3 focus:outline-none focus:w-56 focus:border-accent-500/60 focus:ring-2 focus:ring-accent-500/20 transition-all"
+                />
+                <Search className="w-3.5 h-3.5 text-text-3 absolute left-2.5 top-2.5" />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* ====== 任务列表：行情式一列宽行 ====== */}
         <div className="flex flex-col gap-2 px-6 pb-6 pt-0">
-          {filteredTasks.map((task, index) => (
+          {/* 小分类 Tab（按状态过滤，设计稿同款） */}
+          <div className="flex items-center justify-between mb-3 px-1 pt-2">
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setListFilter("all")}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                  listFilter === "all"
+                    ? "bg-black/10 dark:bg-white/10 text-text-1"
+                    : "text-text-3 hover:text-text-1"
+                }`}
+              >
+                全部 ({tasks.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setListFilter("downloading")}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                  listFilter === "downloading"
+                    ? "bg-black/10 dark:bg-white/10 text-text-1"
+                    : "text-text-3 hover:text-text-1"
+                }`}
+              >
+                正在下载 ({taskCounts.downloading})
+              </button>
+              <button
+                type="button"
+                onClick={() => setListFilter("pending")}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                  listFilter === "pending"
+                    ? "bg-black/10 dark:bg-white/10 text-text-1"
+                    : "text-text-3 hover:text-text-1"
+                }`}
+              >
+                排队 ({taskCounts.pending})
+              </button>
+              <button
+                type="button"
+                onClick={() => setListFilter("completed")}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
+                  listFilter === "completed"
+                    ? "bg-black/10 dark:bg-white/10 text-text-1"
+                    : "text-text-3 hover:text-text-1"
+                }`}
+              >
+                已完成 ({taskCounts.completed})
+              </button>
+            </div>
+            <span className="text-xs text-text-3">按添加时间排序</span>
+          </div>
+
+          {statusFilteredTasks.map((task, index) => (
             <DownloadTaskRow
               key={task.id}
               task={task}
@@ -1593,7 +1682,7 @@ export function DownloadPage({
             />
           ))}
 
-          {searchTerm && filteredTasks.length === 0 && (
+          {searchTerm && statusFilteredTasks.length === 0 && (
             <div className="py-16 flex flex-col items-center justify-center text-center">
               <div className="w-12 h-12 rounded-2xl bg-accent-500/10 border border-accent-500/20 flex items-center justify-center mb-3 text-accent-500">
                 <Search className="w-5 h-5" />
@@ -1610,33 +1699,31 @@ export function DownloadPage({
             </div>
           )}
 
-          {/* 当任务列表为空时：三行行式引导卡（与主列表行高对齐，壁纸自然显露） */}
+          {/* 当任务列表为空时：设计稿三块轻量通透卡片 */}
           {!searchTerm && tasks.length === 0 && (
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* 卡 1：番号 / 直链新建 */}
+              <div
                 onClick={() => {
                   setInitialTaskUrl("");
                   setShowNewTaskModal(true);
                 }}
-                className="group flex items-center gap-3.5 h-24 px-4 rounded-xl border-2 border-dashed border-accent-400/70 dark:border-accent-500/60 bg-surface-1 backdrop-blur-sm text-left cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-accent-500 hover:shadow-lg hover:shadow-accent-500/10 will-change-transform"
+                className="anime-glass-card rounded-2xl p-4 cursor-pointer transition-all duration-300 group"
               >
-                <div className="w-16 h-16 rounded-lg bg-accent-500/15 flex items-center justify-center shrink-0">
-                  <div className="w-9 h-9 rounded-lg bg-accent-500 text-white flex items-center justify-center shadow-md shadow-accent-500/30 group-hover:scale-110 transition-transform">
-                    <Plus className="w-4 h-4 stroke-[2.5]" />
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-8 h-8 rounded-xl bg-accent-500/20 text-accent-400 flex items-center justify-center">
+                    <Download className="w-4 h-4" />
                   </div>
+                  <span className="text-[11px] text-accent-400/80 group-hover:text-accent-400 flex items-center gap-0.5 transition">
+                    点击输入 <span className="group-hover:translate-x-0.5 transition-transform">→</span>
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-bold text-text-1">新建下载任务</div>
-                  <div className="text-[11px] text-text-3 mt-1 leading-snug">手动输入番号或视频直链创建下载 · 支持 M3U8 / MP4 链接</div>
-                </div>
-                <span className="shrink-0 text-[11px] text-accent-600 dark:text-accent-400 font-semibold flex items-center gap-1">
-                  点击创建<span className="group-hover:translate-x-0.5 transition-transform">→</span>
-                </span>
-              </button>
+                <div className="text-sm font-semibold text-text-1">手动输入直链 / 番号</div>
+                <div className="text-xs text-text-3 mt-0.5 truncate">支持 M3U8、MP4 及番号解析</div>
+              </div>
 
-              <button
-                type="button"
+              {/* 卡 2：剪贴板感知导入 */}
+              <div
                 onClick={async () => {
                   try {
                     const clip = await navigator.clipboard.readText();
@@ -1650,39 +1737,40 @@ export function DownloadPage({
                   }
                   setShowNewTaskModal(true);
                 }}
-                className="group flex items-center gap-3.5 h-24 px-4 rounded-xl border border-hairline bg-surface-1 backdrop-blur-sm text-left cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-sky-500/60 hover:shadow-lg hover:shadow-sky-500/10 will-change-transform"
+                className="anime-glass-card rounded-2xl p-4 cursor-pointer transition-all duration-300 group relative overflow-hidden"
               >
-                <div className="w-16 h-16 rounded-lg bg-sky-500/15 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <Copy className="w-5 h-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-bold text-text-1">剪贴板极速导入</div>
-                  <div className="text-[11px] text-text-3 mt-1 leading-snug">自动读取复制的播放链接，无需手动打字</div>
-                </div>
-                <span className="shrink-0 text-[11px] text-sky-600 dark:text-sky-400 font-semibold flex items-center gap-1">
-                  粘贴并新建<span className="group-hover:translate-x-0.5 transition-transform">→</span>
+                <span className="absolute top-3 right-3 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
                 </span>
-              </button>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-8 h-8 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center">
+                    <Copy className="w-4 h-4" />
+                  </div>
+                </div>
+                <div className="text-sm font-semibold text-text-1">剪贴板极速导入</div>
+                <div className="text-xs text-text-3 mt-0.5 truncate">自动读取复制的播放链接</div>
+              </div>
 
-              <button
-                type="button"
+              {/* 卡 3：队列与批量 */}
+              <div
                 onClick={() => {
                   setInitialTaskUrl("");
                   setShowNewTaskModal(true);
                 }}
-                className="group flex items-center gap-3.5 h-24 px-4 rounded-xl border border-hairline bg-surface-1 backdrop-blur-sm text-left cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-violet-500/60 hover:shadow-lg hover:shadow-violet-500/10 will-change-transform"
+                className="anime-glass-card rounded-2xl p-4 cursor-pointer transition-all duration-300 group"
               >
-                <div className="w-16 h-16 rounded-lg bg-violet-500/15 text-violet-600 dark:text-violet-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                  <Download className="w-5 h-5" />
+                <div className="flex items-center justify-between mb-2">
+                  <div className="w-8 h-8 rounded-xl bg-violet-500/20 text-violet-400 flex items-center justify-center">
+                    <ListOrdered className="w-4 h-4" />
+                  </div>
+                  <span className="text-[11px] text-text-3 group-hover:text-text-1 transition flex items-center gap-0.5">
+                    批量 <span className="group-hover:translate-x-0.5 transition-transform">→</span>
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-bold text-text-1">队列批量下载</div>
-                  <div className="text-[11px] text-text-3 mt-1 leading-snug">多线程极速并发 · 完成后自动转码归档 · 支持定时预约</div>
-                </div>
-                <span className="shrink-0 text-[11px] text-violet-600 dark:text-violet-400 font-semibold flex items-center gap-1">
-                  开始下载<span className="group-hover:translate-x-0.5 transition-transform">→</span>
-                </span>
-              </button>
+                <div className="text-sm font-semibold text-text-1">队列与批量下载</div>
+                <div className="text-xs text-text-3 mt-0.5 truncate">多线程并发，下完自动转码入库</div>
+              </div>
             </div>
           )}
         </div>

@@ -112,6 +112,31 @@ body {
   transition: none;
 }
 
+
+/* ---- 日系轻二次元下载行卡（B 新 UI）：极细微高斯毛玻璃，克制通透 ---- */
+.anime-glass-card {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgb(122 66 88 / 0.14);
+}
+.dark .anime-glass-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+.anime-glass-card:hover {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(244, 63, 94, 0.4);
+}
+.dark .anime-glass-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 99, 132, 0.4);
+}
+/* 设计稿数字等宽字体（JetBrains 系统无则回退 mono） */
+.font-mono-num {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 /* 全局隐藏滚动条：所有页面（含弹层/抽屉/控制台）滚动能力保留，仅不显示条
    （专门的滚动条工具类如 .drop-scrollbar/.zero-scroll 保留各自的精细化定义，
    但条本体同样隐藏，宽度参数仅作占位使布局稳定） */

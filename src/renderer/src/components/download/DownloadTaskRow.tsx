@@ -158,7 +158,7 @@ function DownloadTaskRowImpl({
             <span className="text-[13px] font-semibold text-slate-100 group-hover:text-white truncate tracking-wide" title={task.name}>
               {task.name}
             </span>
-            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-white/[0.08] text-slate-300 border border-white/[0.12] font-mono font-medium">
+            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-accent-500/15 text-accent-300 border border-accent-500/30 font-mono font-bold">
               {task.format}
             </span>
             {code && (
@@ -169,7 +169,7 @@ function DownloadTaskRowImpl({
             {highlight}
           </span>
           <div
-            className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition"
+            className="flex items-center gap-1 shrink-0 opacity-85 group-hover:opacity-100 transition"
             onClick={(e) => e.stopPropagation()}
           >
             {task.savePath && (
@@ -180,7 +180,7 @@ function DownloadTaskRowImpl({
                     e.stopPropagation();
                     void trpc.system.openPath.mutate({ path: task.savePath });
                   }}
-                  className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.14] border border-white/[0.06] hover:border-white/20 text-slate-300 hover:text-white transition cursor-pointer"
+                  className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-accent-500/20 border border-white/[0.06] hover:border-accent-500/40 text-slate-300 hover:text-accent-200 transition cursor-pointer"
                   title="打开目录"
                 >
                   <FolderOpen className="w-3.5 h-3.5" />
@@ -191,7 +191,7 @@ function DownloadTaskRowImpl({
             <Tooltip content="复制 N_m3u8DL-RE 指令" placement="top">
               <button
                 onClick={(e) => onCopyCommand(e, task)}
-                className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.14] border border-white/[0.06] hover:border-white/20 text-slate-300 hover:text-white transition cursor-pointer"
+                className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-accent-500/20 border border-white/[0.06] hover:border-accent-500/40 text-slate-300 hover:text-accent-200 transition cursor-pointer"
                 title="复制指令"
               >
                 {copiedTaskId === task.id ? (
@@ -272,11 +272,16 @@ function DownloadTaskRowImpl({
         <div className="flex justify-between items-center text-xs font-mono-num text-slate-300 mt-2">
           <span className="truncate flex items-center flex-wrap gap-x-2 gap-y-1">
             <span className="font-semibold text-slate-200">
-              {task.totalSize > 0
-                ? `${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)} (${Math.round(task.progress)}%)`
-                : task.fileSize > 0
-                  ? formatBytes(task.fileSize)
-                  : "大小未知"}
+              {task.totalSize > 0 ? (
+                <>
+                  <span>{formatBytes(task.downloadedSize)} / {formatBytes(task.totalSize)}</span>{" "}
+                  <span className="text-accent-400 font-bold">({Math.round(task.progress)}%)</span>
+                </>
+              ) : task.fileSize > 0 ? (
+                formatBytes(task.fileSize)
+              ) : (
+                "大小未知"
+              )}
             </span>
 
             {task.totalSegments > 0 ? (
@@ -286,12 +291,13 @@ function DownloadTaskRowImpl({
                   e.stopPropagation();
                   onOpenSegments?.(task);
                 }}
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.08] hover:bg-accent-500/20 hover:border-accent-500/50 border border-white/[0.14] text-slate-200 hover:text-white transition-all cursor-pointer group/seg shadow-xs"
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-accent-500/10 hover:bg-accent-500/25 hover:border-accent-500/50 border border-accent-500/30 text-accent-300 hover:text-white transition-all cursor-pointer group/seg shadow-xs"
                 title="点击查看分片拓扑分布与抓取日志"
               >
                 <span className="text-[11px] text-accent-400 group-hover/seg:scale-110 transition-transform">⚡</span>
-                <span className="font-medium">{task.downloadedSegments}/{task.totalSegments} 分片</span>
-                <span className="text-[10px] text-slate-400 group-hover/seg:text-accent-300">↗</span>
+                <span className="font-bold text-accent-300">{task.downloadedSegments}</span>
+                <span className="text-slate-400">/{task.totalSegments} 分片</span>
+                <span className="text-[10px] text-accent-400/80 group-hover/seg:text-accent-300">↗</span>
               </button>
             ) : null}
 

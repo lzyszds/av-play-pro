@@ -28,6 +28,7 @@ export interface VideoItem {
 export interface PlayerPageProps {
   videoPath: string;
   layout?: PlayerLayout;
+  active?: boolean;
   onAddSystemLog: (
     text: string,
     level: "INFO" | "WARNING" | "SUCCESS" | "ERROR",

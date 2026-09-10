@@ -25,6 +25,7 @@ export interface DownloadTaskRowProps {
   onCopyCommand: (e: React.MouseEvent, task: DownloadTask) => void;
   onPlayCompleted?: (task: DownloadTask) => void;
   onRedownload?: (id: string) => void;
+  onOpenSegments?: (task: DownloadTask) => void;
 }
 
 function formatScheduledAt(iso: string): string {
@@ -50,18 +51,18 @@ function useScheduleTick(enabled: boolean) {
   }, [enabled]);
 }
 
-/** 日系素雅细长进度条： downloading 玫瑰→粉渐变；完成绿；暂停灰；失败暗红 */
+/** 饱满明亮的细进度条：完成绿；失败红；暂停灰；下载中发光玫瑰红 */
 function RowProgress({ progress, status }: { progress: number; status: DownloadTask["status"] }) {
   const bar =
     status === "COMPLETED"
-      ? "h-full bg-emerald-500 rounded-full"
+      ? "h-full bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.7)]"
       : status === "FAILED"
-        ? "h-full bg-rose-700 rounded-full"
+        ? "h-full bg-rose-500 rounded-full shadow-[0_0_8px_rgba(244,63,94,0.6)]"
         : status === "PAUSED"
-          ? "h-full bg-slate-600 rounded-full"
-          : "h-full bg-accent-500 rounded-full transition-all";
+          ? "h-full bg-slate-500 rounded-full"
+          : "h-full bg-accent-500 rounded-full transition-all shadow-[0_0_10px_rgba(244,63,94,0.7)]";
   return (
-    <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+    <div className="w-full h-2 bg-white/[0.12] border border-white/[0.06] rounded-full overflow-hidden shadow-inner">
       <div
         className={bar}
         style={{ width: `${Math.min(Math.max(progress, status === "PENDING" || status === "PARSING" ? 3 : 0), 100)}%` }}
@@ -83,6 +84,7 @@ function DownloadTaskRowImpl({
   onCopyCommand,
   onPlayCompleted,
   onRedownload,
+  onOpenSegments,
 }: DownloadTaskRowProps) {
   const coverUrl = resolveTaskCoverUrl(task, {
     allowRemote: allowRemoteCovers,
@@ -109,12 +111,14 @@ function DownloadTaskRowImpl({
 
   const highlightCls =
     task.status === "DOWNLOADING"
-      ? "text-rose-400"
+      ? "text-rose-300 font-bold"
       : task.status === "COMPLETED"
-        ? "text-emerald-400"
+        ? "text-emerald-300 font-bold"
         : task.status === "FAILED"
-          ? "text-rose-400/90"
-          : "text-slate-400";
+          ? "text-rose-400 font-bold"
+          : task.status === "PARSING"
+            ? "text-sky-300 font-semibold"
+            : "text-amber-300/90 font-medium";
 
   return (
     <div
@@ -123,25 +127,25 @@ function DownloadTaskRowImpl({
       aria-label={`选择任务 ${task.name}`}
       onClick={() => onSelectTask(task.id)}
       style={{ ["--i" as string]: Math.min(index, 14) }}
-      className={`anim-fade-stagger group flex items-center gap-3.5 rounded-xl p-3 transition-all duration-150 cursor-pointer border ${
+      className={`anim-fade-stagger group flex items-center gap-3.5 rounded-xl p-3.5 transition-all duration-150 cursor-pointer border ${
         isFlashing
-          ? "bg-white/[0.12] border-accent-500 ring-2 ring-accent-500/50 shadow-lg"
+          ? "bg-[#1c2438] border-accent-500 ring-2 ring-accent-500/60 shadow-[0_4px_25px_rgba(244,63,94,0.35)]"
           : isSelected
-            ? "bg-white/[0.08] border-accent-500/60 ring-1 ring-accent-500/30 shadow-md"
-            : "bg-white/[0.025] hover:bg-white/[0.055] border-white/[0.07] hover:border-white/[0.15]"
-      } ${task.status === "PAUSED" ? "opacity-60" : ""}`}
+            ? "bg-[#182135] border-accent-500/80 ring-1 ring-accent-500/40 shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
+            : "bg-[#0f1523]/85 hover:bg-[#151c2d] border-white/[0.12] hover:border-white/[0.22] shadow-[0_4px_16px_rgba(0,0,0,0.35)]"
+      } ${task.status === "PAUSED" ? "opacity-75" : ""}`}
     >
       {/* 缩略图 / 番号占位 */}
-      <div className="w-20 h-13 rounded-lg bg-black/60 border border-white/[0.08] overflow-hidden shrink-0 flex items-center justify-center relative">
+      <div className="w-20 h-13 rounded-lg bg-black/80 border border-white/[0.14] overflow-hidden shrink-0 flex items-center justify-center relative shadow-sm">
         {hasCover ? (
           <CoverImage src={coverUrl} alt={task.name} logoSize={32} />
         ) : (
-          <span className="font-mono-num text-[11px] font-bold text-slate-500">
+          <span className="font-mono-num text-[11px] font-bold text-slate-400">
             {code ? code.slice(0, 6) : "AV"}
           </span>
         )}
         {task.resolution && (
-          <span className="absolute bottom-1 right-1 text-[9px] font-mono-num px-1 rounded bg-black/70 text-rose-300">
+          <span className="absolute bottom-1 right-1 text-[9px] font-mono-num px-1 rounded bg-black/80 text-rose-300 border border-white/10">
             {task.resolution}
           </span>
         )}
@@ -151,21 +155,21 @@ function DownloadTaskRowImpl({
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-1.5 gap-3">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-xs font-semibold text-slate-100 group-hover:text-white truncate" title={task.name}>
+            <span className="text-[13px] font-semibold text-slate-100 group-hover:text-white truncate tracking-wide" title={task.name}>
               {task.name}
             </span>
-            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-white/[0.06] text-slate-400 border border-white/[0.06]">
+            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-white/[0.08] text-slate-300 border border-white/[0.12] font-mono font-medium">
               {task.format}
             </span>
             {code && (
-              <span className="shrink-0 font-mono-num text-[10px] text-accent-400/90">{code}</span>
+              <span className="shrink-0 font-mono-num text-[10px] px-1.5 py-0.5 rounded bg-accent-500/20 text-accent-300 border border-accent-500/35 font-bold">{code}</span>
             )}
           </div>
           <span className={`shrink-0 font-mono-num text-xs font-semibold ${highlightCls}`}>
             {highlight}
           </span>
           <div
-            className="flex items-center gap-1 shrink-0 opacity-60 group-hover:opacity-100 transition"
+            className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition"
             onClick={(e) => e.stopPropagation()}
           >
             {task.savePath && (
@@ -176,10 +180,10 @@ function DownloadTaskRowImpl({
                     e.stopPropagation();
                     void trpc.system.openPath.mutate({ path: task.savePath });
                   }}
-                  className="p-1.5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
+                  className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.14] border border-white/[0.06] hover:border-white/20 text-slate-300 hover:text-white transition cursor-pointer"
                   title="打开目录"
                 >
-                  <FolderOpen className="w-4 h-4" />
+                  <FolderOpen className="w-3.5 h-3.5" />
                 </button>
               </Tooltip>
             )}
@@ -187,13 +191,13 @@ function DownloadTaskRowImpl({
             <Tooltip content="复制 N_m3u8DL-RE 指令" placement="top">
               <button
                 onClick={(e) => onCopyCommand(e, task)}
-                className="p-1.5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
+                className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.14] border border-white/[0.06] hover:border-white/20 text-slate-300 hover:text-white transition cursor-pointer"
                 title="复制指令"
               >
                 {copiedTaskId === task.id ? (
-                  <Check className="w-4 h-4 text-emerald-400" />
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
                 ) : (
-                  <Copy className="w-4 h-4" />
+                  <Copy className="w-3.5 h-3.5" />
                 )}
               </button>
             </Tooltip>
@@ -203,19 +207,19 @@ function DownloadTaskRowImpl({
                 <Tooltip content="重新下载（覆盖已下载文件）" placement="top">
                   <button
                     onClick={() => onRedownload?.(task.id)}
-                    className="p-1.5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
+                    className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-white/[0.14] border border-white/[0.06] hover:border-white/20 text-slate-300 hover:text-white transition cursor-pointer"
                     title="重新下载"
                   >
-                    <RotateCcw className="w-4 h-4" />
+                    <RotateCcw className="w-3.5 h-3.5" />
                   </button>
                 </Tooltip>
                 <Tooltip content="立即查看" placement="top">
                   <button
                     onClick={() => onPlayCompleted?.(task)}
-                    className="p-1.5 hover:bg-accent-500/20 text-accent-400 rounded-lg transition cursor-pointer"
+                    className="p-1.5 rounded-lg bg-accent-500/25 hover:bg-accent-500/40 border border-accent-500/40 text-accent-300 hover:text-white transition cursor-pointer"
                     title="立即查看"
                   >
-                    <Play className="w-4 h-4 fill-current" />
+                    <Play className="w-3.5 h-3.5 fill-current" />
                   </button>
                 </Tooltip>
               </>
@@ -223,23 +227,27 @@ function DownloadTaskRowImpl({
               <Tooltip content="重试下载（清零进度后重新入队）" placement="top">
                 <button
                   onClick={() => onTriggerPauseResume(task.id)}
-                  className="p-1.5 hover:bg-rose-500/20 text-rose-400 rounded-lg transition cursor-pointer"
+                  className="p-1.5 rounded-lg bg-rose-500/25 hover:bg-rose-500/40 border border-rose-500/40 text-rose-300 hover:text-white transition cursor-pointer"
                   title="重试下载"
                 >
-                  <RotateCcw className="w-4 h-4" />
+                  <RotateCcw className="w-3.5 h-3.5" />
                 </button>
               </Tooltip>
             ) : (
               <Tooltip content={task.status === "DOWNLOADING" ? "暂停下载" : "继续下载"} placement="top">
                 <button
                   onClick={() => onTriggerPauseResume(task.id)}
-                  className="p-1.5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
+                  className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                    task.status === "DOWNLOADING"
+                      ? "bg-accent-500/25 hover:bg-accent-500/40 border-accent-500/40 text-accent-300 hover:text-white"
+                      : "bg-white/[0.06] hover:bg-white/[0.16] border-white/10 hover:border-white/25 text-slate-200 hover:text-white"
+                  }`}
                   title={task.status === "DOWNLOADING" ? "暂停" : "继续"}
                 >
                   {task.status === "DOWNLOADING" ? (
-                    <Pause className="w-4 h-4" />
+                    <Pause className="w-3.5 h-3.5" />
                   ) : (
-                    <Play className="w-4 h-4 fill-current" />
+                    <Play className="w-3.5 h-3.5 fill-current" />
                   )}
                 </button>
               </Tooltip>
@@ -248,10 +256,10 @@ function DownloadTaskRowImpl({
             <Tooltip content="删除任务" placement="top">
               <button
                 onClick={() => onDeleteTask(task.id)}
-                className="p-1.5 hover:bg-rose-500/20 rounded-lg text-slate-500 hover:text-rose-400 transition cursor-pointer"
+                className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/25 hover:border-rose-500/45 text-rose-300 hover:text-rose-200 transition cursor-pointer"
                 title="删除"
               >
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="w-3.5 h-3.5" />
               </button>
             </Tooltip>
           </div>
@@ -261,16 +269,39 @@ function DownloadTaskRowImpl({
         <RowProgress progress={task.progress} status={task.status} />
 
         {/* 底部元数据行 */}
-        <div className="flex justify-between items-center text-[11px] font-mono-num text-slate-400 mt-1.5">
-          <span className="truncate">
-            {task.totalSize > 0
-              ? `${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)} (${Math.round(task.progress)}%)`
-              : task.fileSize > 0
-                ? formatBytes(task.fileSize)
-                : "大小未知"}
-            {task.totalSegments > 0 ? ` · ${task.downloadedSegments}/${task.totalSegments} 分片` : ""}
-            {task.encryptionType && task.encryptionType !== "NONE" ? ` · ${task.encryptionType}` : ""}
-            {task.taskTag === "SCHEDULED" && task.scheduledAt ? ` · ⏰ ${new Date(task.scheduledAt).toLocaleString()}` : ""}
+        <div className="flex justify-between items-center text-xs font-mono-num text-slate-300 mt-2">
+          <span className="truncate flex items-center flex-wrap gap-x-2 gap-y-1">
+            <span className="font-semibold text-slate-200">
+              {task.totalSize > 0
+                ? `${formatBytes(task.downloadedSize)} / ${formatBytes(task.totalSize)} (${Math.round(task.progress)}%)`
+                : task.fileSize > 0
+                  ? formatBytes(task.fileSize)
+                  : "大小未知"}
+            </span>
+
+            {task.totalSegments > 0 ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenSegments?.(task);
+                }}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-white/[0.08] hover:bg-accent-500/20 hover:border-accent-500/50 border border-white/[0.14] text-slate-200 hover:text-white transition-all cursor-pointer group/seg shadow-xs"
+                title="点击查看分片拓扑分布与抓取日志"
+              >
+                <span className="text-[11px] text-accent-400 group-hover/seg:scale-110 transition-transform">⚡</span>
+                <span className="font-medium">{task.downloadedSegments}/{task.totalSegments} 分片</span>
+                <span className="text-[10px] text-slate-400 group-hover/seg:text-accent-300">↗</span>
+              </button>
+            ) : null}
+
+            {task.encryptionType && task.encryptionType !== "NONE" ? (
+              <span className="text-slate-400 font-mono">· {task.encryptionType}</span>
+            ) : null}
+
+            {task.taskTag === "SCHEDULED" && task.scheduledAt ? (
+              <span className="text-amber-300/90 font-mono">· ⏰ {new Date(task.scheduledAt).toLocaleString()}</span>
+            ) : null}
           </span>
         </div>
       </div>
@@ -291,6 +322,7 @@ export const DownloadTaskRow = React.memo(DownloadTaskRowImpl, (prev, next) => {
   if (prev.onCopyCommand !== next.onCopyCommand) return false;
   if (prev.onPlayCompleted !== next.onPlayCompleted) return false;
   if (prev.onRedownload !== next.onRedownload) return false;
+  if (prev.onOpenSegments !== next.onOpenSegments) return false;
   if (prev.allowRemoteCovers !== next.allowRemoteCovers) return false;
   const a = prev.task;
   const b = next.task;

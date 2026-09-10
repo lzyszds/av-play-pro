@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { TitleBar, type Page } from "./components/TitleBar";
 import { GlobalConsole } from "./components/GlobalConsole";
 import { ThumbnailQueueWidget } from "./components/ThumbnailQueueWidget";
@@ -75,6 +75,35 @@ const VALID_PAGES: Page[] = [
   "news",
 ];
 
+const SETTINGS_CACHE_KEY = "avplay:cached_settings";
+
+function getCachedSettings(): AppSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_CACHE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        return {
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          maxConcurrentTasks: Infinity,
+        };
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_SETTINGS;
+}
+
+function syncSettingsCache(settings: AppSettings): void {
+  try {
+    localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings));
+  } catch {
+    /* ignore */
+  }
+}
+
 function applyLoaderStyle(style: AppSettings["loaderStyle"]): void {
   document.documentElement.dataset.loader = style;
 }
@@ -97,8 +126,17 @@ function applyTheme(mode: AppSettings["theme"]): void {
 }
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<Page>("player");
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const initialSettings = useMemo(() => getCachedSettings(), []);
+  const [currentPage, setCurrentPage] = useState<Page>(() => {
+    if (
+      initialSettings.lastPage &&
+      VALID_PAGES.includes(initialSettings.lastPage as Page)
+    ) {
+      return initialSettings.lastPage as Page;
+    }
+    return "player";
+  });
+  const [settings, setSettings] = useState<AppSettings>(initialSettings);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // B207 首次运行体检向导：仅在本地没有任何设置文件（全新安装）时自动弹出一次
@@ -155,7 +193,7 @@ export default function App() {
       scope: string,
       message: string,
     ) => {
-      void trpc.logger.write.mutate({ level, scope, message }).catch(() => {});
+      void trpc.logger.write.mutate({ level, scope, message }).catch(() => { });
     };
     const onError = (e: ErrorEvent) => {
       forward(
@@ -200,6 +238,7 @@ export default function App() {
         if (!merged.video_path?.trim()) merged.video_path = defaults.video_path;
         if (!merged.temp_path?.trim()) merged.temp_path = defaults.temp_path;
         setSettings(merged);
+        syncSettingsCache(merged);
         // 恢复上次所在页面（校验合法后）
         if (
           merged.lastPage &&
@@ -244,7 +283,7 @@ export default function App() {
         } else if (cmd.type === "toggle-console") {
           setSettings((s) => ({ ...s, consoleOpen: !s.consoleOpen }));
         }
-      }) ?? (() => {});
+      }) ?? (() => { });
     return off;
   }, []);
 
@@ -292,7 +331,7 @@ export default function App() {
             durationSec,
             videoFolder: currentPlayingFolderRef.current,
           })
-          .catch(() => {});
+          .catch(() => { });
       }
     } else {
       arousalStartRef.current = Date.now();
@@ -401,9 +440,10 @@ export default function App() {
     if (setZoom) void setZoom(pct / 100);
   }, [settings.uiZoom, settingsLoaded]);
 
-  // 设置变更落盘（防抖 500ms）
+  // 设置变更落盘（防抖 500ms，localStorage 缓存即时同步保障刷新无闪烁）
   useEffect(() => {
     if (!settingsLoaded) return;
+    syncSettingsCache(settings);
     const timer = window.setTimeout(() => {
       void trpc.storage.saveSettings.mutate(
         settings as unknown as Record<string, unknown>,
@@ -464,21 +504,30 @@ export default function App() {
             onIncomingCandidateConsumed={() => setIncomingDownloadCandidate(null)}
           />
         </div>
-        {currentPage === "player" && (
-          <PlayerPage
-            videoPath={settings.video_path}
-            layout={settings.playerLayout ?? "classic"}
-            onAddSystemLog={addLog}
-            pendingPlayName={pendingPlayName}
-            onConsumePendingPlay={() => setPendingPlayName(null)}
-            onActiveVideoChange={(name) => {
-              currentPlayingFolderRef.current = name;
-            }}
-            onLayoutChange={(l) =>
-              setSettings((s) => ({ ...s, playerLayout: l }))
-            }
-          />
-        )}
+        <div className={currentPage === "player" ? "h-full" : "hidden"}>
+          {settingsLoaded ? (
+            <PlayerPage
+              active={currentPage === "player"}
+              videoPath={settings.video_path}
+              layout={settings.playerLayout ?? "classic"}
+              onAddSystemLog={addLog}
+              pendingPlayName={pendingPlayName}
+              onConsumePendingPlay={() => setPendingPlayName(null)}
+              onActiveVideoChange={(name) => {
+                currentPlayingFolderRef.current = name;
+              }}
+              onLayoutChange={(l) => {
+                setSettings((s) => {
+                  const updated = { ...s, playerLayout: l };
+                  syncSettingsCache(updated);
+                  return updated;
+                });
+              }}
+            />
+          ) : (
+            <div className="w-full h-full bg-[#050506]" />
+          )}
+        </div>
         {currentPage === "discover" && (
           <DiscoverPage onAddSystemLog={addLog} />
         )}

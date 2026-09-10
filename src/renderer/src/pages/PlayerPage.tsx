@@ -197,7 +197,8 @@ function sampleVideoAmbientColor(video: HTMLVideoElement): string | null {
 
 export function PlayerPage({
   videoPath,
-  layout = "classic",
+  layout: rawLayout,
+  active = true,
   onAddSystemLog,
   pendingPlayName,
   onConsumePendingPlay,
@@ -205,11 +206,33 @@ export function PlayerPage({
   onOpenActor,
   onLayoutChange,
 }: PlayerPageProps) {
+  // 双重保底机制：若父层传入的 rawLayout 为空或经典默认值，优先核对 localStorage 缓存中的真实 playerLayout，杜绝刷新时经典默认播放器闪现一瞬间
+  const layout: PlayerLayout = useMemo(() => {
+    if (rawLayout && rawLayout !== "classic") return rawLayout;
+    try {
+      const raw = localStorage.getItem("avplay:cached_settings");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.playerLayout) return parsed.playerLayout;
+      }
+    } catch {
+      /* ignore */
+    }
+    return rawLayout || "classic";
+  }, [rawLayout]);
+
   const isClassicLayout = layout === "classic";
   const isZeroLayout = layout === "zero";
   const isCapsuleLayout = layout === "capsule";
   // 当前激活的 <video> 元素（由 HlsVideoPlayer 通过 onVideoEl 回调暴露给统计逻辑）
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+
+  // 切出播放器页面（如切换到下载页）时自动暂停播放，防止后台耗电和异响
+  useEffect(() => {
+    if (!active && videoEl && !videoEl.paused) {
+      void videoEl.pause();
+    }
+  }, [active, videoEl]);
   const [ambientEnabled, setAmbientEnabled] = useState(() => {
     try {
       return localStorage.getItem(AMBIENT_LIGHT_KEY) !== "false";

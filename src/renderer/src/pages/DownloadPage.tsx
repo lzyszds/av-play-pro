@@ -25,6 +25,7 @@ import {
 import { NewTaskModal } from "../components/download/NewTaskModal";
 import { DownloadTaskRow } from "../components/download/DownloadTaskRow";
 import { TaskDetailDrawer } from "../components/download/TaskDetailDrawer";
+import { TaskSegmentsModal } from "../components/download/TaskSegmentsModal";
 import { DownloadFloatingBall } from "../components/download/DownloadFloatingBall";
 import { PageLoader } from "../components/PageLoader";
 import type {
@@ -130,6 +131,8 @@ export function DownloadPage({
   const [quickInput, setQuickInput] = useState("");
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [segmentsModalTaskId, setSegmentsModalTaskId] = useState<string | null>(null);
+  const [segmentsFallbackTask, setSegmentsFallbackTask] = useState<DownloadTask | null>(null);
   const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
   const flashTimerRef = useRef<number | null>(null);
   const [privacyScreenActive, setPrivacyScreenActive] = useState(false);
@@ -1324,11 +1327,20 @@ export function DownloadPage({
     [quickInput],
   );
 
-  /* ---- 选中卡片：打开下方详情抽屉 ---- */
-  const handleSelectTask = useCallback((id: string) => {
-    setSelectedTaskId(id);
-    setDetailOpen(true);
-  }, []);
+  /* ---- 选中卡片：切换底部详情驾驶台（支持再次点击折叠） ---- */
+  const handleSelectTask = useCallback(
+    (id: string) => {
+      setSelectedTaskId((prev) => {
+        if (prev === id && detailOpen) {
+          setDetailOpen(false);
+          return null;
+        }
+        setDetailOpen(true);
+        return id;
+      });
+    },
+    [detailOpen],
+  );
 
   /* ---- 跳转并高亮指定任务卡片 ---- */
   const handleJumpToTask = useCallback((id: string) => {
@@ -1378,6 +1390,21 @@ export function DownloadPage({
     () => tasks.find((t) => t.id === selectedTaskId) ?? null,
     [tasks, selectedTaskId],
   );
+
+  const activeSegmentsTask: DownloadTask | null = useMemo(
+    () => tasks.find((t) => t.id === segmentsModalTaskId) ?? segmentsFallbackTask,
+    [tasks, segmentsModalTaskId, segmentsFallbackTask],
+  );
+
+  const handleOpenSegments = useCallback((t: DownloadTask) => {
+    setSegmentsModalTaskId(t.id);
+    setSegmentsFallbackTask(t);
+  }, []);
+
+  const handleCloseSegments = useCallback(() => {
+    setSegmentsModalTaskId(null);
+    setSegmentsFallbackTask(null);
+  }, []);
 
   const hasPausedTasks = useMemo(() => tasks.some((t) => t.status === "PAUSED"), [tasks]);
   const hasRunningTasks = useMemo(
@@ -1764,6 +1791,7 @@ export function DownloadPage({
                 onCopyCommand={handleCopyCommand}
                 onPlayCompleted={handlePlayCompleted}
                 onRedownload={handleRedownload}
+                onOpenSegments={handleOpenSegments}
               />
             ))}
           </div>
@@ -1790,6 +1818,27 @@ export function DownloadPage({
             </div>
           )}
         </div>
+
+        {/* 4. 底部横向悬浮驾驶台（不遮挡主列表任务，无全屏遮罩） */}
+        <TaskDetailDrawer
+          task={selectedTask}
+          open={detailOpen && !!selectedTask}
+          onClose={() => setDetailOpen(false)}
+          onTriggerPauseResume={handleTriggerPauseResume}
+          onDeleteTask={(id) => {
+            handleDeleteTask(id);
+            setDetailOpen(false);
+          }}
+          onPlayCompleted={handlePlayCompleted}
+          onOpenSegments={handleOpenSegments}
+        />
+
+        {/* 5. 分片详情与切片拓扑视窗 */}
+        <TaskSegmentsModal
+          task={activeSegmentsTask}
+          open={Boolean(segmentsModalTaskId && activeSegmentsTask)}
+          onClose={handleCloseSegments}
+        />
       </div>
 
       {privacyScreenActive && (
@@ -1858,18 +1907,6 @@ export function DownloadPage({
           defaultThreads={settings.defaultThreads}
         />
       )}
-
-      <TaskDetailDrawer
-        task={selectedTask}
-        open={detailOpen && !!selectedTask}
-        onClose={() => setDetailOpen(false)}
-        onTriggerPauseResume={handleTriggerPauseResume}
-        onDeleteTask={(id) => {
-          handleDeleteTask(id);
-          setDetailOpen(false);
-        }}
-        onPlayCompleted={handlePlayCompleted}
-      />
     </div>
   );
 }

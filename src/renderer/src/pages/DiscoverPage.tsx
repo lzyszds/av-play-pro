@@ -7,6 +7,7 @@ import {
   runScraper,
   cancelScrape,
   isScrapeAbortError,
+  runChallengePass,
   type ScrapedItem,
 } from "../lib/scraperControl";
 import { toCdnImg } from "../lib/cdn";
@@ -18,13 +19,26 @@ import {
   Copy,
   Trash2,
   Layers,
+  Download,
+  DownloadCloud,
+  Check,
+  Loader2,
+  AlertCircle,
+  Square,
+  Play,
+  ShieldCheck,
 } from "lucide-react";
+
+/** 单卡一键下载状态：idle 未开始 / resolving 解析中 / queued 已入队 / error 失败 */
+export type DiscoverDlState = "idle" | "resolving" | "queued" | "error";
 
 interface Props {
   onAddSystemLog: (
     text: string,
     level: "INFO" | "WARNING" | "SUCCESS" | "ERROR",
   ) => void;
+  /** 一键播放：解析出 m3u8 后由 App 跳转播放页在线播放 */
+  onPlayStream?: (stream: { url: string; name?: string; referer?: string }) => void;
 }
 
 interface ScrapeStore {
@@ -52,11 +66,19 @@ function formatTime(ts: number): string {
 const DiscoverCard = React.memo(function DiscoverCard({
   item,
   onCopy,
+  onDownload,
+  downloadState = "idle",
+  onPlay,
+  playState = "idle",
   coverH,
   cardH,
 }: {
   item: ScrapedItem;
   onCopy: (text: string) => void;
+  onDownload?: (item: ScrapedItem) => void;
+  downloadState?: DiscoverDlState;
+  onPlay?: (item: ScrapedItem) => void;
+  playState?: "idle" | "resolving" | "loaded" | "error";
   coverH: number;
   cardH: number;
 }) {
@@ -132,16 +154,15 @@ const DiscoverCard = React.memo(function DiscoverCard({
           </span>
         )}
         {preview && (
-          <span className="absolute top-1.5 left-1.5 z-20 text-[8px] px-1.5 py-0.5 rounded-md cyber-badge-cyan font-semibold tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <span className="absolute top-1.5 right-1.5 z-20 text-[8px] px-1.5 py-0.5 rounded-md cyber-badge-cyan font-semibold tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             ▶ 预览
           </span>
         )}
-        {/* 播放 overlay */}
-        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          <div className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center">
-            <ExternalLink className="w-4 h-4 text-white/80" />
-          </div>
-        </div>
+        {item.quality && (
+          <span className="absolute top-1.5 left-1.5 z-20 text-[8px] px-1.5 py-0.5 rounded-md bg-emerald-500/85 text-white font-bold tracking-wide backdrop-blur-sm">
+            {item.quality}
+          </span>
+        )}
       </div>
 
       {/* 底部信息区：番号 + 操作按钮 */}
@@ -152,6 +173,45 @@ const DiscoverCard = React.memo(function DiscoverCard({
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
+          {onDownload && (
+            <Tooltip
+              content={
+                downloadState === "resolving"
+                  ? "正在解析视频流…"
+                  : downloadState === "queued"
+                    ? "已加入下载队列"
+                    : downloadState === "error"
+                      ? "解析失败，点击重试"
+                      : "一键下载（自动解析 m3u8）"
+              }
+              placement="top"
+            >
+              <button
+                type="button"
+                onClick={() => onDownload(item)}
+                disabled={downloadState === "resolving"}
+                className={`w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border transition-all cursor-pointer disabled:cursor-not-allowed ${
+                  downloadState === "queued"
+                    ? "border-emerald-500/40 text-emerald-400"
+                    : downloadState === "error"
+                      ? "border-rose-500/40 text-rose-400"
+                      : downloadState === "resolving"
+                        ? "border-amber-500/40 text-amber-400"
+                        : "border-white/10 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/40"
+                }`}
+              >
+                {downloadState === "resolving" ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : downloadState === "queued" ? (
+                  <Check className="w-3 h-3" />
+                ) : downloadState === "error" ? (
+                  <AlertCircle className="w-3 h-3" />
+                ) : (
+                  <Download className="w-3 h-3" />
+                )}
+              </button>
+            </Tooltip>
+          )}
           {item.code && (
             <Tooltip content="复制番号" placement="top">
               <button
@@ -160,6 +220,41 @@ const DiscoverCard = React.memo(function DiscoverCard({
                 className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-cyan-400 hover:border-cyan-500/40 transition-all cursor-pointer"
               >
                 <Copy className="w-3 h-3" />
+              </button>
+            </Tooltip>
+          )}
+          {onPlay && (
+            <Tooltip
+              content={
+                playState === "resolving"
+                  ? "正在解析视频流…"
+                  : playState === "loaded"
+                    ? "已跳转播放页"
+                    : playState === "error"
+                      ? "解析失败，点击重试"
+                      : "一键播放（在线流）"
+              }
+              placement="top"
+            >
+              <button
+                type="button"
+                onClick={() => onPlay(item)}
+                disabled={playState === "resolving"}
+                className={`w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border transition-all cursor-pointer disabled:cursor-not-allowed ${
+                  playState === "loaded"
+                    ? "border-cyan-500/40 text-cyan-400"
+                    : playState === "error"
+                      ? "border-rose-500/40 text-rose-400"
+                      : "border-white/10 text-slate-400 hover:text-cyan-400 hover:border-cyan-500/40"
+                }`}
+              >
+                {playState === "resolving" ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : playState === "error" ? (
+                  <AlertCircle className="w-3 h-3" />
+                ) : (
+                  <Play className="w-3 h-3" />
+                )}
               </button>
             </Tooltip>
           )}
@@ -178,13 +273,44 @@ const DiscoverCard = React.memo(function DiscoverCard({
   );
 });
 
-export function DiscoverPage({ onAddSystemLog }: Props) {
+export function DiscoverPage({ onAddSystemLog, onPlayStream }: Props) {
   const [store, setStore] = useState<ScrapeStore | null>(null);
   const [config, setConfig] = useState<ScrapeConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState("");
-  const [keyword, setKeyword] = useState("");
+  const [keyword, setKeywordState] = useState("");
+  const setKeyword = (v: string): void => {
+    setKeywordState(v);
+  };
+  // 抓取进行中轮询增量缓存与页进度：jina/webview 通道每抓到一页就落盘，这里 2s 拉一次让卡片实时出现
+  useEffect(() => {
+    if (!running) return;
+    const tick = async () => {
+      try {
+        const cached = (await trpc.scrape.getCached.query()) as ScrapeStore;
+        setStore((prev) =>
+          cached.items.length >= (prev?.items.length ?? 0) ? cached : prev,
+        );
+        const prog = (await trpc.scrape.getProgress.query()) as {
+          active: boolean;
+          page: number;
+          totalPages: number;
+          lastPageItems: number;
+        };
+        if (prog?.active && prog.totalPages > 0 && prog.page > 0) {
+          setProgress(
+            `第 ${prog.page}/${prog.totalPages} 页 · 本页 ${prog.lastPageItems} 条`,
+          );
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    const timer = window.setInterval(() => void tick(), 2000);
+    void tick();
+    return () => window.clearInterval(timer);
+  }, [running]);
   // 抓取启动弹窗：点「一键抓取」时让用户选方式与页码范围
   const [showScrapeDialog, setShowScrapeDialog] = useState(false);
   const [dlgMethod, setDlgMethod] = useState<"webview" | "jina">("webview");
@@ -192,6 +318,16 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
   const [dlgEnd, setDlgEnd] = useState(3);
   const [dlgBaseUrl, setDlgBaseUrl] = useState("");
   const [dlgAutoOnStartup, setDlgAutoOnStartup] = useState(false);
+
+  // —— 页码记忆（双保险一）：loadAll 拉到数据后立即恢复上次页码，同步写回缓存 ——
+  const restorePage = useCallback((totalPages: number): void => {
+    const saved = Number(localStorage.getItem("avplay:discover:lastPage") || "1");
+    if (saved > 1) {
+      const target = Math.min(saved, Math.max(1, totalPages));
+      setPage(target);
+      localStorage.setItem("avplay:discover:lastPage", String(target));
+    }
+  }, []);
 
   const loadAll = useCallback(async () => {
     try {
@@ -201,6 +337,13 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
       ]);
       setStore(cached);
       setConfig(cfg);
+      if (cached.items.length > 0) {
+        const cfgEstimated = Math.max(
+          1,
+          Math.ceil(cached.items.length / 20),
+        );
+        restorePage(cfgEstimated);
+      }
     } catch (error) {
       onAddSystemLog(`读取抓取数据失败: ${(error as Error)?.message}`, "ERROR");
     } finally {
@@ -226,7 +369,11 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
     [config, onAddSystemLog],
   );
 
+  const scraperStoppedRef = useRef(false);
   const handleStopScrape = useCallback(() => {
+    // 渲染端过盾抓取取消 + 主进程 jina 抓取取消（双通道都覆盖）
+    void trpc.scrape.cancelRun.mutate().catch(() => {});
+    scraperStoppedRef.current = true;
     cancelScrape();
     setProgress("正在停止…");
     onAddSystemLog("正在停止抓取…", "INFO");
@@ -247,24 +394,75 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
       setProgress(useJina ? "Jina 快速抓取中…" : "准备中…");
       onAddSystemLog(useJina ? "开始 Jina 快速抓取 missav…" : "开始一键抓取 missav…", "INFO");
       if (useJina) {
-        try {
-          const saved = (await trpc.scrape.refresh.mutate({
-            method: "jina",
-            baseUrl,
-            startPage,
-            endPage,
-          })) as ScrapeStore;
-          setStore(saved);
-          onAddSystemLog(`Jina 抓取完成，已保存 ${saved.items.length} 条`, "SUCCESS");
-        } catch (error) {
-          onAddSystemLog(`Jina 抓取失败: ${(error as Error)?.message}`, "ERROR");
-        } finally {
+        let saved = (await trpc.scrape.refresh.mutate({
+          method: "jina",
+          baseUrl,
+          startPage,
+          endPage,
+        })) as ScrapeStore;
+        setStore(saved);
+        if (saved.items.length > 0) {
           setRunning(false);
           setProgress("");
+          onAddSystemLog(
+            `Jina 抓取完成，已保存 ${saved.items.length} 条`,
+            "SUCCESS",
+          );
+          return;
         }
-        return;
+        // Jina 通道拿不到数据：r.jina.ai 自己也在 Cloudflare 后面，家里等换了
+        // 出口 IP 的环境会对应用甩「Just a moment」挑战页。先弹 webview，
+        // 让用户为 r.jina.ai 过一次盾，然后立刻重试 Jina 通道。
+        const jinaFirstPage = `https://r.jina.ai/${pageUrlOf(baseUrl, startPage)}`;
+        onAddSystemLog(
+          "Jina 通道被 Cloudflare 挑战，弹出页面为你过一次盾（出现验证请点击，完成后自动继续）…",
+          "WARNING",
+        );
+        setProgress("为 Jina 过盾中…（弹出窗口完成验证）");
+        let passed = false;
+        try {
+          passed = await runChallengePass({
+            url: jinaFirstPage,
+            onProgress: (m) => setProgress(m === "" ? "" : `Jina 过盾：${m}`),
+          });
+        } catch (error) {
+          if (isScrapeAbortError(error)) {
+            onAddSystemLog("抓取已取消", "INFO");
+            return;
+          }
+          onAddSystemLog(`Jina 过盾失败: ${(error as Error)?.message}`, "WARNING");
+        }
+        if (passed) {
+          try {
+            saved = (await trpc.scrape.refresh.mutate({
+              method: "jina",
+              baseUrl,
+              startPage,
+              endPage,
+            })) as ScrapeStore;
+            setStore(saved);
+          } catch (error) {
+            onAddSystemLog(`Jina 重试失败: ${(error as Error)?.message}`, "ERROR");
+          }
+          if (saved.items.length > 0) {
+            setRunning(false);
+            setProgress("");
+            onAddSystemLog(
+              `Jina 抓取完成（过盾后恢复），已保存 ${saved.items.length} 条`,
+              "SUCCESS",
+            );
+            return;
+          }
+        }
+        // Jina 重试仍 0 条（可能是 Jina 出口被 missav 拦）：自动降级为过盾抓取
+        onAddSystemLog(
+          "Jina 快速通道仍拿不到数据（可能被目标站拦截），自动转「过盾抓取」…",
+          "WARNING",
+        );
+        setProgress("Jina 不可用，转过盾抓取…");
       }
       try {
+        scraperStoppedRef.current = false;
         const items = await runScraper({
           baseUrl,
           startPage,
@@ -283,7 +481,12 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
           pages: endPage - startPage + 1,
         })) as ScrapeStore;
         setStore(saved);
-        onAddSystemLog(`抓取完成，已保存 ${saved.items.length} 条`, "SUCCESS");
+        onAddSystemLog(
+          scraperStoppedRef.current
+            ? `已手动停止，保留本次已抓取的 ${saved.items.length} 条`
+            : `抓取完成，已保存 ${saved.items.length} 条`,
+          "SUCCESS",
+        );
       } catch (error) {
         if (isScrapeAbortError(error)) {
           onAddSystemLog("抓取已取消", "INFO");
@@ -297,6 +500,46 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
     },
     [config, onAddSystemLog],
   );
+
+  /** 把带 {page} 占位或 page=N 的地址替换成第 p 页（与后端规则一致） */
+  const pageUrlOf = (baseUrl: string, p: number): string => {
+    return baseUrl.includes("{page}")
+      ? baseUrl.replace("{page}", String(p))
+      : baseUrl.replace(/([?&]page=)\d+/, `$1${p}`);
+  };
+
+  // 手动过盾：弹出可见 webview 完成一次 Cloudflare 人机验证，
+  // 之后主进程的列表/详情直连请求即可复用 cf_clearance
+  const [challengeRunning, setChallengeRunning] = useState(false);
+  const handlePassChallenge = useCallback(async () => {
+    if (challengeRunning || running) return;
+    const baseUrl = config?.baseUrl || "";
+    if (!baseUrl) return;
+    setChallengeRunning(true);
+    setRunning(true);
+    try {
+      const ok = await runChallengePass({
+        url: pageUrlOf(baseUrl, 1),
+        onProgress: (m) => setProgress(m),
+      });
+      onAddSystemLog(
+        ok
+          ? "过盾成功：后续解析/直连抓取将复用本次验证"
+          : "过盾未完成（超时或取消）",
+        ok ? "SUCCESS" : "WARNING",
+      );
+    } catch (error) {
+      if (isScrapeAbortError(error)) {
+        onAddSystemLog("过盾已取消", "INFO");
+      } else {
+        onAddSystemLog(`过盾失败: ${(error as Error)?.message}`, "ERROR");
+      }
+    } finally {
+      setChallengeRunning(false);
+      setRunning(false);
+      setProgress("");
+    }
+  }, [challengeRunning, running, config, onAddSystemLog]);
 
   // 打开抓取弹窗：默认带出已保存配置
   const openScrapeDialog = useCallback(() => {
@@ -372,11 +615,32 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
   const [pageSize, setPageSize] = useState(20);
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  // 关键词变化时回到第 1 页
+  const currentPage = Math.min(page, totalPages);
+  // 上次浏览页码持久化：进入发现页恢复；切页即保存
+  const pageRestoreDoneRef = useRef(false);
   useEffect(() => {
+    if (items.length > 0 && !pageRestoreDoneRef.current) {
+      pageRestoreDoneRef.current = true;
+      const saved = Number(
+        localStorage.getItem("avplay:discover:lastPage") || "1",
+      );
+      if (saved > 1) setPage(Math.min(saved, totalPages));
+    }
+  }, [items.length, totalPages]);
+  useEffect(() => {
+    if (currentPage > 0) {
+      localStorage.setItem("avplay:discover:lastPage", String(currentPage));
+    }
+  }, [currentPage]);
+  // 关键词变化时回到第 1 页（跳过首次挂载，避免覆盖恢复的页码）
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
     setPage(1);
   }, [keyword]);
-  const currentPage = Math.min(page, totalPages);
   const pagedItems = useMemo(
     () =>
       filtered.slice(
@@ -394,6 +658,200 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
     [onAddSystemLog],
   );
 
+  // —— 一键下载：解析详情页 m3u8 → 走插件推送管线自动建任务 ——
+  const [dlStates, setDlStates] = useState<Record<string, DiscoverDlState>>({});
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchInfo, setBatchInfo] = useState("");
+  const batchStopRef = useRef(false);
+
+  const setDlState = useCallback((key: string, state: DiscoverDlState) => {
+    setDlStates((prev) => ({ ...prev, [key]: state }));
+  }, []);
+
+  const resolveAndQueue = useCallback(
+    async (item: ScrapedItem): Promise<boolean> => {
+      const key = item.code || item.url;
+      try {
+        const res = (await trpc.scrape.resolveM3u8.mutate({
+          url: item.url,
+        })) as { m3u8: string | null; method: string; quality?: string | null };
+        if (!res?.m3u8) throw new Error("未解析到 m3u8 播放地址");
+        await trpc.scrape.queueDiscoverDownload.mutate({
+          m3u8Url: res.m3u8,
+          name: item.title || item.code || "M3U8 Task",
+          coverUrl: item.cover || undefined,
+          previewUrl: item.preview || undefined,
+          pageUrl: item.url,
+          quality: res.quality || undefined,
+        });
+        setDlState(key, "queued");
+        onAddSystemLog(
+          `已加入下载队列: ${item.code || ""} (${item.title})`,
+          "SUCCESS",
+        );
+        return true;
+      } catch (error) {
+        setDlState(key, "error");
+        onAddSystemLog(
+          `一键下载失败 ${item.code || item.title}: ${(error as Error)?.message}`,
+          "ERROR",
+        );
+        return false;
+      }
+    },
+    [onAddSystemLog, setDlState],
+  );
+
+  const handleDownloadOne = useCallback(
+    async (item: ScrapedItem) => {
+      const key = item.code || item.url;
+      const state = dlStates[key];
+      if (state === "resolving" || state === "queued") return;
+      setDlState(key, "resolving");
+      void resolveAndQueue(item);
+    },
+    [dlStates, resolveAndQueue, setDlState],
+  );
+
+  // 本页全部批量导入（顺序解析，间隔小段节流，可随时停止）
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const handleBatchDownload = useCallback(async () => {
+    if (batchRunning) {
+      batchStopRef.current = true;
+      return;
+    }
+    batchStopRef.current = false;
+    setBatchRunning(true);
+    let ok = 0;
+    let fail = 0;
+    let skipped = 0;
+    try {
+      for (let i = 0; i < pagedItems.length; i++) {
+        if (batchStopRef.current) break;
+        const it = pagedItems[i];
+        const key = it.code || it.url;
+        const state = key ? dlStates[key] : undefined;
+        if (state === "queued" || state === "resolving") {
+          skipped++;
+          continue;
+        }
+        setBatchInfo(`导入中 ${i + 1}/${pagedItems.length}：${it.code || ""}`);
+        setDlState(key, "resolving");
+        const success = await resolveAndQueue(it);
+        if (success) ok++;
+        else fail++;
+        await sleep(900);
+      }
+      onAddSystemLog(
+        `本页批量导入完成：成功 ${ok}，失败 ${fail}${skipped ? `，跳过已在队列 ${skipped}` : ""}${batchStopRef.current ? "（已提前停止）" : ""}`,
+        fail === 0 ? "SUCCESS" : "WARNING",
+      );
+    } finally {
+      setBatchRunning(false);
+      setBatchInfo("");
+    }
+  }, [batchRunning, dlStates, onAddSystemLog, pagedItems, resolveAndQueue, setDlState]);
+
+  // —— 一键播放：解析 m3u8 → 交给 App 跳播放页在线播放 ——
+  const [playStates, setPlayStates] = useState<
+    Record<string, "idle" | "resolving" | "loaded" | "error">
+  >({});
+  const handlePlayOne = useCallback(
+    async (item: ScrapedItem) => {
+      if (!onPlayStream) return;
+      const key = item.code || item.url;
+      const state = playStates[key];
+      if (state === "resolving" || state === "loaded") return;
+      setPlayStates((prev) => ({ ...prev, [key]: "resolving" }));
+      try {
+        const res = (await trpc.scrape.resolveM3u8.mutate({
+          url: item.url,
+        })) as { m3u8: string | null; method: string; quality?: string | null };
+        if (!res?.m3u8) throw new Error("未解析到 m3u8 播放地址");
+        setPlayStates((prev) => ({ ...prev, [key]: "loaded" }));
+        onPlayStream({
+          url: res.m3u8,
+          name: item.title || item.code || "在线流",
+          referer: item.url,
+        });
+      } catch (error) {
+        setPlayStates((prev) => ({ ...prev, [key]: "error" }));
+        onAddSystemLog(
+          `一键播放失败 ${item.code || item.title}: ${(error as Error)?.message}`,
+          "ERROR",
+        );
+      }
+    },
+    [onPlayStream, playStates, onAddSystemLog],
+  );
+
+  // —— 分辨率自动标注：对当前页可见卡片静默解析详情页，把最高档画质写回卡片 ——
+  // （已标注/无封面页跳过；顺序 + 300ms 节流，翻页/停止时取消陈旧循环）
+  const [qualityInfo, setQualityInfo] = useState("");
+  const annotateTokenRef = useRef(0);
+  useEffect(() => {
+    if (!running) {
+      const token = ++annotateTokenRef.current;
+      const pending = pagedItems.filter((it) => !it.quality);
+      if (pending.length === 0) {
+        setQualityInfo("");
+        return;
+      }
+      void (async () => {
+        let ok = 0;
+        let miss = 0;
+        for (let i = 0; i < pending.length; i++) {
+          if (annotateTokenRef.current !== token) break;
+          const it = pending[i];
+          setQualityInfo(`标注分辨率 ${i + 1}/${pending.length}`);
+          try {
+            const res = (await trpc.scrape.annotate.mutate({
+              url: it.url,
+              code: it.code,
+            })) as { quality: string | null };
+            if (annotateTokenRef.current !== token) break;
+            if (res?.quality) {
+              ok++;
+              setStore((prev) => {
+                if (!prev) return prev;
+                const items = prev.items.map((old) =>
+                  old.url === it.url || (it.code && old.code === it.code)
+                    ? { ...old, quality: res.quality }
+                    : old,
+                );
+                return { ...prev, items };
+              });
+            } else {
+              miss++;
+              onAddSystemLog(
+                `分辨率标注未命中 ${it.code || it.title}（详情页可能被挑战，稍后重试）`,
+                "WARNING",
+              );
+            }
+          } catch (error) {
+            miss++;
+            onAddSystemLog(
+              `分辨率标注失败 ${it.code || it.title}: ${(error as Error)?.message}`,
+              "WARNING",
+            );
+          }
+          await new Promise((r) => setTimeout(r, 300));
+        }
+        if (annotateTokenRef.current === token) {
+          setQualityInfo("");
+          if (ok > 0) {
+            onAddSystemLog(`分辨率标注完成：成功 ${ok}${miss ? `，未命中 ${miss}` : ""}`, "SUCCESS");
+          } else if (miss > 0) {
+            onAddSystemLog(`分辨率标注全部未命中（${miss} 条）：详情页当前不可达，可稍后重试`, "WARNING");
+          }
+        }
+      })();
+    }
+    return () => {
+      annotateTokenRef.current += 1;
+    };
+  }, [pagedItems, running]);
+
   // —— 自适应满屏布局：自动识别窗口宽高 ——
   // 列数 ≤ 6 随宽度自适应；行数按可用高度刚好放下；
   // 卡片拉伸铺满全部空间（高 = 可用高 ÷ 行数），整屏刚好一页，禁止滚动。
@@ -405,31 +863,46 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
   const [cols, setCols] = useState(6);
   const [cardH, setCardH] = useState(220);
 
-  useEffect(() => {
+  // —— 自适应满屏布局测量：列数 ≤6 随宽度自适应；行数按可用高度刚好放下（整屏一页，不滚动）——
+  const computeGrid = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const compute = () => {
-      const availW = el.clientWidth - 32; // p-4 左右各 16
-      const availH = el.clientHeight - 32; // p-4 上下各 16
-      if (availW < 100 || availH < 100) return;
-      // 列数：尽量多列但不超过 6
-      const c = Math.max(
-        1,
-        Math.min(6, Math.floor((availW + GAP) / (MIN_CELL_W + GAP))),
-      );
-      // 封面固定 16:9：整卡高度由列宽推出，行数按该高度能放几行
-      const cellW = Math.floor((availW - GAP * (c - 1)) / c);
-      const h16 = Math.round((cellW * 9) / 16) + FOOTER_H;
-      const rows = Math.max(1, Math.floor((availH + GAP) / (h16 + GAP)));
-      setCols(c);
-      setCardH(h16);
-      setPageSize(c * rows);
-    };
-    compute();
-    const ro = new ResizeObserver(compute);
-    ro.observe(el);
-    return () => ro.disconnect();
+    const availW = el.clientWidth - 32; // p-4 左右各 16
+    const availH = el.clientHeight - 32; // p-4 上下各 16
+    if (availW < 100 || availH < 100) return;
+    // 列数：尽量多列但不超过 6
+    const c = Math.max(
+      1,
+      Math.min(5, Math.floor((availW + GAP) / (MIN_CELL_W + GAP))),
+    );
+    // 封面固定 16:9：整卡高度由列宽推出，行数按该高度能放几行（floor 取整避免累计舍入把最后一行顶出视口）
+    const cellW = Math.floor((availW - GAP * (c - 1)) / c);
+    const h16 = Math.floor((cellW * 9) / 16) + FOOTER_H;
+    // 预留 2px 安全余量：即使个别浏览器亚像素渲染，也不把最后一行顶出视口
+    const rows = Math.max(1, Math.floor((availH + GAP - 2) / (h16 + GAP)));
+    setCols((prev) => (prev === c ? prev : c));
+    setCardH((prev) => (prev === h16 ? prev : h16));
+    setPageSize((prev) => (prev === c * rows ? prev : c * rows));
   }, []);
+  const computeGridRef = useRef(computeGrid);
+  computeGridRef.current = computeGrid;
+
+  // 内容真正出现在视口后再测量（骨架屏阶段网格容器尚未挂载），并跟随窗口/容器尺寸变化重算
+  useEffect(() => {
+    if (loading || !config) return;
+    let cancelled = false;
+    const raf = requestAnimationFrame(() => {
+      if (!cancelled) computeGridRef.current();
+    });
+    const el = scrollRef.current;
+    const ro = new ResizeObserver(() => computeGridRef.current());
+    if (el) ro.observe(el);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [loading, config]);
 
   const coverH = Math.max(60, cardH - FOOTER_H);
 
@@ -470,6 +943,9 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
           {items.length > 0 && (
             <span className="cyber-badge cyber-badge-blue ml-1">{items.length} 条</span>
           )}
+          {qualityInfo && (
+            <span className="cyber-badge ml-1 text-slate-400 animate-pulse">{qualityInfo}</span>
+          )}
         </span>
 
         <div className="ml-auto flex items-center gap-2">
@@ -483,11 +959,54 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
             type="button"
             onClick={running ? handleStopScrape : openScrapeDialog}
             disabled={!config}
-            className={`flex items-center gap-1.5 px-4 py-1.5 text-xs ${running ? "rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25 transition cursor-pointer" : "cyber-btn-primary"}`}
+            className={`flex items-center gap-1.5 text-xs min-w-[150px] justify-center ${running ? "px-4 py-1.5 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25 transition cursor-pointer min-w-[240px]" : "cyber-btn-primary px-4 py-1.5"}`}
           >
-            <Zap className={`w-3.5 h-3.5 ${running ? "animate-pulse" : ""}`} />
-            {running ? progress || "停止抓取" : "一键抓取"}
+            <Zap className={`w-3.5 h-3.5 shrink-0 ${running ? "animate-pulse" : ""}`} />
+            <span className="min-w-0 truncate">
+              {running
+                ? `${progress || "准备中…"} · 入库 ${items.length}`
+                : "一键抓取"}
+            </span>
           </button>
+          <Tooltip
+            content="把本页卡片逐一解析 m3u8 并自动加入下载队列（可点停止）"
+            placement="top"
+          >
+            <button
+              type="button"
+              onClick={handleBatchDownload}
+              disabled={items.length === 0}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed ${
+                batchRunning
+                  ? "border-rose-500/40 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25"
+                  : "border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20"
+              }`}
+            >
+              {batchRunning ? (
+                <Square className="w-3.5 h-3.5" />
+              ) : (
+                <DownloadCloud className="w-3.5 h-3.5" />
+              )}
+              {batchRunning
+                ? batchInfo || "停止导入"
+                : `一键下载${pagedItems.length > 0 ? `（本页 ${pagedItems.length}）` : ""}`}
+            </button>
+          </Tooltip>
+          <Tooltip
+            content="手动过盾：弹出页面完成一次人机验证，之后解析/直连抓取可直接通过"
+            placement="top"
+          >
+            <button
+              type="button"
+              onClick={handlePassChallenge}
+              disabled={running && !challengeRunning}
+              className="w-8 h-8 flex items-center justify-center rounded-lg cyber-btn-ghost transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              <ShieldCheck
+                className={`w-4 h-4 ${challengeRunning ? "animate-pulse text-emerald-400" : ""}`}
+              />
+            </button>
+          </Tooltip>
           <Tooltip content="按番号去重，保留最先出现的那条" placement="top">
             <button
               type="button"
@@ -673,6 +1192,10 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
                   key={it.code || it.url}
                   item={it}
                   onCopy={copy}
+                  onDownload={handleDownloadOne}
+                  downloadState={dlStates[it.code || it.url] ?? "idle"}
+                  onPlay={handlePlayOne}
+                  playState={playStates[it.code || it.url] ?? "idle"}
                   coverH={coverH}
                   cardH={cardH}
                 />

@@ -149,6 +149,12 @@ export default function App() {
   const [logs, setLogs] = useState<LogMessage[]>([]);
   // 「立即查看」目标
   const [pendingPlayName, setPendingPlayName] = useState<string | null>(null);
+  // 发现页「一键播放」的在线流（m3u8/mp4）
+  const [pendingStream, setPendingStream] = useState<{
+    url: string;
+    name?: string;
+    referer?: string;
+  } | null>(null);
   const [incomingDownloadCandidate, setIncomingDownloadCandidate] = useState<{
     id: string;
     title: string;
@@ -211,6 +217,39 @@ export default function App() {
     return () => {
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, []);
+
+  // 主进程日志 1:1 桥（logger.attachMainLogBridge → IPC → 底部 GlobalConsole）
+  useEffect(() => {
+    const unlisten = window.electronAPI?.mainLog?.onEntry?.((entry) => {
+      if (!entry?.text) return;
+      const time = new Date(entry.time || Date.now()).toLocaleTimeString(
+        "zh-CN",
+        { hour12: false },
+      );
+      const level = (
+        ["INFO", "SUCCESS", "WARNING", "ERROR", "DEBUG"].includes(
+          entry.level,
+        )
+          ? entry.level
+          : "INFO"
+      ) as LogMessage["level"];
+      setLogs((prev) => {
+        const next = [
+          ...prev,
+          {
+            id: `main-${entry.time}-${Math.random().toString(36).slice(2, 6)}`,
+            timestamp: time,
+            level,
+            text: entry.text,
+          },
+        ];
+        return next.length > 2000 ? next.slice(-1800) : next;
+      });
+    });
+    return () => {
+      unlisten?.();
     };
   }, []);
 
@@ -513,6 +552,8 @@ export default function App() {
               onAddSystemLog={addLog}
               pendingPlayName={pendingPlayName}
               onConsumePendingPlay={() => setPendingPlayName(null)}
+              pendingStream={pendingStream}
+              onConsumePendingStream={() => setPendingStream(null)}
               onActiveVideoChange={(name) => {
                 currentPlayingFolderRef.current = name;
               }}
@@ -529,7 +570,13 @@ export default function App() {
           )}
         </div>
         {currentPage === "discover" && (
-          <DiscoverPage onAddSystemLog={addLog} />
+          <DiscoverPage
+            onAddSystemLog={addLog}
+            onPlayStream={(stream) => {
+              setPendingStream(stream);
+              setCurrentPage("player");
+            }}
+          />
         )}
         {currentPage === "web" && (
           <WebPage
@@ -573,17 +620,21 @@ export default function App() {
       {/* 刻度图后台队列浮窗 */}
       <ThumbnailQueueWidget />
 
-      {/* 全局控制台 */}
+      {/* 全局控制台：悬浮覆盖层，不再挤压页面内容 */}
       {settings.consoleOpen && (
-        <GlobalConsole
-          logs={logs}
-          setLogs={setLogs}
-          height={settings.consoleHeight}
-          onHeightChange={(h) =>
-            setSettings((s) => ({ ...s, consoleHeight: h }))
-          }
-          onClose={() => setSettings((s) => ({ ...s, consoleOpen: false }))}
-        />
+        <div className="fixed inset-x-0 bottom-0 z-[70] pointer-events-none">
+          <div className="pointer-events-auto overflow-hidden rounded-t-2xl shadow-[0_-8px_40px_rgba(0,0,0,0.45)] border border-hairline">
+            <GlobalConsole
+              logs={logs}
+              setLogs={setLogs}
+              height={settings.consoleHeight}
+              onHeightChange={(h) =>
+                setSettings((s) => ({ ...s, consoleHeight: h }))
+              }
+              onClose={() => setSettings((s) => ({ ...s, consoleOpen: false }))}
+            />
+          </div>
+        </div>
       )}
 
       {/* 全局设置面板（从 TitleBar 设置按钮打开） */}

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { trpc } from "../lib/trpc";
 import {
   registerScraperRunner,
+  registerChallengeRunner,
   EXTRACT_ITEMS_JS,
   pageUrl,
   cancelScrape,
@@ -85,11 +86,14 @@ export function ScraperWebview() {
         setStatus(msg);
         onProgress?.(msg);
       };
+      // 缩小 webview 内部页面比例：弹窗尺寸不变，页面元素缩小后一屏能显示更多列表。
+      // 注意 webview 标签自身没有 setZoomFactor，必须经主进程 webContents.setZoomFactor
+      void trpc.scrape.setZoomFactor.mutate({ factor: 0.68 }).catch(() => {});
+
+      const seen = new Set<string>();
+      const all: ScrapedItem[] = [];
 
       try {
-        const seen = new Set<string>();
-        const all: ScrapedItem[] = [];
-
         for (let p = startPage; p <= endPage; p++) {
           throwIfScrapeAborted(signal);
           const url = pageUrl(baseUrl, p);
@@ -144,18 +148,37 @@ export function ScraperWebview() {
           }
 
           report(`第 ${p}/${endPage} 页：${items.length} 条`);
+          const pageItems: ScrapedItem[] = [];
           for (const it of items) {
             const key = it.code || it.url;
             if (!key || seen.has(key)) continue;
             seen.add(key);
             all.push(it);
+            pageItems.push(it);
+          }
+          // 增量入库：每页抓到就立刻落盘，手动停止也不丢已抓内容
+          if (pageItems.length > 0) {
+            void trpc.scrape.save
+              .mutate({ items: pageItems, baseUrl, pages: endPage - startPage + 1 })
+              .catch(() => {});
           }
           await sleep(600, signal);
         }
 
         report(`完成，共 ${all.length} 条`);
         return all;
+      } catch (error) {
+        // 手动停止（Esc / 停止抓取）也返回已抓取的内容，避免白抓
+        if (
+          error instanceof DOMException &&
+          error.name === "AbortError"
+        ) {
+          report(`已停止，保留已抓 ${all.length} 条`);
+          return all;
+        }
+        throw error;
       } finally {
+        void trpc.scrape.setZoomFactor.mutate({ factor: 1 }).catch(() => {});
         stopWebview(ref.current);
         setActive(false);
         setStatus("");
@@ -163,6 +186,93 @@ export function ScraperWebview() {
     });
 
     return () => registerScraperRunner(null);
+  }, []);
+
+  // 注册「手动过盾」实现：弹出可见 webview，让用户手动完成 Cloudflare 人机验证。
+  // 验证成功后 cf_clearance cookie 落在 persist:missav-web 会话里，
+  // 主进程后续的列表/详情 session.fetch 与 m3u8 解析即可直连成功。
+  useEffect(() => {
+    registerChallengeRunner(async ({ url, onProgress, signal }) => {
+      const webview = ref.current;
+      if (!webview) throw new Error("抓取 webview 未挂载");
+
+      setActive(true);
+      const report = (msg: string) => {
+        setStatus(msg);
+        onProgress?.(msg);
+      };
+      // 与抓取一致：走主进程缩放
+      void trpc.scrape.setZoomFactor.mutate({ factor: 0.68 }).catch(() => {});
+
+      try {
+        report("加载页面，请完成人机验证…（Esc 停止）");
+        await new Promise<void>((resolve, reject) => {
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            webview.removeEventListener("did-stop-loading", finish);
+            signal?.removeEventListener("abort", onAbort);
+            resolve();
+          };
+          const onAbort = () => {
+            stopWebview(webview);
+            if (done) return;
+            done = true;
+            webview.removeEventListener("did-stop-loading", finish);
+            signal?.removeEventListener("abort", onAbort);
+            reject(new DOMException("过盾已取消", "AbortError"));
+          };
+          signal?.addEventListener("abort", onAbort);
+          webview.addEventListener("did-stop-loading", finish);
+          try {
+            webview.loadURL(url);
+          } catch {
+            finish();
+          }
+          setTimeout(finish, 15000);
+        });
+
+        // 轮询判定过盾成功：标题不再是 Just a moment 且页面有实际内容
+        const deadline = Date.now() + 180_000;
+        let passed = false;
+        while (Date.now() < deadline) {
+          throwIfScrapeAborted(signal);
+          let check = "challenge";
+          try {
+            check = (await webview.executeJavaScript(
+              String.raw`(() => {
+                try {
+                  const t = document.title || '';
+                  if (/just a moment|checking your browser|challenges.cloudflare|请稍候|正在验证/i.test(t)) return 'challenge';
+                  if (document.querySelector('#challenge-form, #cf-challenge-running, #turnstile-wrapper')) return 'challenge';
+                  if (document.body && document.body.innerText.trim().length > 100) return 'ok';
+                  return document.documentElement.outerHTML.includes('Just a moment') ? 'challenge' : 'ok';
+                } catch (e) { return 'challenge'; }
+              })()`,
+            )) as string;
+          } catch {
+            check = "challenge";
+          }
+          if (check === "ok") {
+            passed = true;
+            break;
+          }
+          report("等待你完成人机验证…（点完验证框会自动继续）");
+          await sleep(1500, signal);
+        }
+
+        report(passed ? "过盾成功！" : "过盾超时/已取消");
+        return passed;
+      } finally {
+        void trpc.scrape.setZoomFactor.mutate({ factor: 1 }).catch(() => {});
+        stopWebview(ref.current);
+        setActive(false);
+        setStatus("");
+      }
+    });
+
+    return () => registerChallengeRunner(null);
   }, []);
 
   return (

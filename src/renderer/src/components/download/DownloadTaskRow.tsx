@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Play, Pause, Trash2, Copy, Check, RotateCcw, FolderOpen, AlertCircle, Clock } from "lucide-react";
 import { CoverImage } from "../CoverImage";
 import type { DownloadTask } from "../../pages/download/types";
@@ -51,8 +51,21 @@ function useScheduleTick(enabled: boolean) {
   }, [enabled]);
 }
 
-/** 饱满明亮的细进度条：完成绿；失败红；暂停灰；下载中发光玫瑰红 */
+/** 饱满明亮的细进度条：完成绿；失败红；暂停灰；下载中发光玫瑰红；合并中紫 + 流光 */
 function RowProgress({ progress, status }: { progress: number; status: DownloadTask["status"] }) {
+  if (status === "MERGING") {
+    return (
+      <div className="relative w-full h-2 bg-slate-200/90 dark:bg-white/[0.12] border border-slate-200 dark:border-white/[0.06] rounded-full overflow-hidden shadow-inner">
+        {/* 底层：已有合并进度与分片进度对齐 */}
+        <div
+          className="h-full bg-violet-500/70 rounded-full"
+          style={{ width: `${Math.min(Math.max(progress, 60), 100)}%` }}
+        />
+        {/* 顶层流光：无输出阶段仍能看到「在动」 */}
+        <div className="absolute inset-0 cyber-race-track" />
+      </div>
+    );
+  }
   const bar =
     status === "COMPLETED"
       ? "h-full bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.7)]"
@@ -69,6 +82,12 @@ function RowProgress({ progress, status }: { progress: number; status: DownloadT
       />
     </div>
   );
+}
+
+/** 合并时长显示：Xs / X分Y秒 */
+function formatMergeSecs(secs: number): string {
+  if (secs < 60) return `${secs}s`;
+  return `${Math.floor(secs / 60)}分${String(secs % 60).padStart(2, "0")}秒`;
 }
 
 function DownloadTaskRowImpl({
@@ -95,6 +114,23 @@ function DownloadTaskRowImpl({
   // 左侧缩略：有封面用封面，无封面显示番号字母占位
   const hasCover = Boolean(coverUrl);
 
+  // 合并中：行内实时秒数（无输出阶段让用户知道没卡死）
+  const mergeStartRef = useRef(0);
+  const [mergeSecs, setMergeSecs] = useState(0);
+  useEffect(() => {
+    if (task.status !== "MERGING") {
+      mergeStartRef.current = 0;
+      setMergeSecs(0);
+      return;
+    }
+    if (!mergeStartRef.current) mergeStartRef.current = Date.now();
+    const timer = window.setInterval(
+      () => setMergeSecs(Math.round((Date.now() - mergeStartRef.current) / 1000)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [task.status]);
+
   // 主信息行状态徽章：下载中给速率（唯一强调色）；其余状态低饱和收敛，避免满屏高亮
   const statusBadge =
     task.status === "DOWNLOADING" ? (
@@ -112,6 +148,11 @@ function DownloadTaskRowImpl({
     ) : task.status === "PARSING" ? (
       <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-500/25 font-semibold flex items-center gap-1">
         <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />解析分片中
+      </span>
+    ) : task.status === "MERGING" ? (
+      <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 text-violet-700 dark:text-violet-300 border border-violet-500/30 font-semibold flex items-center gap-1">
+        <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
+        合并中 · {formatMergeSecs(mergeSecs)}
       </span>
     ) : task.taskTag === "SCHEDULED" && task.scheduledAt ? (
       <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/25 font-semibold">

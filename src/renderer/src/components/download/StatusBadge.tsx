@@ -10,6 +10,13 @@ export function getStatusBadge(status: TaskStatus) {
           下载中
         </span>
       );
+    case "MERGING":
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] bg-violet-500/90 text-white px-2 py-0.5 rounded font-mono font-bold backdrop-blur-sm">
+          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+          合并中
+        </span>
+      );
     case "PAUSED":
       return (
         <span className="inline-flex items-center gap-1 text-[10px] bg-slate-900/80 text-slate-200 px-2 py-0.5 rounded font-mono font-bold backdrop-blur-sm">

@@ -9,6 +9,8 @@ export interface ScrapedItem {
   cover: string | null;
   preview: string | null;
   duration: string | null;
+  /** 最高档画质标签，如 "720P"（主进程 annotate 解析详情页后回填） */
+  quality?: string | null;
 }
 
 export interface ScrapeRunOpts {
@@ -21,11 +23,24 @@ export interface ScrapeRunOpts {
 
 export type ScrapeRunner = (opts: ScrapeRunOpts) => Promise<ScrapedItem[]>;
 
+/** 手动过盾：弹出 webview 让用户完成 Cloudflare 验证，成功返回 true */
+export interface ChallengeRunOpts {
+  url: string;
+  onProgress?: (message: string) => void;
+  signal?: AbortSignal;
+}
+export type ChallengeRunner = (opts: ChallengeRunOpts) => Promise<boolean>;
+
 let runner: ScrapeRunner | null = null;
+let challengeRunner: ChallengeRunner | null = null;
 let currentAbort: AbortController | null = null;
 
 export function registerScraperRunner(fn: ScrapeRunner | null): void {
   runner = fn;
+}
+
+export function registerChallengeRunner(fn: ChallengeRunner | null): void {
+  challengeRunner = fn;
 }
 
 export function isScraperReady(): boolean {
@@ -52,6 +67,21 @@ export async function runScraper(opts: ScrapeRunOpts): Promise<ScrapedItem[]> {
   currentAbort = ac;
   try {
     return await runner({ ...opts, signal: ac.signal });
+  } finally {
+    if (currentAbort === ac) currentAbort = null;
+  }
+}
+
+/** 手动过盾（与抓取共用取消总线，Esc/停止按钮通用） */
+export async function runChallengePass(
+  opts: ChallengeRunOpts,
+): Promise<boolean> {
+  if (!challengeRunner) throw new Error("过盾组件尚未就绪，请稍候再试");
+  if (currentAbort) throw new Error("已有抓取/过盾任务进行中");
+  const ac = new AbortController();
+  currentAbort = ac;
+  try {
+    return await challengeRunner({ ...opts, signal: ac.signal });
   } finally {
     if (currentAbort === ac) currentAbort = null;
   }

@@ -8,6 +8,15 @@ import { getAdBlockScript } from "./adBlockScript";
 export const MISSAV_WEB_PARTITION = "persist:missav-web";
 const EXTENSION_PUSH_CONSOLE_PREFIX = "__AVPLAY_EXTENSION_PUSH__";
 
+/**
+ * 会话级 UA：必须是「纯 Chrome」字符串，去掉 avPlay/Electron 等自定义后缀。
+ * 否则 Cloudflare 会直接对 r.jina.ai 等接口甩「Just a moment」挑战页
+ * （curl 反而能过，因为没有可疑自定义 UA）。webview 加载与 session.fetch
+ * 共用此 UA，保证 cf_clearance 与 UA 绑定一致。
+ */
+export const MISSAV_SESSION_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36";
+
 const AD_HOST_KEYWORDS = [
   "doubleclick.net",
   "googlesyndication.com",
@@ -225,6 +234,8 @@ export async function setupMissavWebSession(): Promise<void> {
   configured = true;
 
   const webSession = session.fromPartition(MISSAV_WEB_PARTITION);
+  // 统一 UA：webview 过盾与 session.fetch 全部一致，cf_clearance 绑定不漂移
+  webSession.setUserAgent(MISSAV_SESSION_UA);
   setupAdBlocker(webSession);
   setupPopupBlocker(webSession);
   webSession.setPermissionRequestHandler((_webContents, _permission, callback) => {

@@ -4,6 +4,7 @@ export type TaskStatus =
   | "PENDING"
   | "PARSING"
   | "DOWNLOADING"
+  | "MERGING"
   | "PAUSED"
   | "COMPLETED"
   | "FAILED";

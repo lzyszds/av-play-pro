@@ -45,6 +45,18 @@ export interface ElectronAPI {
       }) => void,
     ) => () => void;
   };
+  mainLog?: {
+    /** 主进程日志实时流（1:1）：{ time, level, text } */
+    onEntry: (
+      callback: (entry: { time: number; level: string; text: string }) => void,
+    ) => () => void;
+  };
+  library?: {
+    /** 下载产物落库后触发（organize 完成即发，不等刮削） */
+    onUpdated: (
+      callback: (info: { name?: string; at: number }) => void,
+    ) => () => void;
+  };
 }
 
 declare global {

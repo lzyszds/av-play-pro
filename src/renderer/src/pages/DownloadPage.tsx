@@ -531,12 +531,24 @@ export function DownloadPage({
         percent: number | null;
         done: boolean;
         success: boolean;
+        merging?: boolean;
         taskId?: string;
       },
     ) => {
       if (disposed) return;
-      const { line, percent, done, success } = data;
+      const { line, percent, done, success, merging } = data;
       const id = data.taskId || null;
+
+      // 合并阶段：任务状态切到「合并中」，不覆盖速率等既有信息
+      if (id && merging && !done) {
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === id && t.status === "DOWNLOADING"
+              ? { ...t, status: "MERGING" as const, speed: 0 }
+              : t,
+          ),
+        );
+      }
 
       const info = parseProgressInfo(line);
 
@@ -1437,7 +1449,12 @@ export function DownloadPage({
     let completed = 0;
     let failed = 0;
     for (const t of tasks) {
-      if (t.status === "DOWNLOADING" || t.status === "PARSING") downloading++;
+      if (
+        t.status === "DOWNLOADING" ||
+        t.status === "PARSING" ||
+        t.status === "MERGING"
+      )
+        downloading++;
       else if (t.status === "PENDING" || t.status === "PAUSED") pending++;
       else if (t.status === "COMPLETED") completed++;
       else if (t.status === "FAILED") failed++;
@@ -1449,7 +1466,12 @@ export function DownloadPage({
   const statusFilteredTasks = useMemo(() => {
     let list = tasks;
     if (listFilter === "downloading") {
-      list = list.filter((t) => t.status === "DOWNLOADING" || t.status === "PARSING");
+      list = list.filter(
+        (t) =>
+          t.status === "DOWNLOADING" ||
+          t.status === "PARSING" ||
+          t.status === "MERGING",
+      );
     } else if (listFilter === "pending") {
       list = list.filter((t) => t.status === "PENDING" || t.status === "PAUSED");
     } else if (listFilter === "completed") {

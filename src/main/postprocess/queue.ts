@@ -240,6 +240,16 @@ function notifyDone(t: PostProcessTask, ok: boolean) {
   }
 }
 
+/** 视频落库完成（organize 之后即可播放），通知渲染端刷新片库列表 */
+function emitLibraryUpdated(saveName?: string): void {
+  try {
+    getMainWindow()?.webContents.send("library:updated", {
+      name: saveName,
+      at: Date.now(),
+    });
+  } catch {}
+}
+
 async function runNext() {
   if (running) return;
   const next = tasks.find((x) => x.status === "pending");
@@ -249,10 +259,13 @@ async function runNext() {
     log.info(`[postprocess] running ${next.id}`);
     const folder = await organizeFolder(next);
     updateTask(next.id, { folderPath: folder });
+    // 视频文件已落位：立即通知播放页刷新片库（不等刮削完成，用户想看就看）
+    emitLibraryUpdated(next.saveName);
     if ((tasks.find((x) => x.id === next.id)?.status as PPStatus) === "cancelled")
       return;
     await scrape(next, folder);
     updateTask(next.id, { status: "completed", step: "完成" });
+    emitLibraryUpdated(next.saveName);
     notifyDone(next, true);
   } catch (e: any) {
     const msg = e?.message || String(e);

@@ -11,6 +11,7 @@ import React, {
 } from "react";
 import Hls from "hls.js";
 import type { VideoItem } from "../../pages/player/types";
+import { Dropdown } from "../Dropdown";
 import {
   Sparkles,
   Film,
@@ -37,6 +38,10 @@ interface AeroCapsulePlayerProps {
   onOpenChapters?: () => void;
   onOpenCut?: () => void;
   onAddBookmark?: () => void;
+  /** 本地视频的刻度图 WebVTT（雪碧图）；在线流无此数据，悬停仍显示当前帧 */
+  previewVttUrl?: string | null;
+  /** 播放页是否激活（常驻挂载时用于屏蔽后台快捷键） */
+  active?: boolean;
 }
 
 const CDN_PROXY_BASE = "http://127.0.0.1:39528/m";
@@ -75,6 +80,8 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
   onOpenChapters,
   onOpenCut,
   onAddBookmark,
+  previewVttUrl,
+  active = true,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -86,6 +93,64 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
   const rippleRightRef = useRef<HTMLDivElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
 
+  // 缓冲冻结帧：seek/缓冲期间把最后一帧画到遮罩上（底衬环境色而非黑），避免黑屏闪变
+  const freezeCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [freezeVisible, setFreezeVisible] = useState(false);
+
+  // 刻度图（雪碧图）解析：vtt 里按时间区间给出 thumbs.webp 的 xywh 裁剪框
+  const spriteRef = useRef<HTMLImageElement | null>(null);
+  const spriteCuesRef = useRef<
+    Array<{ start: number; end: number; x: number; y: number; w: number; h: number }>
+  >([]);
+  useEffect(() => {
+    let alive = true;
+    spriteCuesRef.current = [];
+    spriteRef.current = null;
+    if (!previewVttUrl) return;
+    void (async () => {
+      try {
+        const text = await (await fetch(previewVttUrl)).text();
+        if (!alive) return;
+        const cues: Array<{ start: number; end: number; x: number; y: number; w: number; h: number }> = [];
+        const toSeconds = (stamp: string) => {
+          const [h, m, s] = stamp.trim().split(":");
+          return Number(h) * 3600 + Number(m) * 60 + Number(s);
+        };
+        const blocks = text.replace(/^WEBVTT.*$/im, "").split(/\n\s*\n/);
+        for (const block of blocks) {
+          const range = block.match(
+            /^([\d:.]+)\s+-->\s+([\d:.]+)/m,
+          );
+          const xy = block.match(/#xywh=(\d+),(\d+),(\d+),(\d+)/);
+          if (!range || !xy) continue;
+          cues.push({
+            start: toSeconds(range[1]),
+            end: toSeconds(range[2]),
+            x: Number(xy[1]),
+            y: Number(xy[2]),
+            w: Number(xy[3]),
+            h: Number(xy[4]),
+          });
+        }
+        // 雪碧图与 vtt 同目录（thumbs.vtt / thumbs.webp）
+        const base = previewVttUrl.replace(/[^/]+$/, "");
+        const img = new Image();
+        img.decoding = "async";
+        img.src = `${base}thumbs.webp`;
+        await img.decode().catch(() => undefined);
+        if (!alive) return;
+        spriteCuesRef.current = cues;
+        spriteRef.current = img.complete && img.naturalWidth > 0 ? img : null;
+      } catch {
+        spriteCuesRef.current = [];
+        spriteRef.current = null;
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [previewVttUrl]);
+
   // 播放状态
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -95,6 +160,13 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // 乐观跳转：点击刻度/进度条后立即把游标指到目标位置，缓冲完成前显示「加载中」
+  const [pendingSeek, setPendingSeek] = useState<number | null>(null);
+  // 在线流可选画质：hls.js 母带解析出的档位（降序展示，默认当前自动档）
+  const [hlsLevels, setHlsLevels] = useState<
+    Array<{ i: number; h: number }>
+  >([]);
+  const [hlsCurrent, setHlsCurrent] = useState(-1);
 
   // 交互状态
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -131,12 +203,50 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
       hlsRef.current = hls;
       hls.loadSource(finalUrl);
       hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        video.play().catch(() => {});
+      // 在线可选画质：从母带解析分辨率档位，默认最高级（N/A 时 hls 自动规则）
+      // 在线可选画质：解析母带档位；默认直接钉住最高档（不用 ABR 自适应，避免弱网自动降画质）
+      hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
+        // 兼容母带无 RESOLUTION 属性（只有 BANDWIDTH）的清单：画质钉最高按双键取优
+        const parsed: Array<{ i: number; h: number; bw: number }> = (
+          (data as any)?.levels || []
+        ).map((l: any, i: number) => ({
+          i,
+          h: Number(l?.height) || 0,
+          bw: Number(l?.bitrate) || 0,
+        }));
+        const heightLevels: Array<{ i: number; h: number }> = parsed
+          .filter((x: { h: number }) => x.h > 0)
+          .map((x) => ({ i: x.i, h: x.h }));
+        setHlsLevels(heightLevels);
+        if (parsed.length > 0) {
+          const usable: Array<{ i: number; h: number; bw: number }> =
+            heightLevels.length > 0
+              ? heightLevels.map((x: { i: number; h: number }) => ({
+                  ...x,
+                  bw: parsed[x.i] ? parsed[x.i].bw : 0,
+                }))
+              : parsed.filter(
+                  (x: { bw: number }) => x.bw > 0,
+                );
+          if (usable.length > 0) {
+            const best = usable.reduce(
+              (a: { i: number; h: number; bw: number }, b: { i: number; h: number; bw: number }) => {
+                if (b.h !== a.h) return b.h > a.h ? b : a;
+                return b.bw > a.bw ? b : a;
+              },
+            );
+            hls.currentLevel = best.i;
+            setHlsCurrent(best.i);
+          }
+        }
       });
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_e, d: any) => {
+        setHlsCurrent(Number(d?.level ?? -1));
+      });
+      // 进入应用默认暂停，不自动起播
     } else {
       video.src = finalUrl;
-      video.play().catch(() => {});
+      // 进入应用默认暂停，不自动起播
     }
 
     onVideoEl?.(video);
@@ -146,14 +256,76 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      setFreezeVisible(false);
     };
   }, [activeVideo.url, activeVideo.referer, onVideoEl]);
+
+  // 1.5 缓冲冻结帧：seeking/waiting 时截当前帧铺在缓冲遮罩上，杜绝黑屏背景
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const drawFreeze = () => {
+      const canvas = freezeCanvasRef.current;
+      const box = containerRef.current;
+      if (!canvas || !box) return;
+      const vw = video.videoWidth || 1280;
+      const vh = video.videoHeight || 720;
+      canvas.width = Math.max(2, box.clientWidth);
+      canvas.height = Math.max(2, box.clientHeight);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      // 底衬：环境色（不使用纯黑）
+      const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      grad.addColorStop(0, "#191d26");
+      grad.addColorStop(1, "#10131b");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      try {
+        // 与 video 的 object-contain 相同的等比居中
+        const scale = Math.min(canvas.width / vw, canvas.height / vh);
+        const dw = vw * scale;
+        const dh = vh * scale;
+        ctx.drawImage(
+          video,
+          (canvas.width - dw) / 2,
+          (canvas.height - dh) / 2,
+          dw,
+          dh,
+        );
+        setFreezeVisible(true);
+      } catch {
+        setFreezeVisible(false);
+      }
+    };
+
+    const hideFreeze = () => setFreezeVisible(false);
+
+    video.addEventListener("seeking", drawFreeze);
+    video.addEventListener("waiting", drawFreeze);
+    video.addEventListener("canplay", hideFreeze);
+    video.addEventListener("seeked", hideFreeze);
+    video.addEventListener("playing", hideFreeze);
+    return () => {
+      video.removeEventListener("seeking", drawFreeze);
+      video.removeEventListener("waiting", drawFreeze);
+      video.removeEventListener("canplay", hideFreeze);
+      video.removeEventListener("seeked", hideFreeze);
+      video.removeEventListener("playing", hideFreeze);
+      setFreezeVisible(false);
+    };
+  }, [activeVideo.url]);
 
   // 2. 视频事件监听
   const handleTimeUpdate = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
     setCurrentTime(video.currentTime || 0);
+    // 乐观跳转：video 追到目标位附近（seek 真正生效）后解除冻结
+    setPendingSeek((pending) => {
+      if (pending == null) return null;
+      return Math.abs(video.currentTime - pending) <= 2 ? null : pending;
+    });
 
     // 计算已缓冲范围
     if (video.buffered.length > 0 && video.duration > 0) {
@@ -207,12 +379,13 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
     return () => cancelAnimationFrame(animId);
   }, []);
 
-  // 4. 控制栏优雅闲置隐藏与移出隐藏 (5秒静止隐藏)
+  // 4. 控制栏优雅闲置隐藏与移出隐藏 (5秒静止隐藏；悬停胶囊时钉住不隐藏)
+  const controlsPinnedRef = useRef(false);
   const resetIdleTimer = useCallback(() => {
     setControlsVisible(true);
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     const video = videoRef.current;
-    if (video && !video.paused && !isPlaylistOpen) {
+    if (video && !video.paused && !isPlaylistOpen && !controlsPinnedRef.current) {
       idleTimerRef.current = setTimeout(() => {
         setControlsVisible(false);
       }, 5000);
@@ -324,6 +497,9 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
   };
 
   // 8. 进度轴交互与实时微缩帧预览
+  // 在线流（m3u8/CDN）：没有本地刻度雪碧图，悬停预览小窗整个隐藏
+  const isOnlineStream =
+    activeVideo.url.includes(".m3u8") || /^https?:\/\//i.test(activeVideo.url);
   const handleTimelineMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     const box = timelineBoxRef.current;
     const video = videoRef.current;
@@ -333,21 +509,39 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
 
     const rect = box.getBoundingClientRect();
     const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    if (hoverCard) {
+    if (hoverCard && !isOnlineStream) {
       hoverCard.style.left = `${pos * 100}%`;
     }
     const targetTime = pos * duration;
     setHoverTimeText(formatTime(targetTime));
+    if (isOnlineStream) return;
 
     if (previewCanvas) {
       previewCanvas.width = 96;
       previewCanvas.height = 56;
       const ctx = previewCanvas.getContext("2d");
       if (ctx) {
-        try {
-          ctx.drawImage(video, 0, 0, 96, 56);
-        } catch {
-          /* ignore */
+        // 有刻度雪碧图：按目标时间对应的格子裁剪绘制（这才是真实画面的预览）
+        const sprite = spriteRef.current;
+        const cues = spriteCuesRef.current;
+        if (sprite && cues.length > 0) {
+          const cue =
+            cues.find((c) => targetTime >= c.start && targetTime < c.end) ??
+            (targetTime >= duration ? cues[cues.length - 1] : undefined);
+          if (cue) {
+            try {
+              ctx.drawImage(sprite, cue.x, cue.y, cue.w, cue.h, 0, 0, 96, 56);
+            } catch {
+              /* ignore */
+            }
+          }
+        } else {
+          // 无雪碧图（在线流）：退回绘制当前帧
+          try {
+            ctx.drawImage(video, 0, 0, 96, 56);
+          } catch {
+            /* ignore */
+          }
         }
       }
     }
@@ -359,7 +553,11 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
     if (!box || !video || !duration) return;
     const rect = box.getBoundingClientRect();
     const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    video.currentTime = pos * duration;
+    const target = pos * duration;
+    // 乐观跳转：先把 UI 游标划到目标位置，缓冲完成后由 timeupdate 自然接管
+    setCurrentTime(target);
+    setPendingSeek(target);
+    video.currentTime = target;
     resetIdleTimer();
   };
 
@@ -417,8 +615,9 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
     }
   };
 
-  // 10. 全局快捷键映射
+  // 10. 全局快捷键映射（仅播放页激活时生效）
   useEffect(() => {
+    if (!active) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (
@@ -483,9 +682,15 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [togglePlay, resetIdleTimer]);
+  }, [togglePlay, resetIdleTimer, active]);
 
-  const progressPct = duration > 0 ? (currentTime / duration) * 100 : 0;
+  // 乐观跳转冻结：pending 期间进度显示固定在目标位，避免 timeupdate 把游标拉回旧位置
+  const isPendingFrozen =
+    pendingSeek != null &&
+    (currentTime < pendingSeek - 2 ||
+      Math.abs(currentTime - pendingSeek) <= 0.01);
+  const displayTime = isPendingFrozen ? pendingSeek : currentTime;
+  const progressPct = duration > 0 ? (displayTime / duration) * 100 : 0;
 
   return (
     <div className="relative w-full h-full flex items-center justify-center p-0 font-sans text-neutral-200 select-none overflow-hidden bg-neutral-950">
@@ -510,19 +715,27 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
           className="absolute inset-0 -inset-x-8 -inset-y-6 w-full h-full filter blur-[100px] opacity-35 pointer-events-none transition-opacity duration-1000 -z-10"
         />
 
-        {/* 真实视频渲染层 */}
+        {/* 真实视频渲染层（缓冲冻结帧遮罩：只盖 video 区域，永远在视频之上但低于控制条） */}
         <video
           ref={videoRef}
           id="main-video"
           crossOrigin="anonymous"
           playsInline
           style={{ filter: filterStyle !== "none" ? filterStyle : undefined }}
-          className="w-full h-full object-contain cursor-pointer"
+          className="relative z-0 w-full h-full object-contain cursor-pointer bg-transparent"
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           onEnded={handleEnded}
+        />
+
+        {/* 缓冲冻结帧遮罩（ seeking/waiting 期间显示最后一帧 + 环境色底衬，无黑屏） */}
+        <canvas
+          ref={freezeCanvasRef}
+          className={`absolute inset-0 z-[1] w-full h-full pointer-events-none transition-opacity duration-150 ${
+            freezeVisible ? "opacity-100" : "opacity-0"
+          }`}
         />
 
         {/* 无激活媒体时的沉浸式就绪引导层 */}
@@ -576,10 +789,42 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
           }`}
         >
           <div className="flex items-center space-x-3 pointer-events-auto max-w-[65%]">
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide bg-[#FF466B]/15 text-[#FF466B] border border-[#FF466B]/30 shadow-[0_0_10px_rgba(255,70,107,0.25)] shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#FF466B] mr-1.5 animate-pulse" />
-              {activeVideo.resolution || "4K UHD"}
-            </span>
+            {hlsLevels.length > 0 ? (
+              // 在线流：画质选择器（组件库 Dropdown，按分辨率降序；默认自动=母带最高档）
+              (() => {
+                const sorted = [...hlsLevels].sort((a, b) => b.h - a.h);
+                const currentValue = hlsCurrent === -1 ? "auto" : String(hlsCurrent);
+                return (
+                  <div onClick={(ev) => ev.stopPropagation()}>
+                    <Dropdown<string>
+                      value={currentValue}
+                      options={[
+                        { value: "auto", label: "自动（最高）" },
+                        ...sorted.map((l) => ({
+                          value: String(l.i),
+                          label: `${l.h}P`,
+                          dot: "bg-[#FF466B]",
+                        })),
+                      ]}
+                      onChange={(v) => {
+                        if (hlsRef.current) {
+                          hlsRef.current.currentLevel =
+                            v === "auto" ? -1 : Number(v);
+                        }
+                      }}
+                      minWidth={120}
+                      prefix="画质"
+                      customTriggerStyle="flex items-center justify-between gap-2 px-3 py-1 rounded-full text-xs font-semibold tracking-wide bg-[#FF466B]/15 text-neutral-200 border border-[#FF466B]/30 shadow-[0_0_10px_rgba(255,70,107,0.25)] transition cursor-pointer hover:bg-[#FF466B]/25 shrink-0 [&_.text-accent-500]:text-[#FF466B]"
+                    />
+                  </div>
+                );
+              })()
+            ) : (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide bg-[#FF466B]/15 text-[#FF466B] border border-[#FF466B]/30 shadow-[0_0_10px_rgba(255,70,107,0.25)] shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#FF466B] mr-1.5 animate-pulse" />
+                {activeVideo.resolution || "4K UHD"}
+              </span>
+            )}
             <h2
               id="video-title"
               className="text-sm font-medium tracking-wide text-neutral-200 drop-shadow truncate"
@@ -697,9 +942,18 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
           +10s
         </div>
 
-        {/* 4. 底部核心悬浮胶囊 */}
+        {/* 4. 底部核心悬浮胶囊（悬停时锁定控制栏不被闲置隐藏，保证可达速度/音量选择器） */}
         <div
           id="capsule"
+          onMouseEnter={() => {
+            controlsPinnedRef.current = true;
+            if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+            setControlsVisible(true);
+          }}
+          onMouseLeave={() => {
+            controlsPinnedRef.current = false;
+            resetIdleTimer();
+          }}
           className={`absolute bottom-6 inset-x-0 mx-auto w-[92%] sm:w-[86%] max-w-2xl transition-all duration-500 z-20 ${
             !controlsVisible
               ? "opacity-0 translate-y-4 pointer-events-none"
@@ -802,16 +1056,16 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
               onMouseLeave={() => setIsHoveringTimeline(false)}
               className="relative flex-1 group/progress cursor-pointer py-2"
             >
-              {/* 刻度画面预览小窗口 */}
+              {/* 刻度画面预览小窗口（在线流没有本地雪碧图 → 整窗隐藏） */}
               <div
                 ref={hoverCardRef}
                 id="hover-card"
                 className={`absolute -top-24 -translate-x-1/2 flex-col items-center pointer-events-none transition-all duration-75 z-40 ${
-                  isHoveringTimeline ? "flex" : "hidden"
+                  isOnlineStream || !isHoveringTimeline ? "hidden" : "flex"
                 }`}
               >
-                <div className="glass-pill p-1.5 rounded-xl border border-white/20 shadow-2xl flex flex-col items-center">
-                  <div className="w-24 h-14 rounded-lg bg-neutral-900 overflow-hidden relative border border-white/10">
+                <div className="glass-pill p-1 rounded-xl border border-white/10 shadow-2xl flex flex-col items-center">
+                  <div className="w-36 h-20 rounded-lg bg-neutral-900 overflow-hidden relative border border-white/10">
                     <canvas
                       ref={previewCanvasRef}
                       id="preview-canvas"
@@ -824,9 +1078,6 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
                       {hoverTimeText}
                     </span>
                   </div>
-                  <span className="text-[9px] text-neutral-300 mt-1 font-medium tracking-tight">
-                    章节实时刻度
-                  </span>
                 </div>
                 <div className="w-1.5 h-1.5 bg-neutral-900 rotate-45 -mt-1 border-r border-b border-white/20" />
               </div>
@@ -938,16 +1189,25 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
           </div>
         </div>
 
-        {/* 5. 右侧独立垂直浮岛 */}
+        {/* 5. 右侧独立垂直浮岛（悬停时同样钉住控制栏——倍速/画中画/全屏可达） */}
         <div
           id="side-dock"
+          onMouseEnter={() => {
+            controlsPinnedRef.current = true;
+            if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+            setControlsVisible(true);
+          }}
+          onMouseLeave={() => {
+            controlsPinnedRef.current = false;
+            resetIdleTimer();
+          }}
           className={`absolute right-5 bottom-6 z-20 flex flex-col items-center space-y-2.5 transition-all duration-500 ${
             !controlsVisible
               ? "opacity-0 pointer-events-none"
               : "opacity-100"
           }`}
         >
-          {/* 倍速选择 */}
+          {/* 倍速选择（面板紧贴按钮，无悬停空隙断连） */}
           <div className="relative group/speed">
             <button
               id="speed-label"
@@ -956,7 +1216,7 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
             >
               {playbackRate.toFixed(playbackRate % 1 === 0 ? 1 : 2)}x
             </button>
-            <div className="absolute bottom-11 right-0 hidden group-hover/speed:flex flex-col space-y-1 p-1.5 rounded-2xl glass-pill shadow-xl text-xs font-medium z-30">
+            <div className="absolute bottom-full right-0 hidden group-hover/speed:flex flex-col space-y-1 p-1.5 rounded-2xl glass-pill shadow-xl text-xs font-medium z-30">
               {[2.0, 1.5, 1.25, 1.0, 0.75].map((rate) => (
                 <button
                   key={rate}

@@ -115,6 +115,8 @@ export interface ProgressPayload {
   done: boolean;
   success: boolean;
   taskId?: string;
+  /** 处于分片合并/封装阶段（N_m3u8DL-RE 合并无输出，用于前端状态与心跳展示） */
+  merging?: boolean;
 }
 
 export interface VideoItem {
@@ -534,6 +536,11 @@ export const downloadRouter = t.router({
         const slot: ActiveDownload = { proc, pid, stopping: false };
         if (taskId) activeDownloads.set(taskId, slot);
 
+        // 合并阶段追踪：N_m3u8DL-RE 合并输出很安静，主动推「合并中」状态 + 心跳日志
+        let inMergePhase = false;
+        let mergeStartedAt = 0;
+        let mergeHeartbeat: ReturnType<typeof setInterval> | null = null;
+
         sendTaskProgress(taskId, {
           line: `[系统] N_m3u8DL-RE 已启动 (PID: ${pid})`,
           percent: 0,
@@ -556,6 +563,34 @@ export const downloadRouter = t.router({
           for (const line of text.split(/\r?\n/)) {
             const cleaned = stripAnsi(line);
             if (!cleaned) continue;
+            const cleaned2 = cleaned.trim();
+            if (
+              !inMergePhase &&
+              (/\bmerging\b|\bmuxing\b|remuxing/i.test(cleaned2) ||
+                (parsePercent(cleaned) ?? 0) >= 99)
+            ) {
+              inMergePhase = true;
+              mergeStartedAt = Date.now();
+              sendTaskProgress(taskId, {
+                line: `[合并] 分片下载完成，正在合并/封装（ffmpeg）…`,
+                percent: null,
+                done: false,
+                success: false,
+                merging: true,
+              });
+              if (!mergeHeartbeat && mergeStartedAt > 0) {
+                mergeHeartbeat = setInterval(() => {
+                  const secs = Math.round((Date.now() - mergeStartedAt) / 1000);
+                  sendTaskProgress(taskId, {
+                    line: `[合并] 分片合成进行中…（已持续 ${secs}s，请勿认为卡死）`,
+                    percent: null,
+                    done: false,
+                    success: false,
+                    merging: true,
+                  });
+                }, 4000);
+              }
+            }
             sendTaskProgress(taskId, {
               line: cleaned,
               percent: parsePercent(cleaned),
@@ -586,6 +621,18 @@ export const downloadRouter = t.router({
             console.log(`[下载 ${taskId ?? ""}] 进程关闭: code=${code}, signal=${signal}`);
             const wasStopping = slot.stopping;
             if (taskId) activeDownloads.delete(taskId);
+            if (mergeHeartbeat) {
+              clearInterval(mergeHeartbeat);
+              mergeHeartbeat = null;
+            }
+            if (inMergePhase) {
+              sendTaskProgress(taskId, {
+                line: `[合并] 合并阶段结束`,
+                percent: null,
+                done: false,
+                success: true,
+              });
+            }
 
             if (wasStopping) {
               sendTaskProgress(taskId, {

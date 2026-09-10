@@ -185,6 +185,18 @@ function handleRequest(
     return;
   }
 
+  // CORS 预检：渲染端 hls.js/fetch 直连本代理（dev 环境 origin 是 localhost）
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+      "Access-Control-Allow-Headers": "Range, Content-Type, Authorization",
+      "Access-Control-Max-Age": "600",
+    });
+    res.end();
+    return;
+  }
+
   const target = reqUrl.searchParams.get("u");
   const refererParam = reqUrl.searchParams.get("r");
   if (!target) {
@@ -293,6 +305,11 @@ function fetchWithCandidates(
           res.writeHead(status, {
             "Content-Type": contentType,
             "Content-Length": String(buf.length),
+            // hls.js 在渲染端直连本代理（XHR），m3u8 分支必须带 CORS 头
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "Range, Content-Type",
+            "Access-Control-Expose-Headers":
+              "Content-Length, Content-Range, Accept-Ranges",
           });
           res.end(buf);
         });

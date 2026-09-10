@@ -41,7 +41,7 @@ export function createMainWindow(): void {
     width: 1520,
     height: 860,
     minWidth: 1280,
-    minHeight: 720,
+    minHeight: 820,
     show: false,
     frame: false,
     titleBarStyle: isMac ? "hiddenInset" : "hidden",

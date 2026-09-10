@@ -72,4 +72,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     setZoom: (factor: number) => ipcRenderer.invoke('app:set-zoom', factor),
   },
+  mainLog: {
+    /** 主进程日志实时流（1:1）：回调收到 { time, level, text } */
+    onEntry: (callback: (entry: { time: number; level: string; text: string }) => void) => {
+      const handler = (_event: any, entry: any) => callback(entry)
+      ipcRenderer.on('avplay:main-log', handler)
+      return () => ipcRenderer.removeListener('avplay:main-log', handler)
+    },
+  },
+  library: {
+    /** 下载产物落库后触发（organize 完成即发，不等刮削） */
+    onUpdated: (callback: (info: { name?: string; at: number }) => void) => {
+      const handler = (_event: any, info: any) => callback(info)
+      ipcRenderer.on('library:updated', handler)
+      return () => ipcRenderer.removeListener('library:updated', handler)
+    },
+  },
 })

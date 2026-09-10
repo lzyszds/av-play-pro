@@ -2474,3 +2474,16 @@ html.privacy-image-mode *::after {
   animation: none !important;
   transition: none !important;
 }
+
+/* 发现页抓取状态条：底缘流光进度线 */
+.cyber-race-track {
+  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.7), transparent);
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: cyber-race 1.4s linear infinite;
+}
+@keyframes cyber-race {
+  0% { background-position: -40% 0; }
+  100% { background-position: 140% 0; }
+}
+

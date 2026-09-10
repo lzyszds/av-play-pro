@@ -1,4 +1,3 @@
-import axios from "axios";
 import * as cheerio from "cheerio";
 import * as fs from "fs";
 import { atomicWriteFileSync } from "../lib/fsutil";
@@ -7,6 +6,12 @@ import { app, session, webContents } from "electron";
 import type { WebContents } from "electron";
 import { t } from "../trpc";
 import { log } from "../logger";
+import { emitExtensionTaskPush } from "../extensions/pushServer";
+import {
+  resolveMissavM3u8,
+  resolveMissavQuality,
+} from "../webview/missavResolver";
+import { curlFetchText } from "../lib/curlFetch";
 import {
   getActiveMissavWebContents,
   MISSAV_WEB_PARTITION,
@@ -26,6 +31,8 @@ export interface ScrapedItem {
   cover: string | null;
   preview: string | null;
   duration: string | null;
+  /** 最高档画质标签，如 "720P"（一键下载/播放解析详情页后回填） */
+  quality?: string | null;
 }
 
 export type ScrapeMethod = "webview" | "jina";
@@ -179,6 +186,32 @@ function getScrapeContents(): WebContents | null {
     scraperContentsId = null;
   }
   return getActiveMissavWebContents();
+}
+
+/** 判定给定 webContents 是否为渲染进程注册的「专用抓取 webview」（可自由清空导航） */
+export function isScraperWebview(
+  contents: WebContents | null,
+): boolean {
+  if (!contents || contents.isDestroyed() || scraperContentsId == null) {
+    return false;
+  }
+  const wc = webContents.fromId(scraperContentsId);
+  return wc === contents && !wc.isDestroyed();
+}
+
+/** 嗅探完成后释放页面：仅清空专用抓取 webview（只加载空白最小页，session 与过盾 cookie 不受影响） */
+export async function releaseScrapePage(): Promise<void> {
+  if (scraperContentsId == null) return;
+  const wc = webContents.fromId(scraperContentsId);
+  if (!wc || wc.isDestroyed()) return;
+  try {
+    await wc.loadURL("about:blank");
+    log.info("[scrape] 专用抓取 webview 已释放（about:blank）");
+  } catch (error) {
+    log.warn(
+      `[scrape] 释放抓取 webview 失败: ${(error as Error)?.message}`,
+    );
+  }
 }
 
 // 在真实渲染的页面 DOM 里直接提取列表（等价于 scrape_missav.js 的 extractInPage）。
@@ -430,17 +463,60 @@ export async function scrapeList(opts: {
   return { items: all, pages: scannedPages, error: all.length === 0 ? lastError : null };
 }
 
-/** 通过 r.jina.ai 第三方代理抓单页，返回页面 HTML（无需过盾，速度快） */
-async function fetchViaJina(url: string): Promise<string> {
+/** 取正文前 n 行（去空行、压日志长度），用于打印对方到底返回了什么 */
+function firstLines(text: string, count: number): string {
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, count)
+    .map((l) => (l.length > 200 ? `${l.slice(0, 200)}…` : l));
+  return lines.join(" ⏎ ") || "(空)";
+}
+
+/** Jina 通道兜底：应用内会话直连（UA 指纹被 Cloudflare 挑战时的原实现） */
+async function fetchViaJinaSession(url: string): Promise<string> {
   const jinaUrl = `https://r.jina.ai/${url}`;
-  const { data } = await axios.get<string>(jinaUrl, {
-    headers: { "x-return-format": "html", Accept: "text/html,*/*" },
-    timeout: 60000,
-    responseType: "text",
-    // 代理服务器可能返回压缩内容，强制 axios 自动解压
-    decompress: true,
-  });
-  return typeof data === "string" ? data : "";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 60_000);
+  try {
+    // 关键：走 persist:missav-web 会话（与抓取 webview 共用 cookie 域）。
+    // r.jina.ai 自己也在 Cloudflare 后面，家里等换了出口 IP 的环境可能对
+    // 应用直接甩「Just a moment」挑战页——用 webview 过一次盾后，
+    // cf_clearance 会落在这个分区里，普通 fetch 即可复用直连通过。
+    // （之前用 axios/Node 直连还有第二个问题：DNS 污染导致 ETIMEDOUT）
+    const webSession = session.fromPartition(MISSAV_WEB_PARTITION);
+    const response = await webSession.fetch(jinaUrl, {
+      headers: { "x-return-format": "html", Accept: "text/html,*/*" },
+      signal: controller.signal,
+    });
+    const html = await response.text();
+    if (response.status >= 400) {
+      const isChallenge = /just a moment|challenge-platform/i.test(html);
+      log.warn(
+        `[scrape][jina] 状态=${response.status} len=${html.length} server=${response.headers?.get?.("server") ?? "?"} content-type=${response.headers?.get?.("content-type") ?? "?"} cf-ray=${response.headers?.get?.("cf-ray") ?? "-"} challenge=${isChallenge} (${url})`,
+      );
+      log.warn(`[scrape][jina] 返回正文前 5 行: ${firstLines(html, 5)}`);
+      const err = new Error(
+        isChallenge
+          ? "jina 前置域被 Cloudflare 挑战（需过一次盾）"
+          : `目标站拦截了 Jina 代理（${response.status}）`,
+      ) as Error & {
+        response?: { status: number };
+        jinaChallenge?: boolean;
+      };
+      err.response = { status: response.status };
+      if (isChallenge) err.jinaChallenge = true;
+      throw err;
+    }
+    if (response.status >= 200 && response.status < 400 && html.length > 0) {
+      return html;
+    }
+    log.warn(`[scrape][jina] status=${response.status} len=${html.length} (${url})`);
+    return "";
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Jina 通道抓取单页：HTML 直接复用现有 cheerio 解析（页面结构与站内一致） */
@@ -450,6 +526,45 @@ async function scrapePageViaJina(url: string): Promise<ScrapedItem[]> {
   const items = parseListPage(html);
   log.info(`[scrape][jina] ${url} -> ${items.length} 条 (len=${html.length})`);
   return items;
+}
+
+/**
+ * Jina 通道（首选）：走系统 curl 子进程。
+ * 用户终端验证：curl 干净 UA + 系统 TLS 指纹能直接通过 Cloudflare
+ * 拿到 r.jina.ai -> missav 内容，应用内请求则会被挑战或 DNS 污染卡死。
+ * curl 不可用时降级到应用内会话直连。
+ */
+async function fetchViaJina(url: string): Promise<string> {
+  const jinaUrl = `https://r.jina.ai/${url}`;
+  try {
+    const result = await curlFetchText(jinaUrl, {
+      timeoutSec: 90,
+      headers: ["x-return-format: html"],
+    });
+    log.info(
+      `[scrape][jina] curl 状态=${result.status} len=${result.body.length} (${url})`,
+    );
+    if (result.status >= 400) {
+      const isChallenge = /just a moment|challenge-platform/i.test(
+        result.body,
+      );
+      // Jina 免费额度 429 仍按限流语义抛出，供上层退避重试
+      const err = new Error(
+        isChallenge
+          ? "jina 前置域被 Cloudflare 挑战"
+          : `jina 代理返回 ${result.status}`,
+      ) as Error & { response?: { status: number } };
+      err.response = { status: result.status };
+      throw err;
+    }
+    if (result.body.length > 0) return result.body;
+    log.warn(`[scrape][jina] curl 返回空内容，降级会话直连 (${url})`);
+  } catch (error) {
+    log.warn(
+      `[scrape][jina] curl 通道失败: ${(error as Error)?.message}，降级会话直连 (${url})`,
+    );
+  }
+  return fetchViaJinaSession(url);
 }
 
 /**
@@ -478,11 +593,13 @@ export async function scrapeListViaJina(opts: {
   const RATE_LIMIT_MS = 3200; // ≈ 18 req/min，在 Jina 免费额度内
   const pages: number[] = [];
   for (let p = startPage; p <= endPage; p++) pages.push(p);
+  beginProgress(pages.length);
 
   const CONCURRENCY = 2; // 节流闸已限速，两个 worker 足够
   let index = 0;
   let nextSlot = 0;
   let consecutiveRateLimited = 0;
+  let blockedCount = 0; // 403 等被目标站拦截的次数（连续 2 次即判定 Jina 通道整体失效）
 
   /** 从节流闸排队领取本 worker 的请求时段 */
   async function takeSlot(): Promise<void> {
@@ -494,7 +611,12 @@ export async function scrapeListViaJina(opts: {
   }
 
   const worker = async () => {
-    while (index < pages.length && consecutiveRateLimited < 3) {
+    while (
+      index < pages.length &&
+      consecutiveRateLimited < 3 &&
+      blockedCount < 2 &&
+      !isCancelRequested()
+    ) {
       const p = pages[index++];
       const url = baseUrl.includes("{page}")
         ? baseUrl.replace("{page}", String(p))
@@ -503,26 +625,44 @@ export async function scrapeListViaJina(opts: {
       // 每页最多重试 2 次（429 退避 5s / 10s）
       let success = false;
       let gaveUp = false;
-      for (let attempt = 0; attempt <= 2 && !success && !gaveUp; attempt++) {
+      for (
+        let attempt = 0;
+        attempt <= 2 && !success && !gaveUp;
+        attempt++
+      ) {
+        if (isCancelRequested()) break;
         if (attempt > 0) await sleep(5000 * attempt);
         await takeSlot();
+        if (isCancelRequested()) break;
         try {
           const items = await scrapePageViaJina(url);
+          if (isCancelRequested()) break;
           scannedPages++;
           consecutiveRateLimited = 0;
           if (items.length === 0) {
-            lastError = `第 ${p} 页无数据（Jina 未返回有效内容）`;
+            // Jina 偶发拿到挑战页（len≈5800），属瞬时风控；属于定时重试，最多 3 次
+            lastError = `第 ${p} 页无数据（疑似挑战页，将退避重试）`;
+            log.warn(
+              `[scrape][jina] 第 ${p} 页疑似挑战页，退避后重试（第 ${attempt + 2}/3 次）`,
+            );
             continue;
           }
           lastError = null;
           success = true;
+          const pageItems: ScrapedItem[] = [];
           for (const it of items) {
             const key = it.code || it.url;
             if (!seen.has(key)) {
               seen.add(key);
               all.push(it);
+              pageItems.push(it);
             }
           }
+          // 增量入库：每抓到一页立刻合并落盘（失败页重试成功也能看到）
+          if (pageItems.length > 0) {
+            saveScrapedItems(pageItems, { baseUrl, pages: endPage - startPage + 1 });
+          }
+          setProgress({ page: p, lastPageItems: pageItems.length });
         } catch (error: any) {
           if (error?.response?.status === 429) {
             lastError = `第 ${p} 页被 Jina 限流（429），正在退避重试`;
@@ -531,6 +671,16 @@ export async function scrapeListViaJina(opts: {
             if (consecutiveRateLimited >= 3) gaveUp = true;
             continue;
           }
+          if (error?.response?.status >= 400) {
+            blockedCount++;
+            lastError = `Jina 通道被目标站拦截（${error.response.status}），快速通道当前不可用`;
+            log.warn(`[scrape][jina] ${lastError}`);
+            if (blockedCount >= 2) {
+              lastError = "目标站把 Jina 代理拦在盾外（403），快速通道暂时失效";
+              log.warn(`[scrape][jina] ${lastError}`);
+            }
+            break;
+          }
           lastError = error?.message || String(error);
           log.warn(`[scrape][jina] 第 ${p} 页失败: ${lastError}`);
           break;
@@ -538,9 +688,23 @@ export async function scrapeListViaJina(opts: {
       }
     }
 
+    if (isCancelRequested() && index < pages.length) {
+      lastError = `已手动停止，保留本次已抓的 ${all.length} 条`;
+      log.info(`[scrape][jina] ${lastError}`);
+    }
     if (consecutiveRateLimited >= 3 && index < pages.length) {
       lastError = `Jina 持续限流，已提前结束（本次已抓 ${all.length} 条）`;
       log.warn(`[scrape][jina] ${lastError}`);
+    }
+    if (blockedCount >= 2) {
+      lastError = "Jina 已被目标站拦截，建议改用「过盾抓取」方式";
+      log.warn(`[scrape][jina] ${lastError}`);
+      // 自动把默认抓取方式切回过盾（下次点「一键抓取」不再先撞 Jina；可在弹窗里改回）
+      const cfg = readScrapeConfig();
+      if (cfg.method !== "webview") {
+        writeScrapeConfig({ ...cfg, method: "webview" });
+        log.warn("[scrape][jina] 已自动把抓取方式切换为「过盾抓取」（可在启动弹窗里改回）");
+      }
     }
   };
 
@@ -548,10 +712,49 @@ export async function scrapeListViaJina(opts: {
     Array.from({ length: Math.min(CONCURRENCY, pages.length) }, () => worker()),
   );
 
+  endProgress();
   return { items: all, pages: scannedPages, error: all.length === 0 ? lastError : null };
 }
 
 let startupScrapeRan = false;
+
+/** 主进程抓取取消旗标：jina/主进程 webview 通道的逐页循环都会检查 */
+let cancelRequested = false;
+
+export function requestCancelScrape(): void {
+  cancelRequested = true;
+}
+
+function isCancelRequested(): boolean {
+  return cancelRequested;
+}
+
+/** 抓取实时进度（供控制台状态条显示第 X/Y 页） */
+export interface ScrapeProgress {
+  active: boolean;
+  page: number;
+  totalPages: number;
+  lastPageItems: number;
+}
+let progressState: ScrapeProgress = {
+  active: false,
+  page: 0,
+  totalPages: 0,
+  lastPageItems: 0,
+};
+
+function setProgress(patch: Partial<ScrapeProgress>): void {
+  progressState = { ...progressState, ...patch };
+}
+
+/** 抓取实时进度状态，开始时调用 */
+function beginProgress(totalPages: number): void {
+  cancelRequested = false;
+  progressState = { active: true, page: 0, totalPages, lastPageItems: 0 };
+}
+function endProgress(): void {
+  progressState = { active: false, page: 0, totalPages: 0, lastPageItems: 0 };
+}
 
 /**
  * 抓取并写入缓存。返回最终缓存内容。
@@ -638,6 +841,28 @@ export const scrapeRouter = t.router({
       if (typeof input?.id === "number") registerScraperWebview(input.id);
       return { ok: true };
     }),
+
+  /** 设置抓取 webview 的内部页面缩放（webview 标签自身的 setZoomFactor 不生效，必须走主进程 webContents） */
+  setZoomFactor: t.procedure
+    .input((input: unknown) => input as { factor: number })
+    .mutation(({ input }): { ok: boolean } => {
+      const factor = Math.min(2, Math.max(0.2, input?.factor || 1));
+      if (scraperContentsId == null) return { ok: false };
+      const wc = webContents.fromId(scraperContentsId);
+      if (!wc || wc.isDestroyed()) return { ok: false };
+      wc.setZoomFactor(factor);
+      return { ok: true };
+    }),
+
+  /** 抓取实时进度（第 X/Y 页控制台状态条用） */
+  getProgress: t.procedure.query((): ScrapeProgress => progressState),
+
+  /** 取消进行中的主进程抓取（jina/主进程 webview 通道逐页生效，已抓内容保留） */
+  cancelRun: t.procedure.mutation((): { ok: boolean } => {
+    requestCancelScrape();
+    log.info("[scrape] 收到取消请求：当前主进程抓取将在当前页请求后停止");
+    return { ok: true };
+  }),
 
   /** 读取抓取配置 */
   getConfig: t.procedure.query((): ScrapeConfig => readScrapeConfig()),
@@ -727,4 +952,78 @@ export const scrapeRouter = t.router({
         input as { baseUrl: string; startPage?: number; endPage?: number },
     )
     .mutation(async ({ input }) => scrapeList(input)),
+
+  /** 发现页一键下载：从详情页 URL 解析 m3u8（会话直取解包，失败转 webview 自动播放嗅探） */
+  resolveM3u8: t.procedure
+    .input((input: unknown) => input as { url: string })
+    .mutation(
+      async ({ input }): Promise<{ m3u8: string | null; method: string }> => {
+        log.info(`[scrape] 一键下载：开始解析 m3u8 (${input?.url})`);
+        const result = await resolveMissavM3u8(input?.url || "", {
+          getWebContents: getScrapeContents,
+          canRelease: isScraperWebview,
+          onRelease: releaseScrapePage,
+        });
+        if (!result.m3u8) {
+          log.warn(`[scrape] 一键下载：解析 m3u8 失败 (${input?.url})`);
+        }
+        return result;
+      },
+    ),
+
+  /** 发现页一键下载：把解析出的流按「插件推送」管线入队（DownloadPage 自动建任务并启动） */
+  queueDiscoverDownload: t.procedure
+    .input(
+      (input: unknown) =>
+        input as {
+          m3u8Url: string;
+          name?: string;
+          coverUrl?: string;
+          previewUrl?: string;
+          pageUrl?: string;
+          quality?: string | null;
+        },
+    )
+    .mutation(({ input }) => {
+      const payload = emitExtensionTaskPush({
+        url: input?.m3u8Url,
+        name: input?.name || "M3U8 Task",
+        cover: input?.coverUrl,
+        preview: input?.previewUrl,
+        pageUrl: input?.pageUrl,
+        quality: input?.quality || undefined,
+        source: "discover",
+      });
+      log.info(
+        `[scrape] 一键下载：已入队 ${payload.name} | ${payload.url}`,
+      );
+      return payload;
+    }),
+
+  /** 分辨率标注：解析详情页回填最高档画质（快路径 → 过盾 webview 页源，不触发播放；解析出 m3u8 时顺带回填） */
+  annotate: t.procedure
+    .input(
+      (input: unknown) => input as { url: string; code?: string | null },
+    )
+    .mutation(async ({ input }): Promise<{ quality: string | null }> => {
+      const url = input?.url || "";
+      const result = await resolveMissavQuality(url, {
+        getWebContents: getScrapeContents,
+        canRelease: isScraperWebview,
+        onRelease: releaseScrapePage,
+      });
+      if (result.quality) {
+        // 回填到缓存（按 url 定位；code 仅作辅助匹配，可能为 null）
+        const store = readScrapeStore();
+        const target = store.items.find(
+          (it) => it.url === url || (input?.code && it.code === input.code),
+        );
+        if (target) {
+          target.quality = result.quality;
+          writeScrapeStore(store);
+          log.info(`[scrape] 分辨率标注 ${input?.code || ""} -> ${result.quality}`);
+        }
+      }
+      return { quality: result.quality };
+    }),
 });

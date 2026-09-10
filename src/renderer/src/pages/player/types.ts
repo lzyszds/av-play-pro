@@ -36,6 +36,9 @@ export interface PlayerPageProps {
   /** 由 DownloadPage「立即查看」触发：跳转后用任务名匹配本地视频自动选中并播放 */
   pendingPlayName?: string | null;
   onConsumePendingPlay?: () => void;
+  /** 由发现页「一键播放」触发：跳转后直接播放在线流（m3u8/mp4 URL） */
+  pendingStream?: { url: string; name?: string; referer?: string } | null;
+  onConsumePendingStream?: () => void;
   /** 通知 App 当前选中/播放的视频名（用于私密计时记录关联） */
   onActiveVideoChange?: (name: string | null) => void;
   /** 点击演员名跳转到「演员」页详情 */

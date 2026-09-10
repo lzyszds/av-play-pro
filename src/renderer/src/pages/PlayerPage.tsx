@@ -202,6 +202,8 @@ export function PlayerPage({
   onAddSystemLog,
   pendingPlayName,
   onConsumePendingPlay,
+  pendingStream,
+  onConsumePendingStream,
   onActiveVideoChange,
   onOpenActor,
   onLayoutChange,
@@ -529,6 +531,16 @@ export function PlayerPage({
 
     return () => clearTimeout(delayDebounceFn);
   }, [videoSearchQuery, videoPath, isUrlMode]);
+
+  // 下载产物落库后自动刷新片库（主进程 organize 完成即发，无需手动刷新）
+  useEffect(() => {
+    const unlisten = window.electronAPI?.library?.onUpdated?.(() => {
+      void refreshVideoList();
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, [videoPath]);
 
   const toggleFavorite = useCallback(
     (video: VideoItem) => {
@@ -1121,6 +1133,25 @@ export function PlayerPage({
     onConsumePendingPlay?.();
   }, [pendingPlayName, localVideos, handleLoadLocalVideo, onConsumePendingPlay, onAddSystemLog]);
 
+  // 来自发现页「一键播放」的外部在线流（m3u8/mp4）：直接载入激活流播放
+  useEffect(() => {
+    if (!pendingStream?.url) return;
+    const url = pendingStream.url.trim();
+    if (url.startsWith("http://") || url.startsWith("https://") || url.includes(".m3u8")) {
+      setActiveStream({
+        name: pendingStream.name || url.split("/").pop() || "在线流",
+        url,
+        resolution: "在线流",
+        encryptionType: "--",
+        referer: pendingStream.referer || "",
+      });
+      onAddSystemLog(`已载入在线流播放: ${pendingStream.name || url}`, "INFO");
+    } else {
+      onAddSystemLog(`一键播放：无效的链接 ${url}`, "WARNING");
+    }
+    onConsumePendingStream?.();
+  }, [pendingStream, onConsumePendingStream, onAddSystemLog]);
+
   const handleParseM3u8List = async (e?: React.FormEvent) => {
     e?.preventDefault();
     const url = videoSearchQuery.trim();
@@ -1435,6 +1466,8 @@ export function PlayerPage({
 
   useEffect(() => {
     const onGlobalKeyDown = (event: KeyboardEvent) => {
+      // 不在播放页时全局快捷键不生效（播放页是常驻挂载的，按下键盘也不该遥控后台视频）
+      if (!active) return;
       const target = event.target as HTMLElement | null;
       if (
         target?.tagName === "INPUT" ||
@@ -1598,6 +1631,7 @@ export function PlayerPage({
     directorCutOpen,
     timelineOpen,
     handleLoadLocalVideo,
+    active,
   ]);
 
   useEffect(() => {
@@ -1993,6 +2027,7 @@ export function PlayerPage({
           <div className="relative h-full bg-black overflow-hidden ">
             {isCapsuleLayout ? (
               <AeroCapsulePlayer
+                active={active}
                 activeVideo={activeStream}
                 videos={filteredVideos}
                 selectedVideoId={selectedVideoId}
@@ -2000,6 +2035,7 @@ export function PlayerPage({
                   setUserInitiated(true);
                   handleLoadLocalVideo(video, index);
                 }}
+                previewVttUrl={previewVttUrl}
                 filterStyle={filterCss}
                 onVideoEl={setVideoEl}
                 onMeta={(m) =>

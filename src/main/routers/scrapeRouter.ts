@@ -28,12 +28,16 @@ export interface ScrapedItem {
   duration: string | null;
 }
 
+export type ScrapeMethod = "webview" | "jina";
+
 export interface ScrapeConfig {
   baseUrl: string;
   startPage: number;
   endPage: number;
   /** 启动时是否自动抓取一次 */
   autoOnStartup: boolean;
+  /** 抓取方式：webview=过盾抓取（慢但稳），jina=r.jina.ai 第三方代理（快） */
+  method?: ScrapeMethod;
 }
 
 export interface ScrapeStore {
@@ -57,6 +61,7 @@ export function readScrapeConfig(): ScrapeConfig {
     startPage: DEFAULT_START_PAGE,
     endPage: DEFAULT_END_PAGE,
     autoOnStartup: DEFAULT_AUTO_ON_STARTUP,
+    method: "webview",
   };
   try {
     const file = configFile();
@@ -126,7 +131,14 @@ export function readScrapeStore(): ScrapeStore {
   try {
     const file = storeFile();
     if (fs.existsSync(file)) {
-      return JSON.parse(fs.readFileSync(file, "utf8")) as ScrapeStore;
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<ScrapeStore>;
+      // 防御脏数据（如被云同步/外部写坏成 {} ）：字段不合法时回退为空缓存，不再原样返回
+      return {
+        updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
+        baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : "",
+        pages: typeof parsed.pages === "number" ? parsed.pages : 0,
+        items: Array.isArray(parsed.items) ? parsed.items : [],
+      };
     }
   } catch (error) {
     log.warn(`[scrape] 读取缓存失败: ${(error as Error)?.message}`);
@@ -418,6 +430,127 @@ export async function scrapeList(opts: {
   return { items: all, pages: scannedPages, error: all.length === 0 ? lastError : null };
 }
 
+/** 通过 r.jina.ai 第三方代理抓单页，返回页面 HTML（无需过盾，速度快） */
+async function fetchViaJina(url: string): Promise<string> {
+  const jinaUrl = `https://r.jina.ai/${url}`;
+  const { data } = await axios.get<string>(jinaUrl, {
+    headers: { "x-return-format": "html", Accept: "text/html,*/*" },
+    timeout: 60000,
+    responseType: "text",
+    // 代理服务器可能返回压缩内容，强制 axios 自动解压
+    decompress: true,
+  });
+  return typeof data === "string" ? data : "";
+}
+
+/** Jina 通道抓取单页：HTML 直接复用现有 cheerio 解析（页面结构与站内一致） */
+async function scrapePageViaJina(url: string): Promise<ScrapedItem[]> {
+  const html = await fetchViaJina(url);
+  if (!html) return [];
+  const items = parseListPage(html);
+  log.info(`[scrape][jina] ${url} -> ${items.length} 条 (len=${html.length})`);
+  return items;
+}
+
+/**
+ * Jina 快速抓取列表页：baseUrl 与 webview 通道一致（{page} 占位）。
+ * 不开 webview、不战 Cloudflare，逐页直接发请求。
+ * 注意：Jina 免费额度约 20 req/min，超速直接 429 —— 这里用
+ * 全局节流闸（请求间最小间隔）+ 429 退避重试 + 连续限流提前收场。
+ */
+export async function scrapeListViaJina(opts: {
+  baseUrl: string;
+  startPage?: number;
+  endPage?: number;
+}): Promise<{ items: ScrapedItem[]; pages: number; error: string | null }> {
+  const baseUrl = opts.baseUrl?.trim();
+  if (!baseUrl) return { items: [], pages: 0, error: "baseUrl 不能为空" };
+
+  const startPage = Math.max(1, opts.startPage ?? 1);
+  const endPage = Math.max(startPage, opts.endPage ?? startPage);
+
+  const seen = new Set<string>();
+  const all: ScrapedItem[] = [];
+  let scannedPages = 0;
+  let lastError: string | null = null;
+
+  // 全局共享节流闸：所有并发 worker 排队经过，保证两次请求至少间隔 RATE_LIMIT_MS
+  const RATE_LIMIT_MS = 3200; // ≈ 18 req/min，在 Jina 免费额度内
+  const pages: number[] = [];
+  for (let p = startPage; p <= endPage; p++) pages.push(p);
+
+  const CONCURRENCY = 2; // 节流闸已限速，两个 worker 足够
+  let index = 0;
+  let nextSlot = 0;
+  let consecutiveRateLimited = 0;
+
+  /** 从节流闸排队领取本 worker 的请求时段 */
+  async function takeSlot(): Promise<void> {
+    const now = Date.now();
+    const slot = Math.max(nextSlot, now);
+    nextSlot = slot + RATE_LIMIT_MS;
+    const wait = slot - now;
+    if (wait > 0) await sleep(wait);
+  }
+
+  const worker = async () => {
+    while (index < pages.length && consecutiveRateLimited < 3) {
+      const p = pages[index++];
+      const url = baseUrl.includes("{page}")
+        ? baseUrl.replace("{page}", String(p))
+        : baseUrl.replace(/([?&]page=)\d*/, `$1${p}`);
+
+      // 每页最多重试 2 次（429 退避 5s / 10s）
+      let success = false;
+      let gaveUp = false;
+      for (let attempt = 0; attempt <= 2 && !success && !gaveUp; attempt++) {
+        if (attempt > 0) await sleep(5000 * attempt);
+        await takeSlot();
+        try {
+          const items = await scrapePageViaJina(url);
+          scannedPages++;
+          consecutiveRateLimited = 0;
+          if (items.length === 0) {
+            lastError = `第 ${p} 页无数据（Jina 未返回有效内容）`;
+            continue;
+          }
+          lastError = null;
+          success = true;
+          for (const it of items) {
+            const key = it.code || it.url;
+            if (!seen.has(key)) {
+              seen.add(key);
+              all.push(it);
+            }
+          }
+        } catch (error: any) {
+          if (error?.response?.status === 429) {
+            lastError = `第 ${p} 页被 Jina 限流（429），正在退避重试`;
+            log.warn(`[scrape][jina] ${lastError}`);
+            consecutiveRateLimited++;
+            if (consecutiveRateLimited >= 3) gaveUp = true;
+            continue;
+          }
+          lastError = error?.message || String(error);
+          log.warn(`[scrape][jina] 第 ${p} 页失败: ${lastError}`);
+          break;
+        }
+      }
+    }
+
+    if (consecutiveRateLimited >= 3 && index < pages.length) {
+      lastError = `Jina 持续限流，已提前结束（本次已抓 ${all.length} 条）`;
+      log.warn(`[scrape][jina] ${lastError}`);
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, pages.length) }, () => worker()),
+  );
+
+  return { items: all, pages: scannedPages, error: all.length === 0 ? lastError : null };
+}
+
 let startupScrapeRan = false;
 
 /**
@@ -429,14 +562,23 @@ export async function scrapeAndStore(opts?: {
   baseUrl?: string;
   startPage?: number;
   endPage?: number;
+  method?: ScrapeMethod;
 }): Promise<ScrapeStore> {
   const cfg = readScrapeConfig();
   const baseUrl = opts?.baseUrl?.trim() || cfg.baseUrl || DEFAULT_SCRAPE_BASE_URL;
-  const result = await scrapeList({
-    baseUrl,
-    startPage: opts?.startPage ?? cfg.startPage,
-    endPage: opts?.endPage ?? cfg.endPage,
-  });
+  const method = opts?.method || cfg.method || "webview";
+  const result =
+    method === "jina"
+      ? await scrapeListViaJina({
+          baseUrl,
+          startPage: opts?.startPage ?? cfg.startPage,
+          endPage: opts?.endPage ?? cfg.endPage,
+        })
+      : await scrapeList({
+          baseUrl,
+          startPage: opts?.startPage ?? cfg.startPage,
+          endPage: opts?.endPage ?? cfg.endPage,
+        });
 
   if (result.items.length === 0) {
     log.warn(`[scrape] 抓取 0 条，保留旧缓存 (${result.error ?? "无错误"})`);
@@ -573,7 +715,7 @@ export const scrapeRouter = t.router({
     .input(
       (input: unknown) =>
         (input as
-          | { baseUrl?: string; startPage?: number; endPage?: number }
+          | { baseUrl?: string; startPage?: number; endPage?: number; method?: ScrapeMethod }
           | undefined) || {},
     )
     .mutation(async ({ input }): Promise<ScrapeStore> => scrapeAndStore(input)),

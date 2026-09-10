@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { PageLoader } from "../components/PageLoader";
 import { Tooltip } from "../components/common/Tooltip";
 import { trpc } from "../lib/trpc";
@@ -15,7 +16,6 @@ import {
   ExternalLink,
   Clock,
   Copy,
-  Settings2,
   Trash2,
   Layers,
 } from "lucide-react";
@@ -39,6 +39,8 @@ interface ScrapeConfig {
   startPage: number;
   endPage: number;
   autoOnStartup: boolean;
+  /** 抓取方式：webview=过盾抓取（慢但稳），jina=r.jina.ai 第三方代理（快） */
+  method?: "webview" | "jina";
 }
 
 function formatTime(ts: number): string {
@@ -183,7 +185,13 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState("");
   const [keyword, setKeyword] = useState("");
-  const [showConfig, setShowConfig] = useState(false);
+  // 抓取启动弹窗：点「一键抓取」时让用户选方式与页码范围
+  const [showScrapeDialog, setShowScrapeDialog] = useState(false);
+  const [dlgMethod, setDlgMethod] = useState<"webview" | "jina">("webview");
+  const [dlgStart, setDlgStart] = useState(1);
+  const [dlgEnd, setDlgEnd] = useState(3);
+  const [dlgBaseUrl, setDlgBaseUrl] = useState("");
+  const [dlgAutoOnStartup, setDlgAutoOnStartup] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
@@ -224,43 +232,100 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
     onAddSystemLog("正在停止抓取…", "INFO");
   }, [onAddSystemLog]);
 
-  // 一键抓取：弹出 webview 过盾 → 逐页抓取 → 落库 → 刷新
-  const handleScrape = useCallback(async () => {
+  // 一键抓取：Jina 走主进程快速通道，webview 走渲染端过盾流程
+  const runScrape = useCallback(
+    async (
+      method: "webview" | "jina",
+      startPage: number,
+      endPage: number,
+      baseUrlOverride?: string,
+    ) => {
+      const baseUrl = baseUrlOverride?.trim() || config?.baseUrl || "";
+      if (!baseUrl) return;
+      const useJina = method === "jina";
+      setRunning(true);
+      setProgress(useJina ? "Jina 快速抓取中…" : "准备中…");
+      onAddSystemLog(useJina ? "开始 Jina 快速抓取 missav…" : "开始一键抓取 missav…", "INFO");
+      if (useJina) {
+        try {
+          const saved = (await trpc.scrape.refresh.mutate({
+            method: "jina",
+            baseUrl,
+            startPage,
+            endPage,
+          })) as ScrapeStore;
+          setStore(saved);
+          onAddSystemLog(`Jina 抓取完成，已保存 ${saved.items.length} 条`, "SUCCESS");
+        } catch (error) {
+          onAddSystemLog(`Jina 抓取失败: ${(error as Error)?.message}`, "ERROR");
+        } finally {
+          setRunning(false);
+          setProgress("");
+        }
+        return;
+      }
+      try {
+        const items = await runScraper({
+          baseUrl,
+          startPage,
+          endPage,
+          onProgress: (msg) => setProgress(msg),
+        });
+
+        if (items.length === 0) {
+          onAddSystemLog("抓取到 0 条（可能未过盾或被风控）", "WARNING");
+          return;
+        }
+
+        const saved = (await trpc.scrape.save.mutate({
+          items,
+          baseUrl,
+          pages: endPage - startPage + 1,
+        })) as ScrapeStore;
+        setStore(saved);
+        onAddSystemLog(`抓取完成，已保存 ${saved.items.length} 条`, "SUCCESS");
+      } catch (error) {
+        if (isScrapeAbortError(error)) {
+          onAddSystemLog("抓取已取消", "INFO");
+          return;
+        }
+        onAddSystemLog(`抓取失败: ${(error as Error)?.message}`, "ERROR");
+      } finally {
+        setRunning(false);
+        setProgress("");
+      }
+    },
+    [config, onAddSystemLog],
+  );
+
+  // 打开抓取弹窗：默认带出已保存配置
+  const openScrapeDialog = useCallback(() => {
     if (!config) return;
-    setRunning(true);
-    setProgress("准备中…");
-    onAddSystemLog("开始一键抓取 missav…", "INFO");
-    try {
-      const items = await runScraper({
-        baseUrl: config.baseUrl,
-        startPage: config.startPage,
-        endPage: config.endPage,
-        onProgress: (msg) => setProgress(msg),
-      });
+    setDlgMethod(config.method === "jina" ? "jina" : "webview");
+    setDlgStart(config.startPage);
+    setDlgEnd(config.endPage);
+    setDlgBaseUrl(config.baseUrl);
+    setDlgAutoOnStartup(config.autoOnStartup);
+    setShowScrapeDialog(true);
+  }, [config]);
 
-      if (items.length === 0) {
-        onAddSystemLog("抓取到 0 条（可能未过盾或被风控）", "WARNING");
-        return;
-      }
-
-      const saved = (await trpc.scrape.save.mutate({
-        items,
-        baseUrl: config.baseUrl,
-        pages: config.endPage - config.startPage + 1,
-      })) as ScrapeStore;
-      setStore(saved);
-      onAddSystemLog(`抓取完成，已保存 ${saved.items.length} 条`, "SUCCESS");
-    } catch (error) {
-      if (isScrapeAbortError(error)) {
-        onAddSystemLog("抓取已取消", "INFO");
-        return;
-      }
-      onAddSystemLog(`抓取失败: ${(error as Error)?.message}`, "ERROR");
-    } finally {
-      setRunning(false);
-      setProgress("");
-    }
-  }, [config, onAddSystemLog]);
+  // 确认抓取：选择持久化，并按本次选择启动（页码不做相互限制，随便输）
+  const confirmScrape = useCallback(() => {
+    setShowScrapeDialog(false);
+    const toPage = (v: number) =>
+      Number.isFinite(v) && !Number.isNaN(v) ? Math.floor(v) : 1;
+    const start = toPage(dlgStart);
+    // 起始大于结束时自然写成一键段：end ≥ start，交换即可
+    const [lo, hi] = start <= dlgEnd ? [start, toPage(dlgEnd)] : [toPage(dlgEnd), start];
+    void saveConfig({
+      method: dlgMethod,
+      startPage: lo,
+      endPage: hi,
+      baseUrl: dlgBaseUrl.trim(),
+      autoOnStartup: dlgAutoOnStartup,
+    });
+    void runScrape(dlgMethod, lo, hi, dlgBaseUrl);
+  }, [dlgMethod, dlgStart, dlgEnd, dlgBaseUrl, dlgAutoOnStartup, saveConfig, runScrape]);
 
   const items = store?.items ?? [];
 
@@ -303,10 +368,10 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
     );
   }, [items, keyword]);
 
-  // 分页
-  const PAGE_SIZE = 20;
+  // 分页：每页数量 = 屏幕可容纳的 列数×行数（随窗口自适应，见下方测量）
+  const [pageSize, setPageSize] = useState(20);
   const [page, setPage] = useState(1);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   // 关键词变化时回到第 1 页
   useEffect(() => {
     setPage(1);
@@ -315,10 +380,10 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
   const pagedItems = useMemo(
     () =>
       filtered.slice(
-        (currentPage - 1) * PAGE_SIZE,
-        currentPage * PAGE_SIZE,
+        (currentPage - 1) * pageSize,
+        currentPage * pageSize,
       ),
-    [filtered, currentPage],
+    [filtered, currentPage, pageSize],
   );
 
   const copy = useCallback(
@@ -329,36 +394,44 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
     [onAddSystemLog],
   );
 
-  // —— 固定 5列×4行 布局，卡片尺寸自适应填满 ——
-  const COLS = 5;
-  const ROWS = 4;
+  // —— 自适应满屏布局：自动识别窗口宽高 ——
+  // 列数 ≤ 6 随宽度自适应；行数按可用高度刚好放下；
+  // 卡片拉伸铺满全部空间（高 = 可用高 ÷ 行数），整屏刚好一页，禁止滚动。
   const GAP = 12;
   const FOOTER_H = 38; // 底部信息区高度（番号 + 操作按钮）
+  const MIN_CELL_W = 190; // 单卡最小宽度，低于则减列
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [cellW, setCellW] = useState(220);
-  const [coverH, setCoverH] = useState(140);
+  const [cols, setCols] = useState(6);
+  const [cardH, setCardH] = useState(220);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const PAD = 32; // p-4 左右各 16
     const compute = () => {
-      const availW = el.clientWidth - PAD;
-      const availH = el.clientHeight;
-      const w = Math.floor((availW - GAP * (COLS - 1)) / COLS);
-      const cardH = Math.floor((availH - GAP * (ROWS - 1)) / ROWS);
-      const cH = Math.max(60, cardH - FOOTER_H);
-      setCellW(w);
-      setCoverH(cH);
+      const availW = el.clientWidth - 32; // p-4 左右各 16
+      const availH = el.clientHeight - 32; // p-4 上下各 16
+      if (availW < 100 || availH < 100) return;
+      // 列数：尽量多列但不超过 6
+      const c = Math.max(
+        1,
+        Math.min(6, Math.floor((availW + GAP) / (MIN_CELL_W + GAP))),
+      );
+      // 封面固定 16:9：整卡高度由列宽推出，行数按该高度能放几行
+      const cellW = Math.floor((availW - GAP * (c - 1)) / c);
+      const h16 = Math.round((cellW * 9) / 16) + FOOTER_H;
+      const rows = Math.max(1, Math.floor((availH + GAP) / (h16 + GAP)));
+      setCols(c);
+      setCardH(h16);
+      setPageSize(c * rows);
     };
     compute();
     const ro = new ResizeObserver(compute);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [loading]);
+  }, []);
 
-  const cardH = coverH + FOOTER_H;
+  const coverH = Math.max(60, cardH - FOOTER_H);
 
   if (loading || !config) {
     return (
@@ -406,18 +479,9 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
             placeholder="搜索标题 / 番号…"
             className="cyber-input w-48 px-3 py-1.5 text-xs"
           />
-          <Tooltip content="网络抓取配置" placement="top">
-            <button
-              type="button"
-              onClick={() => setShowConfig((v) => !v)}
-              className={`w-8 h-8 flex items-center justify-center rounded-lg cyber-btn-ghost transition-all cursor-pointer ${showConfig ? "border-blue-500/50 text-blue-400" : ""}`}
-            >
-              <Settings2 className="w-4 h-4" />
-            </button>
-          </Tooltip>
           <button
             type="button"
-            onClick={running ? handleStopScrape : handleScrape}
+            onClick={running ? handleStopScrape : openScrapeDialog}
             disabled={!config}
             className={`flex items-center gap-1.5 px-4 py-1.5 text-xs ${running ? "rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25 transition cursor-pointer" : "cyber-btn-primary"}`}
           >
@@ -447,52 +511,121 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
         </div>
       </div>
 
-      {/* 配置面板 */}
-      {showConfig && (
-        <div className="shrink-0 px-4 py-3 flex flex-wrap items-end gap-4 border-b border-blue-500/20 bg-[#080f1e]/70 backdrop-blur-md anim-fade-in">
-          <label className="flex flex-col gap-1 flex-1 min-w-[280px]">
-            <span className="text-[11px] text-slate-500">列表地址（用 {"{page}"} 作页码占位）</span>
-            <input
-              value={config.baseUrl}
-              onChange={(e) => saveConfig({ baseUrl: e.target.value })}
-              className="cyber-input px-2.5 py-1.5 text-xs w-full"
-            />
-          </label>
-          <label className="flex flex-col gap-1 w-24">
-            <span className="text-[11px] text-slate-500">起始页</span>
-            <input
-              type="number"
-              min={1}
-              value={config.startPage}
-              onChange={(e) =>
-                saveConfig({ startPage: Number(e.target.value) || 1 })
-              }
-              className="cyber-input px-2.5 py-1.5 text-xs w-full"
-            />
-          </label>
-          <label className="flex flex-col gap-1 w-24">
-            <span className="text-[11px] text-slate-500">结束页</span>
-            <input
-              type="number"
-              min={config.startPage}
-              value={config.endPage}
-              onChange={(e) =>
-                saveConfig({ endPage: Number(e.target.value) || config.startPage })
-              }
-              className="cyber-input px-2.5 py-1.5 text-xs w-full"
-            />
-          </label>
-          <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer pb-1.5">
-            <input
-              type="checkbox"
-              checked={config.autoOnStartup}
-              onChange={(e) => saveConfig({ autoOnStartup: e.target.checked })}
-              className="accent-blue-500"
-            />
-            启动时自动抓取
-          </label>
-        </div>
-      )}
+      {/* 抓取启动弹窗：选方式 + 页码（Portal 挂到 body，脱离任何 transform 祖先的 fixed 陷阱，真悬浮） */}
+      {showScrapeDialog &&
+        config &&
+        !running &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowScrapeDialog(false)}
+          >
+            <div
+              className="w-[420px] rounded-2xl border border-slate-700/40 bg-[#0b1220]/95 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* 头部 */}
+              <div className="px-5 pt-4 pb-3 flex items-center gap-2">
+                <div className="w-6 h-6 rounded-md bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center">
+                  <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                </div>
+                <span className="text-sm font-bold text-slate-100">开始抓取</span>
+              </div>
+
+              <div className="px-5 pb-5 space-y-4">
+                {/* 主体 */}
+                <div>
+                  <span className="text-[11px] font-semibold text-slate-500">抓取方式</span>
+                  <div className="mt-1.5 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDlgMethod("webview")}
+                      className={`px-3 py-2.5 text-xs rounded-xl border transition cursor-pointer text-left ${dlgMethod === "webview" ? "border-blue-500/60 bg-blue-500/10 text-blue-200" : "border-slate-700/40 text-slate-400 hover:text-slate-200"}`}
+                    >
+                      <span className="font-semibold">过盾抓取</span>
+                      <span className="mt-0.5 block text-[10px] text-slate-500">弹浏览器过验证 · 慢但稳</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDlgMethod("jina")}
+                      className={`px-3 py-2.5 text-xs rounded-xl border transition cursor-pointer text-left ${dlgMethod === "jina" ? "border-cyan-500/60 bg-cyan-500/10 text-cyan-200" : "border-slate-700/40 text-slate-400 hover:text-slate-200"}`}
+                    >
+                      <span className="font-semibold">Jina 快速</span>
+                      <span className="mt-0.5 block text-[10px] text-slate-500">第三方代理 · 快 · 免过盾</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 页码范围 */}
+                <div>
+                  <span className="text-[11px] font-semibold text-slate-500">页码范围</span>
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={dlgStart}
+                      onChange={(e) => setDlgStart(Number(e.target.value.replace(/[^\d]/g, "")))}
+                      className="cyber-input flex-1 px-3 py-2 text-center text-xs font-mono"
+                      placeholder="起始页"
+                    />
+                    <span className="text-xs text-slate-600 shrink-0">→</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={dlgEnd}
+                      onChange={(e) => setDlgEnd(Number(e.target.value.replace(/[^\d]/g, "")))}
+                      className="cyber-input flex-1 px-3 py-2 text-center text-xs font-mono"
+                      placeholder="结束页"
+                    />
+                  </div>
+                </div>
+
+                {/* 列表地址 */}
+                <div>
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    列表地址（{"{page}"} 为页码占位）
+                  </span>
+                  <input
+                    value={dlgBaseUrl}
+                    onChange={(e) => setDlgBaseUrl(e.target.value)}
+                    className="mt-1.5 cyber-input px-3 py-2 text-xs w-full font-mono"
+                  />
+                </div>
+
+                {/* 底部 */}
+                <div className="pt-3 border-t border-slate-700/30 flex items-center justify-between gap-2">
+                  <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={dlgAutoOnStartup}
+                      onChange={(e) => setDlgAutoOnStartup(e.target.checked)}
+                      className="accent-blue-500"
+                    />
+                    启动时自动抓取
+                  </label>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowScrapeDialog(false)}
+                      className="px-3.5 py-1.5 text-xs rounded-lg cyber-btn-ghost cursor-pointer"
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      onClick={confirmScrape}
+                      className="cyber-btn-primary flex items-center gap-1.5 px-4 py-1.5 text-xs cursor-pointer"
+                    >
+                      <Zap className="w-3.5 h-3.5" />
+                      开始抓取
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* 内容网格 */}
       {filtered.length === 0 ? (
@@ -509,7 +642,7 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
               </p>
               <button
                 type="button"
-                onClick={running ? handleStopScrape : handleScrape}
+                onClick={running ? handleStopScrape : openScrapeDialog}
                 disabled={!config}
                 className={`mt-2 px-5 py-2 text-xs inline-flex items-center gap-2 ${running ? "rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-100 hover:bg-rose-500/25 transition cursor-pointer" : "cyber-btn-primary"}`}
               >
@@ -523,11 +656,15 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
         </div>
       ) : (
         <>
-          <div ref={scrollRef} className="flex-1 overflow-y-auto cyber-scroll p-4">
+          <div
+            ref={scrollRef}
+            className="flex-1 min-h-0 overflow-hidden p-4"
+          >
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))`,
+                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                gridAutoRows: cardH,
                 gap: GAP,
               }}
             >
@@ -579,11 +716,10 @@ export function DiscoverPage({ onAddSystemLog }: Props) {
                             setPage(p);
                             scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
                           }}
-                          className={`min-w-[32px] px-2 py-1 text-xs rounded-lg transition-all cursor-pointer ${
-                            p === currentPage
+                          className={`min-w-[32px] px-2 py-1 text-xs rounded-lg transition-all cursor-pointer ${p === currentPage
                               ? "bg-blue-500/20 text-blue-400 border border-blue-500/40"
                               : "cyber-btn-ghost"
-                          }`}
+                            }`}
                         >
                           {p}
                         </button>

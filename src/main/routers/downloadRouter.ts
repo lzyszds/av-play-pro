@@ -140,30 +140,90 @@ const activeDownloads = new Map<string, ActiveDownload>();
 let progressCallbacks: Array<(data: ProgressPayload) => void> = [];
 let coverChain: Promise<unknown> = Promise.resolve();
 
+/** 各平台的 N_m3u8DL-RE 可执行文件名（按优先级，mac/linux 上不带 .exe 优先） */
+function toolBinaryNames(): string[] {
+  if (process.platform === "darwin") {
+    return [
+      "N_m3u8DL-RE",
+      "N_m3u8DL-RE_osx-arm64",
+      "N_m3u8DL-RE_osx-x64",
+      "N_m3u8DL-RE",
+    ];
+  }
+  if (process.platform === "linux") {
+    return ["N_m3u8DL-RE", "N_m3u8DL-RE_linux-x64", "N_m3u8DL-RE"];
+  }
+  return ["N_m3u8DL-RE.exe"];
+}
+
+/** 从自定义工具路径生成的候选文件名（兼容用户填了 .exe 或 mac 二进制名的混填） */
+function customToolNames(customPath?: string): string[] {
+  const p = customPath?.trim();
+  if (!p) return [];
+  return [
+    path.basename(p),
+    path.basename(p).replace(/\.exe$/i, ""),
+    `${path.basename(p).replace(/\.exe$/i, "")}.exe`,
+  ].filter((v, i, a) => a.indexOf(v) === i);
+}
+
 function resolveToolPath(customPath?: string): string | null {
-  const candidates: string[] = [];
-  if (customPath) {
+  // 自定义路径本身是文件（绝対路径或相对路径指向具体文件时）优先原样可执行判定
+  const directCandidates: string[] = [];
+  if (customPath?.trim()) {
     const p = customPath.trim();
-    if (p) {
-      if (path.isAbsolute(p)) {
-        candidates.push(p);
-      } else {
-        candidates.push(path.resolve(process.cwd(), p));
-        const exeDir = path.dirname(app.getPath("exe"));
-        candidates.push(path.join(exeDir, p));
-        candidates.push(path.join(exeDir, "bin", p));
-      }
+    if (path.isAbsolute(p)) {
+      directCandidates.push(p, p.replace(/\.exe$/i, ""));
+    } else {
+      const exeDir = path.dirname(app.getPath("exe"));
+      directCandidates.push(
+        path.join(process.cwd(), p),
+        path.join(exeDir, p),
+        path.join(exeDir, "bin", p),
+      );
     }
   }
-  if (app.isPackaged) {
-    candidates.push(path.join(process.resourcesPath, "bin", "N_m3u8DL-RE.exe"));
-  }
-  candidates.push(path.join(__dirname, "../../bin/N_m3u8DL-RE.exe"));
-  const exeDir = path.dirname(app.getPath("exe"));
-  candidates.push(path.join(exeDir, "bin", "N_m3u8DL-RE.exe"));
-  candidates.push(path.join(exeDir, "N_m3u8DL-RE.exe"));
-  for (const c of candidates) {
-    if (fs.existsSync(c)) return c;
+
+  // 常规查找目录
+  const exeDirRef = path.dirname(app.getPath("exe"));
+  const dirs: string[] = [
+    ...directCandidates, // 这些是具体文件路径
+    path.join(__dirname, "../../bin"),
+    ...(app.isPackaged ? [path.join(process.resourcesPath, "bin")] : []),
+    path.join(exeDirRef, "bin"),
+    exeDirRef,
+  ];
+
+  // 去重：前 ·program candidates 是文件名而非目录，单独拼接
+  const names = Array.from(
+    new Set([...customToolNames(customPath), ...toolBinaryNames()]),
+  );
+
+  const fileCandidates = [
+    ...directCandidates,
+    // 目录 × 名字
+    ...dirs
+      .filter((d) => !directCandidates.includes(d))
+      .flatMap((d) => names.map((n) => path.join(d, n))),
+  ];
+
+  const seen = new Set<string>();
+  for (const c of fileCandidates) {
+    if (seen.has(c)) continue;
+    seen.add(c);
+    try {
+      if (fs.existsSync(c) && fs.statSync(c).isFile()) {
+        // macOS/Linux：保证可执行位，避免 spawn EACCES
+        try {
+          fs.chmodSync(c, 0o755);
+        } catch {
+          /* 只读卷时忽略 */
+        }
+        return c;
+      }
+    } catch {
+      /* 忽略不可读路径 */
+    }
   }
   return null;
 }
@@ -190,16 +250,25 @@ function stripAnsi(str: string): string {
 function killProcessTree(pid: number): void {
   if (!pid) return;
   try {
-    // /T 杀掉整个进程树（含子进程），/F 强制
-    exec(`taskkill /PID ${pid} /T /F`, (err, stdout, stderr) => {
-      if (err) {
-        console.error(
-          `[killProcessTree] taskkill 失败 PID=${pid}: ${err.message} ${stderr}`,
-        );
-      } else {
-        console.log(`[killProcessTree] 已终止 PID=${pid}: ${stdout.trim()}`);
-      }
-    });
+    if (process.platform === "win32") {
+      // /T 杀掉整个进程树（含子进程），/F 强制
+      exec(`taskkill /PID ${pid} /T /F`, (err, stdout, stderr) => {
+        if (err) {
+          console.error(
+            `[killProcessTree] taskkill 失败 PID=${pid}: ${err.message} ${stderr}`,
+          );
+        } else {
+          console.log(`[killProcessTree] 已终止 PID=${pid}: ${stdout.trim()}`);
+        }
+      });
+    } else {
+      // macOS/Linux：先尝试按进程组杀（spawn 时 detached 会自成组长），退而只杀本进程
+      exec(`kill -TERM -${pid} 2>/dev/null || kill -TERM ${pid}`, (err) => {
+        if (err) {
+          exec(`kill -9 ${pid}`, () => {});
+        }
+      });
+    }
   } catch (err) {
     console.error("终止进程失败:", err);
   }
@@ -281,6 +350,15 @@ export const downloadRouter = t.router({
         const taskId = input.taskId;
         const toolPath = resolveToolPath(input.toolPath);
         if (!toolPath) {
+          if (process.platform === "darwin" || process.platform === "linux") {
+            sendTaskProgress(taskId, {
+              line: `[ERROR] 未找到本平台的 N_m3u8DL-RE：请把 macOS/Linux 版二进制放入 bin/ 目录（如 N_m3u8DL-RE 或 N_m3u8DL-RE_osx-arm64，需可执行权限，程序会自动 chmod +x）。 Releases: https://github.com/nilaoda/N_m3u8DL-RE/releases`,
+              percent: null,
+              done: true,
+              success: false,
+            });
+            throw new Error("N_m3u8DL-RE not found for this platform");
+          }
           sendTaskProgress(taskId, {
             line: "[ERROR] N_m3u8DL-RE.exe not found. Please check your bin directory and tool path.",
             percent: null,

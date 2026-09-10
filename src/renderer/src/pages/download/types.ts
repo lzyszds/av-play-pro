@@ -99,6 +99,8 @@ export interface AppSettings {
   privacyScreenImageOpacity: number;
   /** 隐私屏保切换图片间隔秒数 */
   privacyScreenChangeSeconds: number;
+  /** 隐私模式：隐藏全部图片与预览，界面只显示加载动效 */
+  privacyImageMode?: boolean;
   /** 下载页主背景是否显示（简洁模式） */
   downloadBgVisible?: boolean;
   /** 下载页主背景图片浓度 %（默认 42，对应原写死的 0.42 不透明度） */

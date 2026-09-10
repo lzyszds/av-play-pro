@@ -129,6 +129,9 @@ export function SettingsPanel({
   const [privacyScreenEnabled, setPrivacyScreenEnabled] = useState(
     settings.privacyScreenEnabled ?? true,
   );
+  const [privacyImageMode, setPrivacyImageMode] = useState(
+    settings.privacyImageMode ?? false,
+  );
   const [autoArousalOnPlay, setAutoArousalOnPlay] = useState(
     settings.autoArousalOnPlay ?? true,
   );
@@ -407,6 +410,7 @@ export function SettingsPanel({
       privacyScreenBlur,
       privacyScreenImageOpacity,
       privacyScreenChangeSeconds,
+      privacyImageMode,
       maxConcurrentTasks: Math.max(1, Math.min(20, maxConcurrentTasks || 1)),
       thumbQueueConcurrency: Math.max(
         1,
@@ -891,6 +895,22 @@ export function SettingsPanel({
                     <Toggle
                       on={autoArousalOnPlay}
                       onToggle={() => setAutoArousalOnPlay(!autoArousalOnPlay)}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-3.5 bg-surface-1 border border-hairline rounded-xl mb-2.5">
+                    <div>
+                      <div className="text-xs font-bold text-text-1 flex items-center gap-1.5">
+                        <EyeOff className="w-3.5 h-3.5 text-amber-500" />
+                        隐私模式（隐藏全部图片）
+                      </div>
+                      <p className="text-[10px] text-text-3 mt-0.5">
+                        常驻生效：封面、预览与所有图片用加载动画占位，适合有人共屏时长时间使用
+                      </p>
+                    </div>
+                    <Toggle
+                      on={privacyImageMode}
+                      onToggle={() => setPrivacyImageMode(!privacyImageMode)}
                     />
                   </div>
 

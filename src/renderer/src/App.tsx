@@ -16,6 +16,10 @@ import { ScraperWebview } from "./components/ScraperWebview";
 import { AchievementToast } from "./components/achievements/AchievementToast";
 import { trpc } from "./lib/trpc";
 import { wallpaperScreenUrl } from "./lib/wallpaper";
+import {
+  setPrivacyCoverLoaderMode,
+  refreshPrivacyLoaderStyle,
+} from "./lib/privacyCoverLoader";
 import type { AppSettings, LogMessage } from "./pages/download/types";
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -43,6 +47,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   privacyScreenBlur: 8,
   privacyScreenImageOpacity: 42,
   privacyScreenChangeSeconds: 10,
+  privacyImageMode: false,
   lastPage: "player",
   cloudSyncEndpoint: "https://avplay-sync.1024327189.workers.dev",
   cloudSyncSecret: "MySecretToken_2026",
@@ -366,10 +371,22 @@ export default function App() {
     return () => mq.removeEventListener("change", handler);
   }, [settings.theme]);
 
+  // 隐私模式：隐藏全部图片/内联背景图/视频预览，全部用「封面加载动画」占位
+  useEffect(() => {
+    const on = settings.privacyImageMode === true;
+    document.documentElement.classList.toggle("privacy-image-mode", on);
+    setPrivacyCoverLoaderMode(on);
+    return () => {
+      if (on) setPrivacyCoverLoaderMode(false);
+    };
+  }, [settings.privacyImageMode]);
+
   // Loader 样式
   useEffect(() => {
     applyLoaderStyle(settings.loaderStyle ?? "eq");
-  }, [settings.loaderStyle]);
+    // 隐私模式开启时，占位层动画实时跟随封面加载动画样式切换
+    if (settings.privacyImageMode) refreshPrivacyLoaderStyle();
+  }, [settings.loaderStyle, settings.privacyImageMode]);
 
   // 让设置里选中的壁纸成为加载、空态等全局场景的共同视觉来源。
   useEffect(() => {

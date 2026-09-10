@@ -2200,19 +2200,19 @@ button:active:not(:disabled):not(.plyr__control) {
 /* ---- 发现页卡片增强 ---- */
 .discover-card {
   background: rgba(12, 18, 35, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  /* 性能：卡片不再逐个 backdrop-filter（20 个模糊层叠在壁纸上会拖帧），用更实的深底替代；
+     contain 隔离布局/绘制，卡片变化不牵动整页重排 */
   border: 1px solid rgba(99, 130, 200, 0.16);
   border-radius: 12px;
   overflow: hidden;
-  transition: border-color 0.22s, box-shadow 0.22s, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  contain: layout paint;
+  transition: border-color 0.22s, box-shadow 0.22s;
 }
 .discover-card:hover {
   border-color: rgba(96, 165, 250, 0.35);
   box-shadow:
     0 10px 36px rgba(0, 0, 0, 0.5),
     0 0 20px rgba(96, 165, 250, 0.1);
-  transform: translateY(-4px) scale(1.01);
 }
 
 /* ---- 演员卡片 ---- */
@@ -2422,3 +2422,55 @@ button:active:not(:disabled):not(.plyr__control) {
   box-shadow: 0 0 26px rgb(255 70 107 / 0.6);
 }
 
+
+/* ============================================================
+   隐私模式（html.privacy-image-mode）：全部图片只显示「封面加载动画」
+   - img 隐藏后由 lib/privacyCoverLoader 注入 .privacy-cover-loader
+     （带 cover-placeholder 类，复用封面加载动画底色/光效/scanline 等）
+   - logo（TitleBar 等 img[src*=logo]）不隐藏
+   - video 预览直接隐去（保留卡片原底色，避免闪现画面）
+   - 内联 background-image（壁纸/封面装饰层）一并隐去
+   ============================================================ */
+html.privacy-image-mode img:not([src*="logo"]):not([data-src*="logo"]) {
+  visibility: hidden !important;
+}
+/* logo 图强制恢复显示（覆盖 JS 设置的 inline style 以外场景） */
+html.privacy-image-mode img[src*="logo"] {
+  visibility: visible !important;
+}
+html.privacy-image-mode video {
+  opacity: 0 !important;
+  background: rgba(15, 23, 42, 0.4);
+}
+html.privacy-image-mode [style*="background-image"] {
+  background-image: none !important;
+  background-color: rgba(148, 163, 184, 0.06);
+}
+
+/* 隐私模式占位层：与 CoverLoader 同源的封面加载动画容器 */
+.privacy-cover-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 隐私模式下的占位层做静态化：去掉所有动画（等差/旋转/呼吸/流光），只留底色与静态光晕 */
+.privacy-cover-loader,
+.privacy-cover-loader *,
+.privacy-cover-loader::before,
+.privacy-cover-loader::after {
+  animation: none !important;
+  transition: none !important;
+}
+/* 隐私模式下全站卡片动画一律停用（含发现页 cyber-shimmer 流光），避免逐卡无限动画拖帧 */
+html.privacy-image-mode *,
+html.privacy-image-mode *::before,
+html.privacy-image-mode *::after {
+  animation: none !important;
+  transition: none !important;
+}

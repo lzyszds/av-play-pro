@@ -79,18 +79,18 @@ function StatTile({
       }
       className={`flex flex-col gap-1 p-2 rounded-xl border min-w-0 transition-all ${
         onClick
-          ? "cursor-pointer bg-white/[0.04] hover:bg-accent-500/10 border-white/[0.08] hover:border-accent-500/40 ring-0 hover:ring-1 hover:ring-accent-500/30 group/stat shadow-xs"
-          : "bg-white/[0.025] border-white/[0.05]"
+          ? "cursor-pointer bg-white/50 dark:bg-white/[0.04] hover:bg-accent-500/10 border-white/70 dark:border-white/[0.08] hover:border-accent-500/40 ring-0 hover:ring-1 hover:ring-accent-500/30 group/stat shadow-xs"
+          : "bg-white/30 dark:bg-white/[0.025] border-white/50 dark:border-white/[0.05]"
       }`}
       title={tooltip || (typeof value === "string" ? value : undefined)}
     >
-      <div className="flex items-center justify-between gap-1 text-slate-400">
+      <div className="flex items-center justify-between gap-1 text-slate-500 dark:text-slate-400">
         <div className="flex items-center gap-1.5 min-w-0">
           <Icon
             className={`w-3 h-3 shrink-0 ${
               onClick
-                ? "text-accent-400 group-hover/stat:scale-110 transition-transform"
-                : "text-slate-500"
+                ? "text-accent-500 dark:text-accent-400 group-hover/stat:scale-110 transition-transform"
+                : "text-slate-400 dark:text-slate-500"
             }`}
           />
           <span className="text-[10px] uppercase tracking-wider font-semibold truncate">
@@ -98,14 +98,14 @@ function StatTile({
           </span>
         </div>
         {onClick && (
-          <span className="text-[9px] font-mono text-slate-500 group-hover/stat:text-accent-400 opacity-70 group-hover/stat:opacity-100 transition shrink-0">
+          <span className="text-[9px] font-mono text-slate-400 dark:text-slate-500 group-hover/stat:text-accent-400 opacity-70 group-hover/stat:opacity-100 transition shrink-0">
             详情 ↗
           </span>
         )}
       </div>
       <div
         className={`text-xs font-mono font-semibold truncate ${
-          accent ? "text-accent-400" : "text-slate-200"
+          accent ? "text-accent-500 dark:text-accent-400" : "text-slate-800 dark:text-slate-200"
         }`}
       >
         {value}
@@ -213,38 +213,38 @@ export function TaskDetailDrawer({
       : "rgb(251, 146, 60)";
 
   return (
-    <div className="shrink-0 w-full border-t border-white/[0.08] bg-[#090d14]/98 backdrop-blur-2xl transition-all duration-300 shadow-[0_-10px_35px_rgba(0,0,0,0.6)] z-20">
+    <div className="shrink-0 w-full border-t border-white/60 dark:border-white/[0.08] bg-white/55 dark:bg-[#090d14]/98 backdrop-blur-2xl transition-all duration-300 shadow-[0_-10px_35px_rgba(0,0,0,0.08)] dark:shadow-[0_-10px_35px_rgba(0,0,0,0.6)] z-20">
       {/* 1. 顶部极简信息导轨 */}
-      <div className="h-9 px-4 border-b border-white/[0.04] bg-white/[0.015] flex items-center justify-between gap-3 text-xs">
+      <div className="h-9 px-4 border-b border-white/50 dark:border-white/[0.04] bg-white/40 dark:bg-white/[0.015] flex items-center justify-between gap-3 text-xs">
         {/* 左侧：标识与任务名 */}
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-          <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-accent-400 shrink-0">
+          <span className="text-[10px] uppercase font-mono font-bold tracking-widest text-accent-500 dark:text-accent-400 shrink-0">
             DOCK 监控台
           </span>
-          <span className="text-white/20">|</span>
+          <span className="text-slate-300 dark:text-white/20">|</span>
           <div className="shrink-0">{getStatusBadge(display.status)}</div>
           {videoCode && (
-            <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-accent-500/15 text-accent-300 border border-accent-500/30 shrink-0">
+            <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-accent-500/10 dark:bg-accent-500/15 text-accent-600 dark:text-accent-300 border border-accent-500/30 shrink-0">
               {videoCode}
             </span>
           )}
           <span
-            className="text-slate-200 font-medium truncate select-text"
+            className="text-slate-800 dark:text-slate-200 font-medium truncate select-text"
             title={display.name}
           >
             {display.name}
           </span>
-          <span className="text-[10px] font-mono text-slate-500 shrink-0 hidden sm:inline">
+          <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 shrink-0 hidden sm:inline">
             #{display.id.slice(0, 8)}
           </span>
         </div>
 
         {/* 右侧：状态指示与折叠控制 */}
         <div className="flex items-center gap-2 shrink-0">
-          <div className="hidden md:flex items-center gap-2 font-mono text-[11px] text-slate-400 pl-2">
-            <span className="text-accent-300 font-bold">{display.progress.toFixed(1)}%</span>
-            <span className="text-white/20">·</span>
-            <span className={display.speed > 0 ? "text-accent-400 font-bold" : "text-slate-400"}>
+          <div className="hidden md:flex items-center gap-2 font-mono text-[11px] text-slate-500 dark:text-slate-400 pl-2">
+            <span className="text-accent-600 dark:text-accent-300 font-bold">{display.progress.toFixed(1)}%</span>
+            <span className="text-slate-300 dark:text-white/20">·</span>
+            <span className={display.speed > 0 ? "text-accent-500 dark:text-accent-400 font-bold" : "text-slate-400 dark:text-slate-400"}>
               {formatSpeed(display.speed)}
             </span>
           </div>
@@ -254,8 +254,8 @@ export function TaskDetailDrawer({
             onClick={() => setTerminalExpanded((v) => !v)}
             className={`px-2 py-0.5 rounded-lg border text-[11px] font-medium transition flex items-center gap-1 cursor-pointer ${
               terminalExpanded
-                ? "bg-white/[0.12] border-white/20 text-white"
-                : "bg-white/[0.03] border-white/[0.06] text-slate-400 hover:text-slate-200"
+                ? "bg-white/70 dark:bg-white/[0.12] border-slate-300 dark:border-white/20 text-slate-800 dark:text-white"
+                : "bg-white/40 dark:bg-white/[0.03] border-slate-200 dark:border-white/[0.06] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
             }`}
             title="展开/折叠终端调试视窗"
           >
@@ -267,7 +267,7 @@ export function TaskDetailDrawer({
             <button
               type="button"
               onClick={onClose}
-              className="w-6 h-6 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] flex items-center justify-center text-slate-400 hover:text-white transition cursor-pointer"
+              className="w-6 h-6 rounded-lg bg-white/45 hover:bg-white/80 dark:bg-white/[0.04] dark:hover:bg-white/[0.1] border border-white/60 dark:border-transparent flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white transition cursor-pointer"
               aria-label="收起详情台"
             >
               <ChevronDown className="w-3.5 h-3.5" />
@@ -339,17 +339,18 @@ export function TaskDetailDrawer({
         <div className="flex-1 flex flex-col justify-between gap-2.5 min-w-0">
           {/* 指标矩阵晶格 */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-            <StatTile icon={ShieldCheck} label="加密协议" value={<span className="text-accent-300 font-bold">{encText}</span>} />
+            <StatTile icon={ShieldCheck} label="加密协议" value={<span className="text-accent-600 dark:text-accent-300 font-bold">{encText}</span>} />
             <StatTile icon={HardDrive} label="体积大小" value={sizeText} />
             <StatTile
               icon={Layers}
               label="分片进度"
-              value={<span className="text-accent-400 font-bold">{segText}</span>}
+              value={<span className="text-accent-600 dark:text-accent-400 font-bold">{segText}</span>}
               accent={display.downloadedSegments > 0}
               onClick={() => onOpenSegments?.(display)}
               tooltip="点击查看分片拓扑分布、缓存路径与抓取日志"
             />
-            <StatTile icon={Cpu} label="并发线程" value={<span className="text-accent-300 font-bold">{display.threads ?? 16} <span className="text-xs text-slate-400 font-normal">线程</span></span>} />
+            <StatTile icon={Cpu} label="并发线程" value={<span className="text-accent-600 dark:text-accent-300 font-bold">{display.threads ?? 16} <span className="text-xs text-slate-400 dark:text-slate-400 font-normal">线程</span></span>} />
+            <StatTile icon={Zap} label="实时速率" value={formatSpeed(display.speed)} accent={display.speed > 0} />
             <StatTile icon={Zap} label="实时速率" value={formatSpeed(display.speed)} accent={display.speed > 0} />
             <StatTile
               icon={Clock}
@@ -365,12 +366,12 @@ export function TaskDetailDrawer({
           {/* 路径与源地址条 */}
           <div className="space-y-1.5 pt-1">
             {/* DIR 保存路径 */}
-            <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-white/[0.02] border border-white/[0.04] text-[11px]">
-              <span className="text-[9px] uppercase tracking-wider text-accent-400 font-mono font-bold shrink-0">
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-white/35 dark:bg-white/[0.02] border border-white/60 dark:border-white/[0.04] text-[11px]">
+              <span className="text-[9px] uppercase tracking-wider text-accent-500 dark:text-accent-400 font-mono font-bold shrink-0">
                 DIR
               </span>
               <span
-                className="font-mono text-slate-300 truncate select-all flex-1"
+                className="font-mono text-slate-600 dark:text-slate-300 truncate select-all flex-1"
                 title={display.savePath}
               >
                 {display.savePath}
@@ -379,7 +380,7 @@ export function TaskDetailDrawer({
                 <button
                   type="button"
                   onClick={openFolder}
-                  className="px-2 py-0.5 rounded-lg bg-white/[0.05] hover:bg-accent-500/20 text-slate-300 hover:text-accent-200 transition flex items-center gap-1 cursor-pointer text-[10px]"
+                  className="px-2 py-0.5 rounded-lg bg-white/50 hover:bg-accent-500/15 dark:bg-white/[0.05] dark:hover:bg-accent-500/20 border border-white/60 dark:border-transparent text-slate-600 hover:text-accent-600 dark:text-slate-300 dark:hover:text-accent-200 transition flex items-center gap-1 cursor-pointer text-[10px]"
                   title="在系统访达中定位文件夹"
                 >
                   <FolderOpen className="w-3 h-3" />
@@ -388,11 +389,11 @@ export function TaskDetailDrawer({
                 <button
                   type="button"
                   onClick={copyPath}
-                  className="p-1 rounded-lg bg-white/[0.04] hover:bg-accent-500/20 text-slate-400 hover:text-accent-200 transition cursor-pointer"
+                  className="p-1 rounded-lg bg-white/50 hover:bg-accent-500/15 dark:bg-white/[0.04] dark:hover:bg-accent-500/20 border border-white/60 dark:border-transparent text-slate-500 hover:text-accent-600 dark:text-slate-400 dark:hover:text-accent-200 transition cursor-pointer"
                   title="复制保存路径"
                 >
                   {copiedPath ? (
-                    <Check className="w-3 h-3 text-emerald-400" />
+                    <Check className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
                   ) : (
                     <Copy className="w-3 h-3" />
                   )}
@@ -401,12 +402,12 @@ export function TaskDetailDrawer({
             </div>
 
             {/* HLS 原流地址 */}
-            <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-white/[0.02] border border-white/[0.04] text-[11px]">
-              <span className="text-[9px] uppercase tracking-wider text-accent-400 font-mono font-bold shrink-0">
+            <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-white/35 dark:bg-white/[0.02] border border-white/60 dark:border-white/[0.04] text-[11px]">
+              <span className="text-[9px] uppercase tracking-wider text-accent-500 dark:text-accent-400 font-mono font-bold shrink-0">
                 HLS
               </span>
               <span
-                className="font-mono text-slate-400 truncate select-all flex-1"
+                className="font-mono text-slate-500 dark:text-slate-400 truncate select-all flex-1"
                 title={display.url}
               >
                 {display.url}
@@ -414,11 +415,11 @@ export function TaskDetailDrawer({
               <button
                 type="button"
                 onClick={copyUrl}
-                className="p-1 rounded-lg bg-white/[0.04] hover:bg-accent-500/20 text-slate-400 hover:text-accent-200 transition shrink-0 cursor-pointer"
+                className="p-1 rounded-lg bg-white/50 hover:bg-accent-500/15 dark:bg-white/[0.04] dark:hover:bg-accent-500/20 border border-white/60 dark:border-transparent text-slate-500 hover:text-accent-600 dark:text-slate-400 dark:hover:text-accent-200 transition shrink-0 cursor-pointer"
                 title="复制播放源直链"
               >
                 {copiedUrl ? (
-                  <Check className="w-3 h-3 text-emerald-400" />
+                  <Check className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
                 ) : (
                   <Copy className="w-3 h-3" />
                 )}
@@ -428,7 +429,7 @@ export function TaskDetailDrawer({
         </div>
 
         {/* 右列：终端预览（展开时）与控制按钮组 */}
-        <div className="w-full md:w-80 shrink-0 flex flex-col justify-between gap-2.5 border-t md:border-t-0 md:border-l border-white/[0.06] pt-2 md:pt-0 md:pl-4">
+        <div className="w-full md:w-80 shrink-0 flex flex-col justify-between gap-2.5 border-t md:border-t-0 md:border-l border-white/60 dark:border-white/[0.06] pt-2 md:pt-0 md:pl-4">
           {/* 终端命令预览小窗 */}
           <div className="rounded-xl overflow-hidden border border-white/[0.08] bg-[#0c1017] flex flex-col flex-1 min-h-[90px]">
             <div className="h-6 px-2.5 bg-black/40 border-b border-white/[0.06] flex items-center justify-between">
@@ -488,7 +489,7 @@ export function TaskDetailDrawer({
                 className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm ${
                   display.status === "DOWNLOADING"
                     ? "bg-accent-500 hover:bg-accent-600 text-white"
-                    : "bg-white/[0.08] hover:bg-white/[0.14] text-white"
+                    : "bg-white/60 hover:bg-white/90 text-slate-800 border border-white/70 dark:bg-white/[0.08] dark:hover:bg-white/[0.14] dark:text-white dark:border-transparent"
                 }`}
               >
                 {display.status === "DOWNLOADING" ? (
@@ -508,7 +509,7 @@ export function TaskDetailDrawer({
             <button
               type="button"
               onClick={() => onDeleteTask(display.id)}
-              className="py-1.5 px-3 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
+              className="py-1.5 px-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 dark:bg-rose-500/15 dark:hover:bg-rose-500/25 border border-rose-500/30 text-rose-600 dark:text-rose-300 text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
               title="删除任务与记录"
             >
               <Trash2 className="w-3.5 h-3.5" />

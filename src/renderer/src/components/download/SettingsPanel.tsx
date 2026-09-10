@@ -52,12 +52,7 @@ import { CoverLoader } from "../CoverLoader";
 import { SnapshotLibraryModal } from "./SnapshotLibraryModal";
 
 type TabKey =
-  | "storage"
-  | "network"
-  | "appearance"
-  | "notification"
-  | "health"
-  | "sync";
+  "storage" | "network" | "appearance" | "notification" | "health" | "sync";
 const DOWNLOAD_BACKGROUNDS: DownloadBackground[] = [
   "1",
   "2",
@@ -188,7 +183,12 @@ export function SettingsPanel({
   };
 
   const openHealthPath = async (targetPath: string) => {
-    if (!targetPath || targetPath.includes("不存在") || targetPath.includes("无法读取")) return;
+    if (
+      !targetPath ||
+      targetPath.includes("不存在") ||
+      targetPath.includes("无法读取")
+    )
+      return;
     try {
       const res = await trpc.system.openPath.mutate({ path: targetPath });
       if (!res.success) {
@@ -200,8 +200,7 @@ export function SettingsPanel({
   };
 
   const [cloudSyncEndpoint, setCloudSyncEndpoint] = useState(
-    settings.cloudSyncEndpoint ||
-    "https://avplay-sync.1024327189.workers.dev",
+    settings.cloudSyncEndpoint || "https://avplay-sync.1024327189.workers.dev",
   );
   const [cloudSyncSecret, setCloudSyncSecret] = useState(
     settings.cloudSyncSecret || "MySecretToken_2026",
@@ -286,7 +285,10 @@ export function SettingsPanel({
 
   const handlePushToCloud = async () => {
     if (!cloudSyncSecret.trim()) {
-      setPushResult({ success: false, message: "请先输入访问密码 (SYNC_SECRET)" });
+      setPushResult({
+        success: false,
+        message: "请先输入访问密码 (SYNC_SECRET)",
+      });
       return;
     }
     setPushing(true);
@@ -302,7 +304,10 @@ export function SettingsPanel({
           message: `备份成功！共 ${res.stats?.videoCount ?? 0} 部影片记录，${res.stats?.timelineCount ?? 0} 条打点`,
         });
         setCloudSyncLastSync(res.updatedAt || new Date().toISOString());
-        onAddSystemLog("已成功将本地全量数据与设置备份至 Cloudflare KV", "SUCCESS");
+        onAddSystemLog(
+          "已成功将本地全量数据与设置备份至 Cloudflare KV",
+          "SUCCESS",
+        );
       } else {
         setPushResult({
           success: false,
@@ -323,7 +328,10 @@ export function SettingsPanel({
 
   const handlePullFromCloud = async () => {
     if (!cloudSyncSecret.trim()) {
-      setPullResult({ success: false, message: "请先输入访问密码 (SYNC_SECRET)" });
+      setPullResult({
+        success: false,
+        message: "请先输入访问密码 (SYNC_SECRET)",
+      });
       return;
     }
     setPulling(true);
@@ -340,7 +348,10 @@ export function SettingsPanel({
           message: `恢复成功！旧数据已自动安全镜像备份至 backups 目录`,
         });
         setCloudSyncLastSync(res.updatedAt || new Date().toISOString());
-        onAddSystemLog(`已从 Cloudflare KV 恢复云端数据，旧数据已安全备份`, "SUCCESS");
+        onAddSystemLog(
+          `已从 Cloudflare KV 恢复云端数据，旧数据已安全备份`,
+          "SUCCESS",
+        );
       } else {
         setPullResult({
           success: false,
@@ -498,15 +509,17 @@ export function SettingsPanel({
   };
 
   const tabBtnClass = (active: boolean) =>
-    `flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium transition cursor-pointer ${active
-      ? "bg-accent-500/10 text-accent-700 dark:text-accent-400 font-bold"
-      : "text-slate-600 dark:text-slate-400 hover:bg-slate-100/50 dark:hover:bg-slate-800/50"
+    `flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-medium transition cursor-pointer ${
+      active
+        ? "bg-accent-500/10 text-accent-700 dark:text-accent-400 font-bold"
+        : "text-slate-600 dark:text-slate-400 hover:bg-slate-100/50 dark:hover:bg-slate-800/50"
     }`;
 
   const segBtnClass = (active: boolean) =>
-    `px-3 py-2 text-[11px] font-bold rounded-lg border transition cursor-pointer ${active
-      ? "border-accent-500/40 bg-accent-500/10 text-accent-600 dark:text-accent-400"
-      : "border-hairline bg-surface-1 text-text-2 hover:border-hairline-strong hover:text-text-1"
+    `px-3 py-2 text-[11px] font-bold rounded-lg border transition cursor-pointer ${
+      active
+        ? "border-accent-500/40 bg-accent-500/10 text-accent-600 dark:text-accent-400"
+        : "border-hairline bg-surface-1 text-text-2 hover:border-hairline-strong hover:text-text-1"
     }`;
 
   // 旧内联 Toggle（on/onToggle）→ 统一公共 Toggle（checked/onChange）
@@ -553,9 +566,9 @@ export function SettingsPanel({
         </div>
 
         {/* Body */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden bg-slate-100/50 dark:bg-slate-900/50 border-r ">
           {/* Sidebar */}
-          <div className="w-48 bg-slate-50/50 dark:bg-slate-900/50 border-r border-slate-100 dark:border-slate-800 p-3 flex flex-col gap-1 shrink-0">
+          <div className="w-48 border-slate-100 dark:border-slate-800 p-3 flex flex-col gap-1 shrink-0">
             {tabs.map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
@@ -680,10 +693,11 @@ export function SettingsPanel({
                         key={preset || "off"}
                         type="button"
                         onClick={() => setSpeedLimit(preset)}
-                        className={`px-2.5 text-[10px] font-bold rounded-lg border transition cursor-pointer ${speedLimit === preset
+                        className={`px-2.5 text-[10px] font-bold rounded-lg border transition cursor-pointer ${
+                          speedLimit === preset
                             ? "border-accent-500/40 bg-accent-500/10 text-accent-600 dark:text-accent-400"
                             : "border-hairline bg-surface-1 text-text-2 hover:bg-surface-2"
-                          }`}
+                        }`}
                       >
                         {preset || "不限"}
                       </button>
@@ -718,10 +732,11 @@ export function SettingsPanel({
                         key={preset}
                         type="button"
                         onClick={() => setMaxConcurrentTasks(preset)}
-                        className={`px-2.5 py-2 text-[10px] font-bold rounded-lg border transition cursor-pointer ${maxConcurrentTasks === preset
+                        className={`px-2.5 py-2 text-[10px] font-bold rounded-lg border transition cursor-pointer ${
+                          maxConcurrentTasks === preset
                             ? "border-accent-500/40 bg-accent-500/10 text-accent-600 dark:text-accent-400"
                             : "border-hairline bg-surface-1 text-text-2 hover:bg-surface-2"
-                          }`}
+                        }`}
                       >
                         {preset}
                       </button>
@@ -756,10 +771,11 @@ export function SettingsPanel({
                         key={preset}
                         type="button"
                         onClick={() => setThumbQueueConcurrency(preset)}
-                        className={`px-2.5 py-2 text-[10px] font-bold rounded-lg border transition cursor-pointer ${thumbQueueConcurrency === preset
+                        className={`px-2.5 py-2 text-[10px] font-bold rounded-lg border transition cursor-pointer ${
+                          thumbQueueConcurrency === preset
                             ? "border-accent-500/40 bg-accent-500/10 text-accent-600 dark:text-accent-400"
                             : "border-hairline bg-surface-1 text-text-2 hover:bg-surface-2"
-                          }`}
+                        }`}
                       >
                         {preset}
                       </button>
@@ -790,11 +806,27 @@ export function SettingsPanel({
 
                 <div className="p-4 bg-surface-1 border border-hairline rounded-xl space-y-3">
                   <div>
-                    <h4 className="text-xs font-bold text-text-1">云端影视资讯服务</h4>
-                    <p className="mt-0.5 text-[10px] text-text-3">填入部署后的 News Worker 地址；客户端仅使用只读密钥。</p>
+                    <h4 className="text-xs font-bold text-text-1">
+                      云端影视资讯服务
+                    </h4>
+                    <p className="mt-0.5 text-[10px] text-text-3">
+                      填入部署后的 News Worker 地址；客户端仅使用只读密钥。
+                    </p>
                   </div>
-                  <input type="text" value={newsEndpoint} onChange={(e) => setNewsEndpoint(e.target.value)} placeholder="https://avplay-news.your-subdomain.workers.dev" className="w-full rounded-lg border-hairline bg-surface-2 px-3 py-2 text-xs font-mono text-text-1 focus:border-accent-500 focus:outline-none" />
-                  <input type="password" value={newsApiKey} onChange={(e) => setNewsApiKey(e.target.value)} placeholder="CLIENT_TOKEN（若服务配置了）" className="w-full rounded-lg border-hairline bg-surface-2 px-3 py-2 text-xs font-mono text-text-1 focus:border-accent-500 focus:outline-none" />
+                  <input
+                    type="text"
+                    value={newsEndpoint}
+                    onChange={(e) => setNewsEndpoint(e.target.value)}
+                    placeholder="https://avplay-news.your-subdomain.workers.dev"
+                    className="w-full rounded-lg border-hairline bg-surface-2 px-3 py-2 text-xs font-mono text-text-1 focus:border-accent-500 focus:outline-none"
+                  />
+                  <input
+                    type="password"
+                    value={newsApiKey}
+                    onChange={(e) => setNewsApiKey(e.target.value)}
+                    placeholder="CLIENT_TOKEN（若服务配置了）"
+                    className="w-full rounded-lg border-hairline bg-surface-2 px-3 py-2 text-xs font-mono text-text-1 focus:border-accent-500 focus:outline-none"
+                  />
                 </div>
               </div>
             )}
@@ -815,7 +847,11 @@ export function SettingsPanel({
                     {(
                       [
                         { v: "zero", l: "零界面放映", d: "边缘唤出操作与片库" },
-                        { v: "capsule", l: "Aero 胶囊", d: "Rose Noir 悬浮胶囊与抽屉" },
+                        {
+                          v: "capsule",
+                          l: "Aero 胶囊",
+                          d: "Rose Noir 悬浮胶囊与抽屉",
+                        },
                         { v: "classic", l: "经典右栏", d: "播放器 + 完整片库" },
                       ] as Array<{ v: PlayerLayout; l: string; d: string }>
                     ).map(({ v, l, d }) => (
@@ -825,12 +861,14 @@ export function SettingsPanel({
                         onClick={() => setPlayerLayout(v)}
                         className={`rounded-xl border p-3 text-left transition cursor-pointer ${
                           playerLayout === v
-                            ? "border-violet-400 bg-violet-500/10 text-violet-700 dark:text-violet-300"
-                            : "border-hairline bg-surface-1 text-text-2 hover:border-violet-400/60"
+                            ? "border-accent-400 bg-accent-500/10 text-accent-600 dark:text-accent-300"
+                            : "border-hairline bg-surface-1 text-text-2 hover:border-accent-400/60"
                         }`}
                       >
                         <span className="block text-[11px] font-bold">{l}</span>
-                        <span className="mt-1 block text-[10px] text-text-3">{d}</span>
+                        <span className="mt-1 block text-[10px] text-text-3">
+                          {d}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -936,10 +974,11 @@ export function SettingsPanel({
                         key={bg}
                         type="button"
                         onClick={() => setDownloadBackground(bg)}
-                        className={`relative aspect-video overflow-hidden rounded-lg border transition cursor-pointer ${downloadBackground === bg
+                        className={`relative aspect-video overflow-hidden rounded-lg border transition cursor-pointer ${
+                          downloadBackground === bg
                             ? "border-accent-500/50 ring-2 ring-accent-500/30"
                             : "border-hairline hover:border-hairline-strong"
-                          }`}
+                        }`}
                         title={`背景 ${bg}`}
                       >
                         <img
@@ -950,8 +989,9 @@ export function SettingsPanel({
                           className="h-full w-full object-cover"
                         />
                         <span
-                          className={`absolute left-1.5 top-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-mono text-white backdrop-blur-sm ${downloadBackground === bg ? "bg-amber-500/90" : ""
-                            }`}
+                          className={`absolute left-1.5 top-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[9px] font-mono text-white backdrop-blur-sm ${
+                            downloadBackground === bg ? "bg-amber-500/90" : ""
+                          }`}
                         >
                           {bg}
                         </span>
@@ -966,16 +1006,25 @@ export function SettingsPanel({
                       className="h-28 w-full object-cover"
                       style={{
                         filter: `blur(${Math.min(privacyScreenBlur, 12)}px)`,
-                        opacity: Math.max(0.32, privacyScreenImageOpacity / 100),
+                        opacity: Math.max(
+                          0.32,
+                          privacyScreenImageOpacity / 100,
+                        ),
                       }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/20 to-transparent" />
                     <div className="absolute inset-x-3 bottom-2 flex items-end justify-between text-white">
                       <div>
-                        <div className="text-[10px] font-bold tracking-[0.2em] text-white/80">WALLPAPER SCENE</div>
-                        <div className="mt-0.5 text-[9px] text-white/50">屏保 / 空态 / 加载层共用预览</div>
+                        <div className="text-[10px] font-bold tracking-[0.2em] text-white/80">
+                          WALLPAPER SCENE
+                        </div>
+                        <div className="mt-0.5 text-[9px] text-white/50">
+                          屏保 / 空态 / 加载层共用预览
+                        </div>
                       </div>
-                      <span className="rounded-full border border-white/20 bg-black/25 px-2 py-1 text-[9px] text-white/65">实时</span>
+                      <span className="rounded-full border border-white/20 bg-black/25 px-2 py-1 text-[9px] text-white/65">
+                        实时
+                      </span>
                     </div>
                   </div>
                   <div className="mt-3 rounded-xl border-hairline bg-surface-1 p-3">
@@ -990,7 +1039,9 @@ export function SettingsPanel({
                       </div>
                       <Toggle
                         on={downloadBgVisible}
-                        onToggle={() => setDownloadBgVisible(!downloadBgVisible)}
+                        onToggle={() =>
+                          setDownloadBgVisible(!downloadBgVisible)
+                        }
                       />
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1101,55 +1152,27 @@ export function SettingsPanel({
                         key={v}
                         type="button"
                         onClick={() => setLoaderStyle(v)}
-                        className={`relative overflow-hidden rounded-lg border transition cursor-pointer ${loaderStyle === v
+                        className={`relative overflow-hidden rounded-lg border transition cursor-pointer ${
+                          loaderStyle === v
                             ? "border-accent-500/40 ring-1 ring-accent-500/30"
                             : "border-hairline hover:border-hairline-strong"
-                          }`}
+                        }`}
                       >
                         <div className="relative w-full h-16 bg-slate-900">
                           <CoverLoader variant={v} />
                         </div>
                         <div
-                          className={`px-2 py-1 text-[10px] font-bold text-center ${loaderStyle === v
+                          className={`px-2 py-1 text-[10px] font-bold text-center ${
+                            loaderStyle === v
                               ? "bg-accent-500/10 text-accent-600 dark:text-accent-400"
                               : "bg-surface-1 text-text-2"
-                            }`}
+                          }`}
                         >
                           {l}
                         </div>
                       </button>
                     ))}
                   </div>
-                </div>
-
-                <div className="flex items-center justify-between p-3.5 bg-surface-1 border border-hairline rounded-xl">
-                  <div>
-                    <div className="text-xs font-bold text-text-1">
-                      下载状态系统通知
-                    </div>
-                    <p className="text-[10px] text-text-3 mt-0.5">
-                      任务完成或失败时通过系统横幅通知
-                    </p>
-                  </div>
-                  <Toggle
-                    on={notifyOnComplete}
-                    onToggle={() => setNotifyOnComplete(!notifyOnComplete)}
-                  />
-                </div>
-
-                <div className="flex items-center justify-between p-3.5 bg-surface-1 border border-hairline rounded-xl">
-                  <div>
-                    <div className="text-xs font-bold text-text-1">
-                      完成声音提醒
-                    </div>
-                    <p className="text-[10px] text-text-3 mt-0.5">
-                      下载任务结束时播放 assets/tips.mp3
-                    </p>
-                  </div>
-                  <Toggle
-                    on={notifySound}
-                    onToggle={() => setNotifySound(!notifySound)}
-                  />
                 </div>
               </div>
             )}
@@ -1236,7 +1259,9 @@ export function SettingsPanel({
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold text-text-2 flex items-center justify-between">
                       <span>Worker 同步服务地址 (Endpoint)</span>
-                      <span className="text-[10px] font-normal text-text-3">已自动连接你的 Cloudflare Worker</span>
+                      <span className="text-[10px] font-normal text-text-3">
+                        已自动连接你的 Cloudflare Worker
+                      </span>
                     </label>
                     <input
                       type="text"
@@ -1277,12 +1302,17 @@ export function SettingsPanel({
                       <button
                         type="button"
                         onClick={handleTestConnection}
-                        disabled={testingConnection || !cloudSyncEndpoint.trim()}
+                        disabled={
+                          testingConnection || !cloudSyncEndpoint.trim()
+                        }
                         className="px-3 py-2 rounded-lg bg-surface-2 border border-hairline text-text-2 hover:bg-accent-500/10 hover:text-accent-500 text-xs font-bold transition flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
                       >
                         <RefreshCw
-                          className={`w-3.5 h-3.5 ${testingConnection ? "animate-spin text-amber-500" : ""
-                            }`}
+                          className={`w-3.5 h-3.5 ${
+                            testingConnection
+                              ? "animate-spin text-amber-500"
+                              : ""
+                          }`}
                         />
                         {testingConnection ? "测试中..." : "测试连接"}
                       </button>
@@ -1291,10 +1321,11 @@ export function SettingsPanel({
                     {/* 测试结果提示 */}
                     {testResult && (
                       <div
-                        className={`flex items-center gap-1.5 text-xs p-2 rounded-lg ${testResult.success
+                        className={`flex items-center gap-1.5 text-xs p-2 rounded-lg ${
+                          testResult.success
                             ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                             : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
-                          }`}
+                        }`}
                       >
                         {testResult.success ? (
                           <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -1320,7 +1351,8 @@ export function SettingsPanel({
                       </span>
                     </div>
                     <p className="text-[11px] text-text-2 leading-relaxed">
-                      开启后，每次进入应用时、彻底退出应用前或最小化到托盘时，系统都会在后台自动静默将观影记录、打点书签与成就殿堂推送到 Cloudflare KV，彻底告别手动备份。
+                      开启后，每次进入应用时、彻底退出应用前或最小化到托盘时，系统都会在后台自动静默将观影记录、打点书签与成就殿堂推送到
+                      Cloudflare KV，彻底告别手动备份。
                     </p>
                   </div>
                   <Toggle
@@ -1352,16 +1384,18 @@ export function SettingsPanel({
                         <span>备份数据到云端 (Push)</span>
                       </div>
                       <p className="text-[11px] text-text-3 leading-relaxed">
-                        将当前播放历史、统计数据、打点书签及配置打包推送到 Cloudflare KV 存储。
+                        将当前播放历史、统计数据、打点书签及配置打包推送到
+                        Cloudflare KV 存储。
                       </p>
                     </div>
 
                     {pushResult && (
                       <div
-                        className={`text-[11px] p-2 rounded-lg ${pushResult.success
+                        className={`text-[11px] p-2 rounded-lg ${
+                          pushResult.success
                             ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                             : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
-                          }`}
+                        }`}
                       >
                         {pushResult.message}
                       </div>
@@ -1373,7 +1407,9 @@ export function SettingsPanel({
                       disabled={pushing || pulling || !cloudSyncSecret.trim()}
                       className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer shadow-sm shadow-amber-500/10"
                     >
-                      <UploadCloud className={`w-3.5 h-3.5 ${pushing ? "animate-bounce" : ""}`} />
+                      <UploadCloud
+                        className={`w-3.5 h-3.5 ${pushing ? "animate-bounce" : ""}`}
+                      />
                       {pushing ? "正在打包并上传..." : "立即备份到云端"}
                     </button>
                   </div>
@@ -1392,10 +1428,11 @@ export function SettingsPanel({
 
                     {pullResult && (
                       <div
-                        className={`text-[11px] p-2 rounded-lg ${pullResult.success
+                        className={`text-[11px] p-2 rounded-lg ${
+                          pullResult.success
                             ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                             : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
-                          }`}
+                        }`}
                       >
                         {pullResult.message}
                       </div>
@@ -1426,7 +1463,9 @@ export function SettingsPanel({
                         disabled={pushing || pulling || !cloudSyncSecret.trim()}
                         className="w-full py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer shadow-sm shadow-sky-500/10"
                       >
-                        <DownloadCloud className={`w-3.5 h-3.5 ${pulling ? "animate-bounce" : ""}`} />
+                        <DownloadCloud
+                          className={`w-3.5 h-3.5 ${pulling ? "animate-bounce" : ""}`}
+                        />
                         从云端拉取恢复
                       </button>
                     )}
@@ -1454,8 +1493,14 @@ export function SettingsPanel({
                       disabled={syncDiffLoading || !cloudSyncSecret.trim()}
                       className="px-3 py-2 rounded-lg bg-teal-500 hover:bg-teal-600 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 disabled:opacity-40 cursor-pointer shadow-sm shadow-teal-500/10"
                     >
-                      <GitCompareArrows className={`w-3.5 h-3.5 ${syncDiffLoading ? "animate-spin" : ""}`} />
-                      {syncDiffLoading ? "计算中..." : syncDiff ? "重新演练" : "开始演练"}
+                      <GitCompareArrows
+                        className={`w-3.5 h-3.5 ${syncDiffLoading ? "animate-spin" : ""}`}
+                      />
+                      {syncDiffLoading
+                        ? "计算中..."
+                        : syncDiff
+                          ? "重新演练"
+                          : "开始演练"}
                     </button>
                   </div>
 
@@ -1483,10 +1528,18 @@ export function SettingsPanel({
                                 推送 (本地 → 云端)
                               </div>
                               <div className="flex flex-wrap gap-1.5">
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-mono">新增 {syncDiff.summary?.pushAdd ?? 0}</span>
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 font-mono">更新 {syncDiff.summary?.pushUpdate ?? 0}</span>
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-3 font-mono">一致 {syncDiff.summary?.pushKeep ?? 0}</span>
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-300 font-mono">移除 {syncDiff.summary?.pushRemove ?? 0}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-mono">
+                                  新增 {syncDiff.summary?.pushAdd ?? 0}
+                                </span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 font-mono">
+                                  更新 {syncDiff.summary?.pushUpdate ?? 0}
+                                </span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-3 font-mono">
+                                  一致 {syncDiff.summary?.pushKeep ?? 0}
+                                </span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-300 font-mono">
+                                  移除 {syncDiff.summary?.pushRemove ?? 0}
+                                </span>
                               </div>
                             </div>
                             <div className="p-2.5 rounded-lg bg-sky-500/5 dark:bg-sky-500/10 border border-sky-500/20 space-y-1">
@@ -1495,37 +1548,88 @@ export function SettingsPanel({
                                 拉取 (云端 → 本地)
                               </div>
                               <div className="flex flex-wrap gap-1.5">
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-mono">需拉取 {syncDiff.summary?.pullAdd ?? 0}</span>
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 font-mono">更新 {syncDiff.summary?.pullUpdate ?? 0}</span>
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-3 font-mono">一致 {syncDiff.summary?.pullKeep ?? 0}</span>
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 dark:text-violet-300 font-mono">仅本地 {syncDiff.summary?.pullLocalOnly ?? 0}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-mono">
+                                  需拉取 {syncDiff.summary?.pullAdd ?? 0}
+                                </span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 font-mono">
+                                  更新 {syncDiff.summary?.pullUpdate ?? 0}
+                                </span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-3 font-mono">
+                                  一致 {syncDiff.summary?.pullKeep ?? 0}
+                                </span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-600 dark:text-violet-300 font-mono">
+                                  仅本地 {syncDiff.summary?.pullLocalOnly ?? 0}
+                                </span>
                               </div>
                             </div>
                           </div>
 
                           <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
                             {syncDiff.items?.map((item: any) => {
-                              const pushCfg: Record<string, { label: string; cls: string }> = {
-                                add: { label: "推送新增", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/20" },
-                                update: { label: "推送更新", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/20" },
-                                keep: { label: "一致", cls: "bg-surface-2 text-text-3 border-hairline" },
-                                remove: { label: "云端清理", cls: "bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/20" },
+                              const pushCfg: Record<
+                                string,
+                                { label: string; cls: string }
+                              > = {
+                                add: {
+                                  label: "推送新增",
+                                  cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/20",
+                                },
+                                update: {
+                                  label: "推送更新",
+                                  cls: "bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/20",
+                                },
+                                keep: {
+                                  label: "一致",
+                                  cls: "bg-surface-2 text-text-3 border-hairline",
+                                },
+                                remove: {
+                                  label: "云端清理",
+                                  cls: "bg-rose-500/15 text-rose-600 dark:text-rose-300 border-rose-500/20",
+                                },
                               };
-                              const pullCfg: Record<string, { label: string; cls: string }> = {
-                                add: { label: "拉取新增", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/20" },
-                                update: { label: "拉取更新", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/20" },
-                                keep: { label: "一致", cls: "bg-surface-2 text-text-3 border-hairline" },
-                                localOnly: { label: "仅本地", cls: "bg-violet-500/15 text-violet-600 dark:text-violet-300 border-violet-500/20" },
+                              const pullCfg: Record<
+                                string,
+                                { label: string; cls: string }
+                              > = {
+                                add: {
+                                  label: "拉取新增",
+                                  cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/20",
+                                },
+                                update: {
+                                  label: "拉取更新",
+                                  cls: "bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/20",
+                                },
+                                keep: {
+                                  label: "一致",
+                                  cls: "bg-surface-2 text-text-3 border-hairline",
+                                },
+                                localOnly: {
+                                  label: "仅本地",
+                                  cls: "bg-violet-500/15 text-violet-600 dark:text-violet-300 border-violet-500/20",
+                                },
                               };
-                              const p = pushCfg[item.pushAction] || pushCfg.keep;
-                              const l = pullCfg[item.pullAction] || pullCfg.keep;
+                              const p =
+                                pushCfg[item.pushAction] || pushCfg.keep;
+                              const l =
+                                pullCfg[item.pullAction] || pullCfg.keep;
                               return (
-                                <div key={item.key} className="flex items-center gap-2 p-2.5 rounded-lg border-hairline bg-surface-1">
+                                <div
+                                  key={item.key}
+                                  className="flex items-center gap-2 p-2.5 rounded-lg border-hairline bg-surface-1"
+                                >
                                   <span className="text-[11px] font-bold text-text-2 w-20 shrink-0 truncate">
                                     {item.label}
                                   </span>
-                                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-semibold shrink-0 ${p.cls}`}>{p.label}</span>
-                                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-semibold shrink-0 ${l.cls}`}>{l.label}</span>
+                                  <span
+                                    className={`text-[9px] px-1.5 py-0.5 rounded-full border font-semibold shrink-0 ${p.cls}`}
+                                  >
+                                    {p.label}
+                                  </span>
+                                  <span
+                                    className={`text-[9px] px-1.5 py-0.5 rounded-full border font-semibold shrink-0 ${l.cls}`}
+                                  >
+                                    {l.label}
+                                  </span>
                                   <span className="text-[10px] text-text-3 font-mono truncate">
                                     {item.equal
                                       ? "完全一致"
@@ -1540,7 +1644,10 @@ export function SettingsPanel({
 
                           {syncDiff.cloudUpdatedAt && (
                             <div className="text-[10px] text-text-3">
-                              云端最近更新: {new Date(syncDiff.cloudUpdatedAt).toLocaleString()}
+                              云端最近更新:{" "}
+                              {new Date(
+                                syncDiff.cloudUpdatedAt,
+                              ).toLocaleString()}
                             </div>
                           )}
                         </>
@@ -1580,16 +1687,32 @@ export function SettingsPanel({
                   </div>
                   <ul className="text-[11px] text-text-2 space-y-1 list-disc list-inside">
                     <li>
-                      <span className="font-medium text-text-2">防误触双重保障：</span>
-                      每次从云端拉取时，当前机器现有的数据都会自动复制到 <code className="font-mono text-amber-600 dark:text-amber-400">userData/backups/</code> 中。
+                      <span className="font-medium text-text-2">
+                        防误触双重保障：
+                      </span>
+                      每次从云端拉取时，当前机器现有的数据都会自动复制到{" "}
+                      <code className="font-mono text-amber-600 dark:text-amber-400">
+                        userData/backups/
+                      </code>{" "}
+                      中。
                     </li>
                     <li>
-                      <span className="font-medium text-text-2">本地路径保护：</span>
+                      <span className="font-medium text-text-2">
+                        本地路径保护：
+                      </span>
                       恢复云端数据时，会自动保留当前机器设置的本地视频库路径与临时目录，不会破坏两台电脑不同的盘符设置。
                     </li>
                     <li>
-                      <span className="font-medium text-text-2">数据范围：</span>
-                      包含播放统计与观看时长 (<code className="font-mono text-[10px]">stats.json</code>)、视频打点书签 (<code className="font-mono text-[10px]">timeline.json</code>) 与基础偏好。
+                      <span className="font-medium text-text-2">
+                        数据范围：
+                      </span>
+                      包含播放统计与观看时长 (
+                      <code className="font-mono text-[10px]">stats.json</code>
+                      )、视频打点书签 (
+                      <code className="font-mono text-[10px]">
+                        timeline.json
+                      </code>
+                      ) 与基础偏好。
                     </li>
                   </ul>
                 </div>
@@ -1670,11 +1793,7 @@ export function SettingsPanel({
             <span className="text-[10px]">基于 N_m3u8DL-RE 流媒体核心引擎</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="md"
-              onClick={onClose}
-            >
+            <Button variant="secondary" size="md" onClick={onClose}>
               取消
             </Button>
             <Button
@@ -1712,9 +1831,7 @@ function PathInput({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-[11px] font-bold text-text-2 block">
-        {label}
-      </label>
+      <label className="text-[11px] font-bold text-text-2 block">{label}</label>
       <div className="flex gap-2">
         <input
           type="text"

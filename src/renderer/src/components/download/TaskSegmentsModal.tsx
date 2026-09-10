@@ -61,19 +61,19 @@ class ModalErrorBoundary extends Component<
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative z-10 w-full max-w-md rounded-2xl bg-[#0c1017] border border-rose-500/30 p-6 text-slate-100 shadow-2xl space-y-4 text-center"
+            className="relative z-10 w-full max-w-md rounded-2xl bg-white dark:bg-[#0c1017] border border-slate-200 dark:border-rose-500/30 p-6 text-slate-800 dark:text-slate-100 shadow-2xl space-y-4 text-center"
           >
-            <div className="w-12 h-12 rounded-full bg-rose-500/15 border border-rose-500/30 flex items-center justify-center mx-auto text-rose-400">
+            <div className="w-12 h-12 rounded-full bg-rose-500/15 border border-rose-500/30 flex items-center justify-center mx-auto text-rose-500 dark:text-rose-400">
               <AlertTriangle className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-semibold text-white">分片详情加载遇到问题</h3>
-            <p className="text-xs text-slate-400 font-mono break-all">
+            <h3 className="text-base font-semibold text-slate-900 dark:text-white">分片详情加载遇到问题</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono break-all">
               {this.state.errorText}
             </p>
             <button
               type="button"
               onClick={this.props.onClose}
-              className="px-4 py-2 rounded-xl bg-white/[0.1] hover:bg-white/[0.2] text-xs font-semibold text-white transition cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-white/[0.1] dark:hover:bg-white/[0.2] text-xs font-semibold text-slate-700 dark:text-white transition cursor-pointer"
             >
               关闭视窗
             </button>
@@ -224,19 +224,19 @@ function TaskSegmentsModalContent({
       {/* 模态卡片 */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative z-10 w-full max-w-2xl rounded-2xl bg-[#0c1017] border border-white/[0.1] shadow-2xl shadow-black/80 overflow-hidden flex flex-col text-slate-100 max-h-[90vh]"
+        className="relative z-10 w-full max-w-2xl rounded-2xl bg-white dark:bg-[#0c1017] border border-slate-200 dark:border-white/[0.1] shadow-2xl shadow-slate-400/25 dark:shadow-black/80 overflow-hidden flex flex-col text-slate-800 dark:text-slate-100 max-h-[90vh]"
       >
         {/* 1. 顶栏 */}
-        <div className="h-12 px-5 border-b border-white/[0.06] bg-white/[0.02] flex items-center justify-between gap-3 shrink-0">
+        <div className="h-12 px-5 border-b border-slate-100 dark:border-white/[0.06] bg-slate-50/70 dark:bg-white/[0.02] flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-7 h-7 rounded-lg bg-accent-500/15 text-accent-400 flex items-center justify-center shrink-0 border border-accent-500/25">
+            <div className="w-7 h-7 rounded-lg bg-accent-500/10 dark:bg-accent-500/15 text-accent-500 dark:text-accent-400 flex items-center justify-center shrink-0 border border-accent-500/25">
               <Layers className="w-4 h-4" />
             </div>
-            <h3 className="text-sm font-bold text-white truncate flex items-center gap-2">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate flex items-center gap-2">
               分片下载详情与切片拓扑
             </h3>
             {videoCode && (
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-accent-500/15 text-accent-300 border border-accent-500/25 shrink-0">
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-accent-500/10 dark:bg-accent-500/15 text-accent-600 dark:text-accent-300 border border-accent-500/25 shrink-0">
                 {videoCode}
               </span>
             )}
@@ -246,7 +246,7 @@ function TaskSegmentsModalContent({
           <button
             type="button"
             onClick={onClose}
-            className="w-7 h-7 rounded-lg bg-white/[0.04] hover:bg-white/[0.1] flex items-center justify-center text-slate-400 hover:text-white transition cursor-pointer"
+            className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-white/[0.04] dark:hover:bg-white/[0.1] flex items-center justify-center text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white transition cursor-pointer"
             aria-label="关闭分片详情"
           >
             <X className="w-4 h-4" />
@@ -256,11 +256,11 @@ function TaskSegmentsModalContent({
         {/* 2. 主体内容 */}
         <div className="p-5 space-y-4 overflow-y-auto flex-1">
           {/* 任务目标切片源 */}
-          <div className="px-3 py-2 rounded-xl bg-white/[0.02] border border-white/[0.04]">
-            <span className="text-[10px] text-slate-500 font-mono block mb-0.5">
+          <div className="px-3 py-2 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/[0.04]">
+            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono block mb-0.5">
               TARGET STREAM / 目标切片源
             </span>
-            <div className="text-xs text-slate-200 font-medium truncate select-text">
+            <div className="text-xs text-slate-800 dark:text-slate-200 font-medium truncate select-text">
               {safeName}
             </div>
           </div>
@@ -268,78 +268,78 @@ function TaskSegmentsModalContent({
           {/* 4 维核心分片指标 */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
             {/* 分片总数 */}
-            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-semibold mb-1">
-                <Layers className="w-3.5 h-3.5 text-accent-400" />
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/[0.06]">
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 font-semibold mb-1">
+                <Layers className="w-3.5 h-3.5 text-accent-500 dark:text-accent-400" />
                 <span>分片总进度</span>
               </div>
-              <div className="text-base font-mono font-bold text-white">
-                <span className="text-accent-300">{downSegs}</span>
-                <span className="text-xs text-slate-500 font-normal">
+              <div className="text-base font-mono font-bold text-slate-900 dark:text-white">
+                <span className="text-accent-600 dark:text-accent-300">{downSegs}</span>
+                <span className="text-xs text-slate-400 dark:text-slate-500 font-normal">
                   {" "}
                   / {totalSegs > 0 ? totalSegs : "—"}
                 </span>
               </div>
-              <div className="text-[10px] text-accent-400 font-mono mt-0.5 font-semibold">
+              <div className="text-[10px] text-accent-500 dark:text-accent-400 font-mono mt-0.5 font-semibold">
                 {percent.toFixed(1)}% 已落盘
               </div>
             </div>
 
             {/* 剩余待下 */}
-            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-semibold mb-1">
-                <Clock className="w-3.5 h-3.5 text-amber-400" />
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/[0.06]">
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 font-semibold mb-1">
+                <Clock className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
                 <span>剩余分片</span>
               </div>
-              <div className="text-base font-mono font-bold text-white">
-                <span className="text-amber-300">{totalSegs > 0 ? remainingSegs : "—"}</span>
-                <span className="text-xs text-slate-500 font-normal"> 片</span>
+              <div className="text-base font-mono font-bold text-slate-900 dark:text-white">
+                <span className="text-amber-600 dark:text-amber-300">{totalSegs > 0 ? remainingSegs : "—"}</span>
+                <span className="text-xs text-slate-400 dark:text-slate-500 font-normal"> 片</span>
               </div>
-              <div className="text-[10px] text-slate-400 font-mono mt-0.5 truncate">
+              <div className="text-[10px] text-slate-400 dark:text-slate-400 font-mono mt-0.5 truncate">
                 {safeSpeedText}
               </div>
             </div>
 
             {/* 分片均重 */}
-            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-semibold mb-1">
-                <HardDrive className="w-3.5 h-3.5 text-emerald-400" />
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/[0.06]">
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 font-semibold mb-1">
+                <HardDrive className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
                 <span>单片平均体积</span>
               </div>
-              <div className="text-base font-mono font-bold text-emerald-300">
+              <div className="text-base font-mono font-bold text-emerald-600 dark:text-emerald-300">
                 {formatSafeBytes(avgSegSize)}
               </div>
-              <div className="text-[10px] text-slate-400 font-mono mt-0.5 truncate">
+              <div className="text-[10px] text-slate-400 dark:text-slate-400 font-mono mt-0.5 truncate">
                 预估总计 {totalBytes > 0 ? formatSafeBytes(totalBytes) : "计算中"}
               </div>
             </div>
 
             {/* 并发与加密 */}
-            <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-semibold mb-1">
-                <Cpu className="w-3.5 h-3.5 text-sky-400" />
+            <div className="p-3 rounded-xl bg-slate-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/[0.06]">
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 font-semibold mb-1">
+                <Cpu className="w-3.5 h-3.5 text-sky-500 dark:text-sky-400" />
                 <span>线程与加密</span>
               </div>
-              <div className="text-base font-mono font-bold text-white">
-                <span className="text-accent-300">{task.threads ?? 16}</span>{" "}
-                <span className="text-xs text-slate-500 font-normal">线程</span>
+              <div className="text-base font-mono font-bold text-slate-900 dark:text-white">
+                <span className="text-accent-600 dark:text-accent-300">{task.threads ?? 16}</span>{" "}
+                <span className="text-xs text-slate-400 dark:text-slate-500 font-normal">线程</span>
               </div>
-              <div className="text-[10px] text-accent-300 font-mono mt-0.5 truncate font-semibold">
+              <div className="text-[10px] text-accent-600 dark:text-accent-300 font-mono mt-0.5 truncate font-semibold">
                 {task.encryptionType === "NONE" ? "无加密直传" : task.encryptionType || "AES-128"}
               </div>
             </div>
           </div>
 
           {/* 分片块状全景分布图 (Segment Chunk Grid) */}
-          <div className="p-4 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+          <div className="p-4 rounded-xl bg-slate-100/70 dark:bg-black/40 border border-slate-200 dark:border-white/[0.06] space-y-2.5">
             <div className="flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
-                <span className="font-semibold text-slate-300">分片缓冲区拓扑分布</span>
-                <span className="text-[10px] font-mono text-slate-500">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">分片缓冲区拓扑分布</span>
+                <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
                   (按进度映射 {TOTAL_BLOCKS} 区块)
                 </span>
               </div>
-              <div className="flex items-center gap-3 text-[10px] font-mono text-slate-400">
+              <div className="flex items-center gap-3 text-[10px] font-mono text-slate-500 dark:text-slate-400">
                 <div className="flex items-center gap-1">
                   <span className="w-2 h-2 rounded-[2px] bg-emerald-500" />
                   <span>已完成</span>
@@ -349,7 +349,7 @@ function TaskSegmentsModalContent({
                   <span>正在下载</span>
                 </div>
                 <div className="flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-[2px] bg-white/10" />
+                  <span className="w-2 h-2 rounded-[2px] bg-slate-300 dark:bg-white/10" />
                   <span>未下载</span>
                 </div>
               </div>
@@ -357,7 +357,7 @@ function TaskSegmentsModalContent({
 
             {/* 80 晶格色块图（采用严谨的 inline grid 模板，杜绝 Tailwind 缺失 grid-cols-20 样式问题） */}
             <div
-              className="p-2.5 rounded-lg bg-white/[0.015] border border-white/[0.04]"
+              className="p-2.5 rounded-lg bg-white dark:bg-white/[0.015] border border-slate-200 dark:border-white/[0.04]"
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(20, minmax(0, 1fr))",
@@ -379,7 +379,7 @@ function TaskSegmentsModalContent({
                         ? "bg-emerald-500/80 hover:bg-emerald-400"
                         : isCurrent
                         ? "bg-accent-500 hover:bg-accent-400 animate-pulse"
-                        : "bg-white/[0.07] hover:bg-white/[0.15]"
+                        : "bg-slate-300 hover:bg-slate-400 dark:bg-white/[0.07] dark:hover:bg-white/[0.15]"
                     }`}
                   />
                 );
@@ -387,24 +387,24 @@ function TaskSegmentsModalContent({
             </div>
 
             {/* 悬停探针提示 */}
-            <div className="h-5 flex items-center justify-between text-[11px] font-mono text-slate-400 px-1">
+            <div className="h-5 flex items-center justify-between text-[11px] font-mono text-slate-500 dark:text-slate-400 px-1">
               {hoveredBlockIndex !== null && totalSegs > 0 ? (
                 <>
-                  <span className="text-slate-200">
+                  <span className="text-slate-700 dark:text-slate-200">
                     区块 #{hoveredBlockIndex + 1}: 估算对应分片 ~#
                     {Math.round((hoveredBlockIndex / TOTAL_BLOCKS) * totalSegs)} 至 #
                     {Math.round(((hoveredBlockIndex + 1) / TOTAL_BLOCKS) * totalSegs)}
                   </span>
                   <span
                     className={
-                      hoveredBlockIndex < completedBlocks ? "text-emerald-400" : "text-slate-500"
+                      hoveredBlockIndex < completedBlocks ? "text-emerald-500 dark:text-emerald-400" : "text-slate-400 dark:text-slate-500"
                     }
                   >
                     {hoveredBlockIndex < completedBlocks ? "✔ 数据已完整校验落盘" : "待抓取"}
                   </span>
                 </>
               ) : (
-                <span className="text-slate-500 text-[10px]">
+                <span className="text-slate-400 dark:text-slate-500 text-[10px]">
                   将光标悬停在上方分片色块，可查看对应片段的落盘区间
                 </span>
               )}
@@ -412,13 +412,13 @@ function TaskSegmentsModalContent({
           </div>
 
           {/* 存储目录与快速定位 */}
-          <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.05] text-xs">
+          <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/[0.05] text-xs">
             <div className="min-w-0 flex-1">
-              <span className="text-[10px] text-accent-400/90 font-mono font-bold block mb-0.5 tracking-wider">
+              <span className="text-[10px] text-accent-500 dark:text-accent-400/90 font-mono font-bold block mb-0.5 tracking-wider">
                 SEGMENTS LOCAL CACHE / 分片文件本地落盘路径
               </span>
               <div
-                className="font-mono text-slate-300 truncate select-all"
+                className="font-mono text-slate-600 dark:text-slate-300 truncate select-all"
                 title={task.savePath || "未指定路径"}
               >
                 {task.savePath || "未指定本地保存路径"}
@@ -428,7 +428,7 @@ function TaskSegmentsModalContent({
               <button
                 type="button"
                 onClick={openFolder}
-                className="px-2.5 py-1.5 rounded-lg bg-white/[0.06] hover:bg-accent-500/20 text-slate-200 hover:text-accent-200 transition flex items-center gap-1.5 cursor-pointer text-xs font-medium"
+                className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-accent-500/15 dark:bg-white/[0.06] dark:hover:bg-accent-500/20 text-slate-600 hover:text-accent-600 dark:text-slate-200 dark:hover:text-accent-200 transition flex items-center gap-1.5 cursor-pointer text-xs font-medium"
                 title="在系统访达中定位分片文件夹"
               >
                 <FolderOpen className="w-3.5 h-3.5" />
@@ -437,11 +437,11 @@ function TaskSegmentsModalContent({
               <button
                 type="button"
                 onClick={copyPath}
-                className="p-1.5 rounded-lg bg-white/[0.04] hover:bg-accent-500/20 text-slate-400 hover:text-accent-200 transition cursor-pointer"
+                className="p-1.5 rounded-lg bg-slate-100 hover:bg-accent-500/15 dark:bg-white/[0.04] dark:hover:bg-accent-500/20 text-slate-500 hover:text-accent-600 dark:text-slate-400 dark:hover:text-accent-200 transition cursor-pointer"
                 title="复制路径"
               >
                 {copiedPath ? (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
                 ) : (
                   <Copy className="w-3.5 h-3.5" />
                 )}
@@ -449,9 +449,9 @@ function TaskSegmentsModalContent({
             </div>
           </div>
 
-          {/* 实时分片抓取日志流 */}
+          {/* 实时分片抓取日志流（终端小窗保持暗色质感） */}
           {segmentLogs.length > 0 && (
-            <div className="rounded-xl overflow-hidden border border-white/[0.06] bg-black/50">
+            <div className="rounded-xl overflow-hidden border border-slate-800 dark:border-white/[0.06] bg-black/50">
               <div className="h-6 px-3 bg-white/[0.02] border-b border-white/[0.04] flex items-center justify-between text-[10px] text-slate-400 font-mono">
                 <span className="flex items-center gap-1.5">
                   <Terminal className="w-3 h-3 text-accent-400" />
@@ -472,8 +472,8 @@ function TaskSegmentsModalContent({
         </div>
 
         {/* 3. 底栏 */}
-        <div className="h-12 px-5 border-t border-white/[0.06] bg-white/[0.015] flex items-center justify-between text-xs shrink-0">
-          <div className="text-[11px] text-slate-500 font-mono">
+        <div className="h-12 px-5 border-t border-slate-100 dark:border-white/[0.06] bg-slate-50/70 dark:bg-white/[0.015] flex items-center justify-between text-xs shrink-0">
+          <div className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">
             {task.status === "COMPLETED" ? "所有分片已完全合并入库" : "后台线程自动分批拉取校验中"}
           </div>
           <button

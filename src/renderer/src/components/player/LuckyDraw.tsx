@@ -473,7 +473,7 @@ export function LuckyDraw({ videos, favorites, onClose, onPlay }: Props) {
                   onPlay(winner, peakTime);
                   onClose();
                 }}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 hover:from-rose-600 hover:to-amber-600 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-lg shadow-rose-500/30 transition hover:scale-105"
+                className="px-5 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer shadow-md shadow-rose-500/20 transition hover:scale-105"
               >
                 <Flame className="w-3.5 h-3.5 fill-current" />
                 直达高潮播放

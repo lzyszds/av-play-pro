@@ -227,7 +227,7 @@ export const WhisperPanel: React.FC<Props> = ({
                 <button
                   onClick={handleOneClick}
                   disabled={install.running}
-                  className="px-2.5 py-1 rounded-md bg-gradient-to-br from-pink-500 to-amber-500 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed hover:opacity-90 transition shadow-sm"
+                  className="px-2.5 py-1 rounded-md bg-accent-500 hover:bg-accent-600 text-white text-[10px] font-bold flex items-center gap-1 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed transition shadow-sm"
                   title="自动检测系统 ffmpeg，自动下载 whisper-cli 与默认模型"
                 >
                   {install.running ? (

@@ -715,7 +715,7 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
                 e.stopPropagation();
                 togglePlay();
               }}
-              className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-tr from-[#FF466B] to-[#FF758C] text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-transform duration-150 neon-rose cursor-pointer"
+              className="flex-shrink-0 w-10 h-10 rounded-full bg-[#FF466B] hover:bg-[#ff5d7e] text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-transform duration-150 neon-rose cursor-pointer"
             >
               {isPlaying ? (
                 <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">

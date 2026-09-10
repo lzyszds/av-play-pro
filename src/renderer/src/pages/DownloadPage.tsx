@@ -15,6 +15,12 @@ import {
   ClipboardPaste,
   Layers,
   ChevronRight,
+  Play,
+  Search,
+  X,
+  RotateCcw,
+  Trash2,
+  Zap,
 } from "lucide-react";
 import { NewTaskModal } from "../components/download/NewTaskModal";
 import { DownloadTaskRow } from "../components/download/DownloadTaskRow";
@@ -118,8 +124,10 @@ export function DownloadPage({
     previewUrl?: string;
     pageUrl?: string;
   } | null>(null);
-  // 任务列表分类 Tab 过滤（正在下载/排队/已完成）
-  const [listFilter, setListFilter] = useState<"downloading" | "pending" | "completed">("downloading");
+  // 任务列表分类 Tab 过滤（全部 / 正在下载 / 排队 / 已完成 / 异常失败）
+  const [listFilter, setListFilter] = useState<"all" | "downloading" | "pending" | "completed" | "failed">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [quickInput, setQuickInput] = useState("");
   const [copiedTaskId, setCopiedTaskId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
@@ -1258,6 +1266,64 @@ export function DownloadPage({
     addLog("⏸️ 操作: 已暂停全部下载与排队任务", "WARNING");
   }, [addLog]);
 
+  const handleResumeAll = useCallback(() => {
+    setTasks((prev) =>
+      prev.map((t) => (t.status === "PAUSED" ? { ...t, status: "PENDING" } : t)),
+    );
+    addLog("▶️ 操作: 已恢复所有暂停任务", "SUCCESS");
+    setTimeout(() => startNextRef.current?.(), 100);
+  }, [addLog]);
+
+  const handleClearCompleted = useCallback(() => {
+    setTasks((prev) => prev.filter((t) => t.status !== "COMPLETED"));
+    addLog("🧹 已清空列表中所有已完成任务记录", "INFO");
+  }, [addLog]);
+
+  const handleRetryAllFailed = useCallback(() => {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.status === "FAILED"
+          ? {
+              ...t,
+              status: "PENDING",
+              progress: 0,
+              downloadedSize: 0,
+              downloadedSegments: 0,
+              speed: 0,
+              error: undefined,
+            }
+          : t,
+      ),
+    );
+    addLog("🔄 已将所有失败任务重置为排队状态", "INFO");
+    setTimeout(() => startNextRef.current?.(), 100);
+  }, [addLog]);
+
+  const handleQuickPasteAndCreate = useCallback(async () => {
+    try {
+      const clip = await navigator.clipboard.readText();
+      if (clip && (clip.startsWith("http://") || clip.startsWith("https://") || clip.includes(".m3u8"))) {
+        setInitialTaskUrl(clip.trim());
+      } else {
+        setInitialTaskUrl("");
+      }
+    } catch {
+      setInitialTaskUrl("");
+    }
+    setShowNewTaskModal(true);
+  }, []);
+
+  const handleQuickInputSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!quickInput.trim()) return;
+      setInitialTaskUrl(quickInput.trim());
+      setShowNewTaskModal(true);
+      setQuickInput("");
+    },
+    [quickInput],
+  );
+
   /* ---- 选中卡片：打开下方详情抽屉 ---- */
   const handleSelectTask = useCallback((id: string) => {
     setSelectedTaskId(id);
@@ -1312,23 +1378,51 @@ export function DownloadPage({
     () => tasks.find((t) => t.id === selectedTaskId) ?? null,
     [tasks, selectedTaskId],
   );
+
+  const hasPausedTasks = useMemo(() => tasks.some((t) => t.status === "PAUSED"), [tasks]);
+  const hasRunningTasks = useMemo(
+    () => tasks.some((t) => t.status === "DOWNLOADING" || t.status === "PENDING"),
+    [tasks],
+  );
+
   const taskCounts = useMemo(() => {
     let downloading = 0;
     let pending = 0;
     let completed = 0;
+    let failed = 0;
     for (const t of tasks) {
-      if (t.status === "DOWNLOADING") downloading++;
-      else if (t.status === "PENDING") pending++;
+      if (t.status === "DOWNLOADING" || t.status === "PARSING") downloading++;
+      else if (t.status === "PENDING" || t.status === "PAUSED") pending++;
       else if (t.status === "COMPLETED") completed++;
+      else if (t.status === "FAILED") failed++;
     }
-    return { downloading, pending, completed };
+    return { all: tasks.length, downloading, pending, completed, failed };
   }, [tasks]);
-  // 分类 Tab 过滤
+
+  // 分类 Tab 与实时关键词检索过滤
   const statusFilteredTasks = useMemo(() => {
-    if (listFilter === "downloading") return tasks.filter((t) => t.status === "DOWNLOADING" || t.status === "PARSING");
-    if (listFilter === "pending") return tasks.filter((t) => t.status === "PENDING" || t.status === "PAUSED");
-    return tasks.filter((t) => t.status === "COMPLETED");
-  }, [tasks, listFilter]);
+    let list = tasks;
+    if (listFilter === "downloading") {
+      list = list.filter((t) => t.status === "DOWNLOADING" || t.status === "PARSING");
+    } else if (listFilter === "pending") {
+      list = list.filter((t) => t.status === "PENDING" || t.status === "PAUSED");
+    } else if (listFilter === "completed") {
+      list = list.filter((t) => t.status === "COMPLETED");
+    } else if (listFilter === "failed") {
+      list = list.filter((t) => t.status === "FAILED");
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          t.url.toLowerCase().includes(q) ||
+          (extractVideoCode(t.name) || "").toLowerCase().includes(q),
+      );
+    }
+    return list;
+  }, [tasks, listFilter, searchQuery]);
   // 速率看板：所有下载中任务的实时速率之和
   const totalSpeed = useMemo(
     () => tasks.reduce((sum, t) => (t.status === "DOWNLOADING" ? sum + (t.speed || 0) : sum), 0),
@@ -1371,86 +1465,121 @@ export function DownloadPage({
 
   /* ---- render ---- */
   return (
-    <div className="relative h-full flex flex-col min-h-0 overflow-hidden p-6 ">
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {/* 单层背景：去掉 blur-2xl 的全屏高斯模糊层，列表滚动时合成器不再每帧重栅格化 */}
+    <div className="relative h-full flex flex-col min-h-0 overflow-hidden p-4 sm:p-5 bg-[#07090e] text-slate-100">
+      {/* 虚现质感背景层 */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
         {settings.downloadBgVisible !== false && (
           <div
             key={`main-${downloadBackgroundUrl}`}
-            className="download-bg-layer absolute inset-0 bg-cover bg-center"
+            className="download-bg-layer absolute -inset-6 bg-cover bg-center transition-all duration-700 ease-out"
             style={{
-              // 背景浓度可调（默认 42 = 原写死的 0.42）
-              ["--bg-opacity" as string]: Math.max(
-                0,
-                Math.min(100, settings.downloadBgOpacity ?? 42),
-              ) / 100,
-              ["--bg-scale" as string]: 1.03,
               backgroundImage: `url("${downloadBackgroundUrl}")`,
+              filter: "blur(30px) saturate(1.15) brightness(0.60)",
+              opacity: Math.max(
+                0.12,
+                Math.min(
+                  0.42,
+                  ((settings.downloadBgOpacity ?? 42) / 100) * 0.42,
+                ),
+              ),
+              transform: "scale(1.06)",
             }}
           />
         )}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_16%,rgba(255,255,255,0.20),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(255,255,255,0.12),transparent_30%),linear-gradient(135deg,rgba(255,250,245,0.38),rgba(248,250,252,0.22)_52%,rgba(255,241,242,0.24))] dark:bg-[radial-gradient(circle_at_18%_16%,rgba(244,63,94,0.08),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(14,165,233,0.08),transparent_30%),linear-gradient(135deg,rgba(2,6,23,0.58),rgba(15,23,42,0.42)_52%,rgba(25,7,17,0.38))]" />
-        {/* 暗化蒙层：可调的额外黑色压暗，默认 0 = 与升级前外观完全一致 */}
+        {/* 虚现暗夜蒙层：柔和暗角 + 居中若隐若现透光 */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_20%,rgba(15,23,42,0.15)_0%,rgba(7,9,14,0.70)_55%,#07090e_100%)]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#07090e]/20 via-[#07090e]/50 to-[#07090e]/95" />
+        {/* 暗化蒙层：可调的额外压暗 */}
         {settings.downloadBgDim !== undefined && settings.downloadBgDim > 0 && (
           <div
             className="absolute inset-0 bg-black"
             style={{
-              opacity: Math.max(0, Math.min(100, settings.downloadBgDim)) / 200,
+              opacity: Math.max(0, Math.min(100, settings.downloadBgDim)) / 150,
             }}
           />
         )}
       </div>
+
       <PageLoader active={!storageLoaded} label="加载任务列表" />
 
-      {/* ====== 下载主视口：状态指示条 / 工具三卡 / 分类 Tab / 任务列表 ====== */}
-      <div className="relative z-10 flex-1 flex h-full flex-col min-h-0 bg-white/80 p-4 rounded-2xl">
-        {/* 1. 状态指示条（精炼克制，干净明了） */}
-        <div className="shrink-0 flex items-center justify-between flex-wrap gap-3 ">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-xl font-bold tracking-tight text-text-1 flex items-center gap-2 truncate">
+      {/* ====== 下载主视口容器（全黑通透暗夜玻璃） ====== */}
+      <div className="relative z-10 flex-1 flex h-full flex-col min-h-0 bg-[#0c1017]/80 backdrop-blur-2xl border border-white/[0.08] shadow-2xl rounded-2xl overflow-hidden">
+        {/* 1. 顶栏：标题 + 实时状态 + 聚合快捷操作 */}
+        <div className="shrink-0 px-5 pt-4 pb-3 border-b border-white/[0.06] flex items-center justify-between flex-wrap gap-3">
+          {/* 左侧：标题与硬件概况 */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <h1 className="text-base sm:text-lg font-bold tracking-tight text-white flex items-center gap-2 truncate">
                 下载管理
-                <span className="w-1.5 h-1.5 rounded-full bg-accent-500 shrink-0" />
               </h1>
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-accent-500/15 text-accent-500 dark:text-accent-300 border border-accent-500/20 shrink-0">
-                极速模式就绪
-              </span>
+              <div className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>引擎就绪</span>
+              </div>
             </div>
-            <p className="text-xs text-text-3 mt-1 flex items-center gap-2 font-mono-num">
-              <span>{taskCounts.downloading} 正在下载</span>
-              <span className="opacity-20">·</span>
-              <span>{taskCounts.pending} 排队中</span>
-              <span className="opacity-20">·</span>
-              <span>
-                SSD 剩余 {diskFree != null ? `${(diskFree / 1024 ** 3).toFixed(0)} GB` : "—"}
-              </span>
-            </p>
+
+            <div className="hidden md:flex items-center gap-2 text-xs text-slate-400 pl-2 border-l border-white/10 font-mono-num">
+              <span>{taskCounts.downloading} 下载中</span>
+              <span className="text-white/20">·</span>
+              <span>{taskCounts.pending} 排队</span>
+              <span className="text-white/20">·</span>
+              <span>SSD 剩余 {diskFree != null ? `${(diskFree / 1024 ** 3).toFixed(0)} GB` : "—"}</span>
+            </div>
           </div>
 
-          {/* 速率看板与操作按钮 */}
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="text-right">
-              <span className="text-[11px] text-text-3 block">当前下行速率</span>
-              <span className="font-mono-num text-lg font-bold text-accent-400">
+          {/* 右侧：下行速率指示胶囊 + 顶栏快捷操作 */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* 实时下行速率看板 */}
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.08]">
+              <Zap className={`w-3.5 h-3.5 ${totalSpeed > 0 ? "text-amber-400 fill-amber-400/20" : "text-slate-500"}`} />
+              <span className="text-[11px] text-slate-400">下行</span>
+              <span className="font-mono-num text-xs sm:text-sm font-semibold text-white">
                 {totalSpeed > 0 ? formatSpeed(totalSpeed) : "0 KB/s"}
               </span>
             </div>
-            <div className="h-8 w-px bg-black/10 dark:bg-white/10 mx-1" />
+
+            {/* 一键全部暂停 / 全部继续 */}
+            {taskCounts.downloading > 0 ? (
+              <button
+                type="button"
+                onClick={handlePauseAll}
+                className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] active:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-slate-200 transition flex items-center gap-1.5 cursor-pointer"
+                title="暂停所有正在下载的任务"
+              >
+                <Pause className="w-3.5 h-3.5 text-slate-400" />
+                <span>全部暂停</span>
+              </button>
+            ) : taskCounts.pending > 0 ? (
+              <button
+                type="button"
+                onClick={handleResumeAll}
+                className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] active:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-slate-200 transition flex items-center gap-1.5 cursor-pointer"
+                title="继续下载排队中的任务"
+              >
+                <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400/20" />
+                <span>全部继续</span>
+              </button>
+            ) : null}
+
+            {/* 剪贴板快速导入 */}
             <button
               type="button"
-              onClick={handlePauseAll}
-              className="px-3.5 py-2 rounded-xl anime-glass-card text-xs text-text-2 hover:text-text-1 transition flex items-center gap-1.5 cursor-pointer"
+              onClick={handleQuickPasteAndCreate}
+              className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] active:bg-white/[0.1] border border-white/[0.08] text-xs font-medium text-slate-200 transition flex items-center gap-1.5 cursor-pointer"
+              title="读取剪贴板链接并新建"
             >
-              <Pause className="w-3.5 h-3.5" />
-              <span>全部暂停</span>
+              <ClipboardPaste className="w-3.5 h-3.5 text-slate-400" />
+              <span>粘贴导入</span>
             </button>
+
+            {/* 新建任务主按钮（纯色极简质感，无渐变） */}
             <button
               type="button"
               onClick={() => {
                 setInitialTaskUrl("");
                 setShowNewTaskModal(true);
               }}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-accent-500 to-pink-500 hover:opacity-95 text-xs font-semibold text-white shadow-lg shadow-accent-500/20 transition flex items-center gap-1.5 cursor-pointer"
+              className="px-3.5 py-1.5 rounded-xl bg-accent-500 hover:bg-accent-600 active:bg-accent-700 text-xs font-semibold text-white shadow-sm transition flex items-center gap-1.5 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>新建任务</span>
@@ -1458,119 +1587,168 @@ export function DownloadPage({
           </div>
         </div>
 
-        {/* 2. 三块轻量通透工具卡（常驻） */}
-        <div className="shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-4 pt-5 pb-5">
-          {/* 卡 1：番号 / 直链新建 */}
-          <div
-            onClick={() => {
-              setInitialTaskUrl("");
-              setShowNewTaskModal(true);
-            }}
-            className="anime-glass-card rounded-2xl p-4 cursor-pointer transition-all duration-300 group"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="w-8 h-8 rounded-xl bg-accent-500/20 text-accent-400 flex items-center justify-center">
-                <Link className="w-4 h-4" />
-              </div>
-              <span className="text-[11px] text-accent-400/80 group-hover:text-accent-400 flex items-center gap-0.5 transition">
-                点击输入 <ChevronRight className="w-3 h-3" />
-              </span>
+        {/* 2. 状态过滤器 + 快捷搜索 + 极速直链条（取代笨重三卡，释放纵向空间） */}
+        <div className="shrink-0 px-5 pt-3 pb-3 space-y-2.5 border-b border-white/[0.04] bg-white/[0.01]">
+          {/* 上行：5 态 Tab 分类 + 搜索框 + 辅助管理动作 */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            {/* 分类过滤器 */}
+            <div className="flex items-center gap-1 bg-black/40 p-1 rounded-xl border border-white/[0.06]">
+              <button
+                type="button"
+                onClick={() => setListFilter("all")}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
+                  listFilter === "all"
+                    ? "bg-white/[0.12] text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
+                }`}
+              >
+                <span>全部</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 text-slate-300">
+                  {taskCounts.all}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setListFilter("downloading")}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
+                  listFilter === "downloading"
+                    ? "bg-white/[0.12] text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
+                }`}
+              >
+                <span>下载中</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-accent-500/20 text-accent-300">
+                  {taskCounts.downloading}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setListFilter("pending")}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
+                  listFilter === "pending"
+                    ? "bg-white/[0.12] text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
+                }`}
+              >
+                <span>排队中</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/10 text-slate-400">
+                  {taskCounts.pending}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setListFilter("completed")}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
+                  listFilter === "completed"
+                    ? "bg-white/[0.12] text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
+                }`}
+              >
+                <span>已完成</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300">
+                  {taskCounts.completed}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setListFilter("failed")}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer flex items-center gap-1.5 ${
+                  listFilter === "failed"
+                    ? "bg-white/[0.12] text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
+                }`}
+              >
+                <span>失败/异常</span>
+                {taskCounts.failed > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-rose-500/20 text-rose-300 font-semibold">
+                    {taskCounts.failed}
+                  </span>
+                )}
+              </button>
             </div>
-            <div className="text-sm font-semibold text-text-1">手动输入直链 / 番号</div>
-            <div className="text-xs text-text-3 mt-0.5 truncate">支持 M3U8、MP4 及番号解析</div>
+
+            {/* 右侧：搜索过滤与批量管理 */}
+            <div className="flex items-center gap-2">
+              {/* 搜索框 */}
+              <div className="relative flex items-center">
+                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 pointer-events-none" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="搜索任务名、番号或直链..."
+                  className="w-44 sm:w-56 h-8 pl-8 pr-7 text-xs rounded-xl bg-black/30 border border-white/[0.08] text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-accent-500/60 transition"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2 text-slate-500 hover:text-slate-300 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* 重试失败任务 */}
+              {taskCounts.failed > 0 && (
+                <button
+                  type="button"
+                  onClick={handleRetryAllFailed}
+                  className="h-8 px-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/25 text-xs text-rose-300 transition flex items-center gap-1 cursor-pointer"
+                  title="重新下载所有失败任务"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>重试失败</span>
+                </button>
+              )}
+
+              {/* 清理已完成 */}
+              {taskCounts.completed > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearCompleted}
+                  className="h-8 px-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] border border-white/[0.08] text-xs text-slate-400 hover:text-slate-200 transition flex items-center gap-1 cursor-pointer"
+                  title="仅清理列表中已完成的记录，不删除本地文件"
+                >
+                  <Trash2 className="w-3 h-3 text-slate-500" />
+                  <span>清空已完成</span>
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* 卡 2：剪贴板感知导入 */}
-          <div
-            onClick={async () => {
-              try {
-                const clip = await navigator.clipboard.readText();
-                if (clip && (clip.startsWith("http://") || clip.startsWith("https://") || clip.includes(".m3u8"))) {
-                  setInitialTaskUrl(clip.trim());
-                } else {
-                  setInitialTaskUrl("");
-                }
-              } catch {
-                setInitialTaskUrl("");
-              }
-              setShowNewTaskModal(true);
-            }}
-            className="anime-glass-card rounded-2xl p-4 cursor-pointer transition-all duration-300 group relative overflow-hidden"
+          {/* 下行：极速直链/番号快速输入通道 */}
+          <form
+            onSubmit={handleQuickInputSubmit}
+            className="flex items-center gap-2 p-1 pl-3 rounded-xl bg-black/40 border border-white/[0.06] focus-within:border-accent-500/50 transition"
           >
-            <span className="absolute top-3 right-3 flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
-            </span>
-            <div className="flex items-center justify-between mb-2">
-              <div className="w-8 h-8 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center">
-                <ClipboardPaste className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-sm font-semibold text-text-1">剪贴板极速导入</div>
-            <div className="text-xs text-text-3 mt-0.5 truncate">已自动识别复制的播放链接</div>
-          </div>
-
-          {/* 卡 3：队列与批量 */}
-          <div
-            onClick={() => {
-              setInitialTaskUrl("");
-              setShowNewTaskModal(true);
-            }}
-            className="anime-glass-card rounded-2xl p-4 cursor-pointer transition-all duration-300 group"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="w-8 h-8 rounded-xl bg-violet-500/20 text-violet-400 flex items-center justify-center">
-                <Layers className="w-4 h-4" />
-              </div>
-              <span className="text-[11px] text-text-3 group-hover:text-text-1 transition flex items-center gap-0.5">
-                批量 <ChevronRight className="w-3 h-3" />
-              </span>
-            </div>
-            <div className="text-sm font-semibold text-text-1">队列与批量下载</div>
-            <div className="text-xs text-text-3 mt-0.5 truncate">多线程并发，下完自动转码入库</div>
-          </div>
+            <Link className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <input
+              type="text"
+              value={quickInput}
+              onChange={(e) => setQuickInput(e.target.value)}
+              placeholder="在此粘贴 M3U8、MP4 播放直链或番号，按回车快速创建下载任务..."
+              className="flex-1 bg-transparent text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={!quickInput.trim()}
+              className="px-3 py-1 rounded-lg bg-white/[0.08] hover:bg-white/[0.14] disabled:opacity-30 disabled:cursor-not-allowed text-xs font-medium text-slate-200 transition flex items-center gap-1 shrink-0 cursor-pointer"
+            >
+              <span>解析创建</span>
+              <ChevronRight className="w-3 h-3" />
+            </button>
+          </form>
         </div>
 
-        {/* 3. 小分类 Tab（按状态过滤） */}
-        <div className="shrink-0 flex items-center justify-between px-7 pb-3">
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setListFilter("downloading")}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${listFilter === "downloading"
-                ? "bg-black/10 dark:bg-white/10 text-text-1"
-                : "text-text-3 hover:text-text-1"
-                }`}
-            >
-              正在下载 ({taskCounts.downloading})
-            </button>
-            <button
-              type="button"
-              onClick={() => setListFilter("pending")}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${listFilter === "pending"
-                ? "bg-black/10 dark:bg-white/10 text-text-1"
-                : "text-text-3 hover:text-text-1"
-                }`}
-            >
-              排队中 ({taskCounts.pending})
-            </button>
-            <button
-              type="button"
-              onClick={() => setListFilter("completed")}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${listFilter === "completed"
-                ? "bg-black/10 dark:bg-white/10 text-text-1"
-                : "text-text-3 hover:text-text-1"
-                }`}
-            >
-              已完成 ({taskCounts.completed})
-            </button>
-          </div>
-          <span className="text-xs text-text-3">按添加时间排序</span>
-        </div>
-
-        {/* 4. 任务卡片列表滚动区 */}
-        <div className="flex-1 overflow-y-auto px-7 pb-6 min-h-0">
-          <div className="flex flex-col gap-2.5">
+        {/* 3. 任务卡片列表滚动区 */}
+        <div className="flex-1 overflow-y-auto px-5 py-3 min-h-0">
+          <div className="flex flex-col gap-2">
             {statusFilteredTasks.map((task, index) => (
               <DownloadTaskRow
                 key={task.id}
@@ -1591,17 +1769,23 @@ export function DownloadPage({
           </div>
 
           {statusFilteredTasks.length === 0 && (
-            <div className="py-16 flex flex-col items-center justify-center text-center">
-              <div className="w-12 h-12 rounded-2xl bg-accent-500/10 border border-accent-500/20 flex items-center justify-center mb-3 text-accent-400">
+            <div className="py-20 flex flex-col items-center justify-center text-center">
+              <div className="w-12 h-12 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center mb-3 text-slate-500">
                 <Layers className="w-5 h-5" />
               </div>
-              <p className="font-bold text-sm text-text-1">
-                {tasks.length === 0 ? "还没有下载任务" : "该分类下暂无任务"}
-              </p>
-              <p className="text-xs text-text-3 mt-1">
+              <p className="font-semibold text-sm text-slate-300">
                 {tasks.length === 0
-                  ? "从上方工具卡或「新建任务」开始下载"
-                  : "切换其他分类看看，或新建一个任务"}
+                  ? "还没有任何下载任务"
+                  : searchQuery
+                  ? "未找到匹配的任务"
+                  : "当前分类下暂无任务"}
+              </p>
+              <p className="text-xs text-slate-500 mt-1 max-w-sm">
+                {tasks.length === 0
+                  ? "可在上方输入栏直接粘贴播放链接，或点击「新建任务」快速开始。"
+                  : searchQuery
+                  ? "请尝试输入其他关键词、番号或清空搜索条件。"
+                  : "切换其他分类标签查看，或在上方快速解析新建。"}
               </p>
             </div>
           )}

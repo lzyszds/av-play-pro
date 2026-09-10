@@ -318,7 +318,7 @@ export function SnapshotLibraryModal({
               <button
                 type="button"
                 onClick={openCreate}
-                className="w-full py-2 bg-gradient-to-r from-violet-500 to-violet-600 hover:from-violet-600 hover:to-violet-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-violet-500/10"
+                className="w-full py-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm shadow-violet-500/10"
               >
                 <Plus className="w-3.5 h-3.5" />
                 新建档案快照
@@ -541,7 +541,7 @@ export function SnapshotLibraryModal({
                         type="button"
                         onClick={() => handleRestore(selected.id, selected.encrypted ? diffPassword || undefined : undefined)}
                         disabled={restoring}
-                        className="flex-1 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm shadow-emerald-500/10"
+                        className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shadow-sm shadow-emerald-500/10"
                       >
                         <RotateCcw className={`w-4 h-4 ${restoring ? "animate-spin" : ""}`} />
                         {restoring ? "回滚中..." : "一键回滚到快照"}

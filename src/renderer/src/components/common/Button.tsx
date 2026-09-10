@@ -34,7 +34,7 @@ export interface ButtonProps
 
 const variantStyles: Record<ButtonVariant, string> = {
   primary:
-    "bg-gradient-to-r from-accent-500 to-accent-600 hover:from-accent-600 hover:to-accent-700 text-white font-bold border border-accent-500/40 shadow-sm shadow-accent-500/20 active:scale-[0.98]",
+    "bg-accent-500 hover:bg-accent-600 text-white font-bold border border-accent-600/30 shadow-sm shadow-accent-500/20 active:scale-[0.98]",
   secondary:
     "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 font-semibold shadow-2xs active:scale-[0.98]",
   outline:

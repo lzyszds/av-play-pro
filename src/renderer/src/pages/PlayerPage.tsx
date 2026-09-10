@@ -2326,7 +2326,7 @@ export function PlayerPage({
                 <Tooltip content="盲盒轮盘：随机抽取一部影片" placement="bottom">
                   <button
                     onClick={() => setLuckyOpen(true)}
-                    className="w-full h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-gradient-to-br from-pink-500 to-amber-500 text-white text-[10px] font-bold cursor-pointer hover:opacity-90 transition shadow-sm"
+                    className="w-full h-7 flex items-center justify-center gap-1 px-2 rounded-md bg-accent-500 hover:bg-accent-600 text-white text-[10px] font-bold cursor-pointer transition shadow-sm"
                   >
                     <Gift className="w-3 h-3 fill-current" />
                     抽奖

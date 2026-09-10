@@ -91,7 +91,7 @@ export const ResumePrompt: React.FC<ResumePromptProps> = ({
         <button
           type="button"
           onClick={onResume}
-          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold rounded-lg shadow-sm shadow-amber-500/20 transition cursor-pointer"
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg shadow-sm shadow-amber-500/20 transition cursor-pointer"
         >
           <Play className="w-3.5 h-3.5 fill-white" />
           从 {formatTime(currentTime)} 继续播放

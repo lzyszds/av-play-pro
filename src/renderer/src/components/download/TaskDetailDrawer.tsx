@@ -131,9 +131,9 @@ export function TaskDetailDrawer({
       <aside
         onClick={(e) => e.stopPropagation()}
         className="absolute right-0 top-0 h-full w-[420px] max-w-full flex flex-col overflow-hidden
-                   bg-white/98 dark:bg-slate-900/96 backdrop-blur-xl border-l
-                   border-accent-500/25 dark:border-accent-500/40
-                   shadow-2xl shadow-accent-500/20 anim-slide-right"
+                   bg-[#0c1017] dark:bg-[#0c1017] text-slate-100 backdrop-blur-2xl border-l
+                   border-white/10
+                   shadow-2xl shadow-black/80 anim-slide-right"
       >
         {/* 顶部封面带 */}
         <div className="relative h-40 w-full overflow-hidden bg-slate-900 shrink-0">
@@ -310,7 +310,7 @@ export function TaskDetailDrawer({
         </div>
 
         {/* 底部操作栏 */}
-        <div className="flex items-center justify-end gap-1.5 px-3 py-2 border-t border-slate-200/70 dark:border-slate-800/70 bg-white/60 dark:bg-slate-900/60">
+        <div className="flex items-center justify-end gap-1.5 px-3 py-2 border-t border-white/10 bg-[#080b11]/90">
           <button
             onClick={copyCommand}
             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition cursor-pointer"

@@ -1371,7 +1371,7 @@ export function SettingsPanel({
                       type="button"
                       onClick={handlePushToCloud}
                       disabled={pushing || pulling || !cloudSyncSecret.trim()}
-                      className="w-full py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer shadow-sm shadow-amber-500/10"
+                      className="w-full py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-40 cursor-pointer shadow-sm shadow-amber-500/10"
                     >
                       <UploadCloud className={`w-3.5 h-3.5 ${pushing ? "animate-bounce" : ""}`} />
                       {pushing ? "正在打包并上传..." : "立即备份到云端"}

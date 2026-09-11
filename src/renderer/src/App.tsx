@@ -567,7 +567,7 @@ export default function App() {
               }}
             />
           ) : (
-            <div className="w-full h-full bg-[#050506]" />
+            <div className="w-full h-full bg-[#2a2d33]" />
           )}
         </div>
         {currentPage === "discover" && (

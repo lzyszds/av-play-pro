@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
   X,
   Archive,
@@ -107,6 +108,7 @@ export function SnapshotLibraryModal({
   onClose,
   onAddSystemLog,
 }: SnapshotLibraryModalProps) {
+  useEscapeKey(onClose);
   const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -265,9 +267,9 @@ export function SnapshotLibraryModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-5xl overflow-hidden shadow-2xl flex flex-col h-[680px] anim-scale-in">
+      <div className="bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#3d424b] rounded-2xl w-full max-w-5xl overflow-hidden shadow-2xl flex flex-col h-[680px] anim-scale-in">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-[#3d424b] flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-[#33363d]/50">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-600 dark:text-violet-400">
               <Archive className="w-5 h-5" />
@@ -277,7 +279,7 @@ export function SnapshotLibraryModal({
                 <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">
                   私有档案快照库
                 </h2>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-[#3d424b] text-slate-600 dark:text-slate-300 font-mono">
                   {snapshots.length} 份快照
                 </span>
               </div>
@@ -292,7 +294,7 @@ export function SnapshotLibraryModal({
               <button
                 type="button"
                 onClick={() => loadSnapshots()}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#3d424b] transition cursor-pointer"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-violet-500" : ""}`} />
               </button>
@@ -302,7 +304,7 @@ export function SnapshotLibraryModal({
                 type="button"
                 onClick={onClose}
                 aria-label="关闭快照库"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#3d424b] transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -313,8 +315,8 @@ export function SnapshotLibraryModal({
         {/* Body */}
         <div className="flex flex-1 overflow-hidden">
           {/* Left: snapshot list */}
-          <div className="w-72 border-r border-slate-100 dark:border-slate-800 flex flex-col shrink-0">
-            <div className="p-3 border-b border-slate-100 dark:border-slate-800">
+          <div className="w-72 border-r border-slate-100 dark:border-[#3d424b] flex flex-col shrink-0">
+            <div className="p-3 border-b border-slate-100 dark:border-[#3d424b]">
               <button
                 type="button"
                 onClick={openCreate}
@@ -335,7 +337,7 @@ export function SnapshotLibraryModal({
                       value={newName}
                       onChange={(e) => setNewName(e.target.value)}
                       placeholder="如：折腾前的安全存档"
-                      className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-violet-500"
+                      className="w-full px-2.5 py-1.5 bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#4a505b] rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-violet-500"
                     />
                   </div>
                   <div className="space-y-1">
@@ -348,7 +350,7 @@ export function SnapshotLibraryModal({
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
                         placeholder="AES-256 加密"
-                        className="w-full pl-2.5 pr-8 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-violet-500"
+                        className="w-full pl-2.5 pr-8 py-1.5 bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#4a505b] rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-violet-500"
                       />
                       <button
                         type="button"
@@ -372,14 +374,14 @@ export function SnapshotLibraryModal({
                       value={newNote}
                       onChange={(e) => setNewNote(e.target.value)}
                       placeholder="记录这个快照的用途"
-                      className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-violet-500"
+                      className="w-full px-2.5 py-1.5 bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#4a505b] rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-violet-500"
                     />
                   </div>
                   <div className="flex gap-2 pt-0.5">
                     <button
                       type="button"
                       onClick={() => setCreating(false)}
-                      className="flex-1 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg text-[11px] font-semibold cursor-pointer"
+                      className="flex-1 py-1.5 bg-slate-100 dark:bg-[#3d424b] hover:bg-slate-200 dark:hover:bg-[#4a505b] text-slate-600 dark:text-slate-300 rounded-lg text-[11px] font-semibold cursor-pointer"
                     >
                       取消
                     </button>
@@ -396,7 +398,7 @@ export function SnapshotLibraryModal({
               )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-2 space-y-1.5 bg-slate-50/30 dark:bg-slate-950/40">
+            <div className="flex-1 overflow-y-auto p-2 space-y-1.5 bg-slate-50/30 dark:bg-[#212429]/40">
               {snapshots.length === 0 && !loading && (
                 <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 gap-2 p-4 text-center">
                   <FolderArchive className="w-8 h-8 stroke-[1.5]" />
@@ -421,7 +423,7 @@ export function SnapshotLibraryModal({
                     className={`w-full text-left p-3 rounded-xl border transition cursor-pointer ${
                       active
                         ? "border-violet-500/40 bg-violet-500/5 dark:bg-violet-500/10"
-                        : "border-slate-200/70 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-violet-400/40"
+                        : "border-slate-200/70 dark:border-[#3d424b] bg-white dark:bg-[#33363d] hover:border-violet-400/40"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -488,7 +490,7 @@ export function SnapshotLibraryModal({
                             {selected.fileCount} 项数据 · {formatBytes(selected.size)}
                           </p>
                           {selected.note && (
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200/60 dark:border-slate-800 rounded-lg px-3 py-2">
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 bg-slate-50 dark:bg-[#3d424b]/50 border border-slate-200/60 dark:border-[#3d424b] rounded-lg px-3 py-2">
                               {selected.note}
                             </p>
                           )}
@@ -505,7 +507,7 @@ export function SnapshotLibraryModal({
                         {selected.files.map((f) => (
                           <div
                             key={f.key}
-                            className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200/70 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30"
+                            className="flex items-center justify-between p-2.5 rounded-lg border border-slate-200/70 dark:border-[#3d424b] bg-slate-50/50 dark:bg-[#3d424b]/30"
                           >
                             <div className="flex items-center gap-2 min-w-0">
                               <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
@@ -532,7 +534,7 @@ export function SnapshotLibraryModal({
                         type="button"
                         onClick={() => handlePreviewDiff(selected.id, selected.encrypted ? diffPassword || undefined : undefined)}
                         disabled={diffLoading}
-                        className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        className="flex-1 py-2.5 bg-slate-100 dark:bg-[#3d424b] hover:bg-slate-200 dark:hover:bg-[#4a505b] text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                       >
                         <FileDiff className="w-4 h-4 text-violet-500" />
                         {diffLoading ? "计算差异中..." : "预览与当前差异"}
@@ -565,7 +567,7 @@ export function SnapshotLibraryModal({
                           value={diffPassword}
                           onChange={(e) => setDiffPassword(e.target.value)}
                           placeholder="输入此快照的加密密码后执行预览/回滚"
-                          className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                          className="flex-1 px-3 py-1.5 bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#4a505b] rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-amber-500"
                         />
                       </div>
                     )}
@@ -576,7 +578,7 @@ export function SnapshotLibraryModal({
 
             {view === "diff" && (
               <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
+                <div className="px-6 py-3 border-b border-slate-100 dark:border-[#3d424b] flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-[#33363d]/50">
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -584,7 +586,7 @@ export function SnapshotLibraryModal({
                         setView("detail");
                         setDiffPassword("");
                       }}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#3d424b] transition cursor-pointer"
                       title="返回详情"
                     >
                       <X className="w-4 h-4" />
@@ -605,7 +607,7 @@ export function SnapshotLibraryModal({
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-5 space-y-2.5 bg-slate-50/30 dark:bg-slate-950/40">
+                <div className="flex-1 overflow-y-auto p-5 space-y-2.5 bg-slate-50/30 dark:bg-[#212429]/40">
                   {diffItems.length === 0 && (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 gap-2">
                       <CheckCircle2 className="w-8 h-8 stroke-[1.5]" />
@@ -618,7 +620,7 @@ export function SnapshotLibraryModal({
                     return (
                       <div
                         key={item.key}
-                        className="p-3.5 rounded-xl border border-slate-200/70 dark:border-slate-800 bg-white dark:bg-slate-900"
+                        className="p-3.5 rounded-xl border border-slate-200/70 dark:border-[#3d424b] bg-white dark:bg-[#33363d]"
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
@@ -706,7 +708,7 @@ export function SnapshotLibraryModal({
                     value={diffPassword}
                     onChange={(e) => setDiffPassword(e.target.value)}
                     placeholder="输入此快照的加密密码后重试"
-                    className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                    className="flex-1 px-3 py-1.5 bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#4a505b] rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-amber-500"
                   />
                   <button
                     type="button"

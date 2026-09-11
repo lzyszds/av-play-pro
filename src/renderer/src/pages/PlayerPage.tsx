@@ -1639,11 +1639,23 @@ export function PlayerPage({
     if (!videoEl) return;
     const updateProgress = () =>
       setPlayProgress(videoEl.duration ? (videoEl.currentTime / videoEl.duration) * 100 : 0);
+    // 延迟 400ms 再显示缓冲提示：本地视频每次 seek 都会瞬时触发 waiting
+    // （解码器定位，几十毫秒即恢复），提示层闪现就是「快进有东西闪」的元凶；
+    // 只有真正持续缓冲才提示，恢复播放（playing）即取消。
+    let busyTimer: number | null = null;
     const waiting = () => {
-      setPlaybackBusy(true);
-      setPlaybackNotice("正在缓冲画面…");
+      if (busyTimer != null) window.clearTimeout(busyTimer);
+      busyTimer = window.setTimeout(() => {
+        busyTimer = null;
+        setPlaybackBusy(true);
+        setPlaybackNotice("正在缓冲画面…");
+      }, 400);
     };
     const playing = () => {
+      if (busyTimer != null) {
+        window.clearTimeout(busyTimer);
+        busyTimer = null;
+      }
       setPlaybackBusy(false);
       setPlaybackNotice(null);
     };
@@ -1657,6 +1669,7 @@ export function PlayerPage({
       videoEl.removeEventListener("waiting", waiting);
       videoEl.removeEventListener("playing", playing);
       videoEl.removeEventListener("ended", ended);
+      if (busyTimer != null) window.clearTimeout(busyTimer);
     };
   }, [videoEl]);
 
@@ -2074,7 +2087,7 @@ export function PlayerPage({
                 />
               </div>
             ) : (
-              <div className="absolute inset-0 isolate flex items-center justify-center overflow-hidden bg-[#050506] text-white">
+              <div className="absolute inset-0 isolate flex items-center justify-center overflow-hidden bg-[#2a2d33] text-white">
                 <div aria-hidden="true" className="absolute inset-0 opacity-70 [background-image:linear-gradient(rgba(255,255,255,0.028)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.028)_1px,transparent_1px)] [background-size:32px_32px]" />
                 <div aria-hidden="true" className="absolute h-[28rem] w-[28rem] rounded-full bg-rose-500/10 blur-[110px]" />
                 <div className="relative flex max-w-sm flex-col items-center px-7 text-center">
@@ -2603,6 +2616,7 @@ export function PlayerPage({
           videos={filteredVideos}
           selectedVideoId={selectedVideoId}
           onPlay={handleLoadLocalVideo}
+          onDelete={setDeleteTarget}
         />
       )}
 
@@ -3048,11 +3062,13 @@ function PlayerLayoutRail({
   videos,
   selectedVideoId,
   onPlay,
+  onDelete,
 }: {
   layout: PlayerLayout;
   videos: VideoItem[];
   selectedVideoId: string | null;
   onPlay: (video: VideoItem, index: number) => void;
+  onDelete?: (video: VideoItem) => void;
 }) {
   const selected = videos.find((video) => video.id === selectedVideoId);
   const railClass =
@@ -3110,6 +3126,23 @@ function PlayerLayoutRail({
               <div className="truncate text-[10px] font-bold text-white">{video.name}</div>
               <div className="text-[9px] text-slate-300">{video.resolution}</div>
             </div>
+            {onDelete && (
+              <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {onDelete && (
+                  <span
+                    role="button"
+                    title="删除"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDelete(video);
+                    }}
+                    className="p-1 rounded-md bg-black/60 text-white hover:text-rose-400 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </span>
+                )}
+              </div>
+            )}
           </button>
         ))}
       </div>

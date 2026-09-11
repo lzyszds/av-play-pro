@@ -43,7 +43,7 @@ function getLogLevelBadge(level: string): string {
     case "DEBUG":
       return "bg-sky-50/70 text-sky-600 border-sky-100 dark:bg-sky-500/10 dark:border-sky-500/20 dark:text-sky-400";
     default:
-      return "bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400";
+      return "bg-slate-100 text-slate-500 border-slate-200 dark:bg-[#3d424b] dark:border-[#4a505b] dark:text-slate-400";
   }
 }
 

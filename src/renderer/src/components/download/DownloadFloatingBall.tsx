@@ -37,7 +37,7 @@ export function DownloadFloatingBall({
 
   const popover = (
     <div>
-      <div className="px-4 py-3 border-b border-slate-100/70 dark:border-slate-800/70 flex items-center justify-between text-[11px]">
+      <div className="px-4 py-3 border-b border-slate-100/70 dark:border-[#3d424b]/70 flex items-center justify-between text-[11px]">
         <span className="font-bold text-slate-600 dark:text-slate-300">
           {downloading.length} 下载中 · {pending.length} 排队
         </span>
@@ -63,7 +63,7 @@ export function DownloadFloatingBall({
                 onJumpToTask(t.id);
                 setOpen(false);
               }}
-              className="w-full text-left px-4 py-3 border-b border-slate-100/60 dark:border-slate-800/60 last:border-b-0 hover:bg-sky-50/60 dark:hover:bg-sky-500/10 transition cursor-pointer"
+              className="w-full text-left px-4 py-3 border-b border-slate-100/60 dark:border-[#3d424b]/60 last:border-b-0 hover:bg-sky-50/60 dark:hover:bg-sky-500/10 transition cursor-pointer"
               title="点击跳转到此任务卡片"
             >
               <div className="flex items-center justify-between gap-2">
@@ -74,7 +74,7 @@ export function DownloadFloatingBall({
                   {pct.toFixed(0)}%
                 </span>
               </div>
-              <div className="mt-2 h-1.5 rounded-full bg-slate-200/80 dark:bg-slate-700/60 overflow-hidden">
+              <div className="mt-2 h-1.5 rounded-full bg-slate-200/80 dark:bg-[#4a505b]/60 overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-sky-400 via-sky-500 to-indigo-500 transition-[width] duration-300"
                   style={{ width: `${pct}%` }}
@@ -110,10 +110,10 @@ export function DownloadFloatingBall({
                   onJumpToTask(t.id);
                   setOpen(false);
                 }}
-                className="w-full text-left px-4 py-1.5 text-[11px] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition cursor-pointer truncate"
+                className="w-full text-left px-4 py-1.5 text-[11px] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-[#3d424b]/50 transition cursor-pointer truncate"
                 title="点击跳转"
               >
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 mr-2 align-middle" />
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-[#565d69] mr-2 align-middle" />
                 {t.name}
               </button>
             ))}

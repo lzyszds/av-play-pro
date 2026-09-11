@@ -66,7 +66,7 @@ export function NumberControl({
                 e.currentTarget.blur();
               }
             }}
-            className="h-8 w-full rounded-md border-hairline bg-panel dark:bg-[#0b090b] px-3 pr-9 text-center font-mono text-[12px] font-semibold text-text-1 focus:border-accent-500 focus:ring-1 focus:ring-accent-500"
+            className="h-8 w-full rounded-md border-hairline bg-panel dark:bg-[#2a2d33] px-3 pr-9 text-center font-mono text-[12px] font-semibold text-text-1 focus:border-accent-500 focus:ring-1 focus:ring-accent-500"
           />
           <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-text-3">
             {suffix}

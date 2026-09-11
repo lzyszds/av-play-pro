@@ -126,7 +126,7 @@ export function Dropdown<T extends string>({
             }}
             className="z-[1000] anim-scale-in origin-top-right"
           >
-            <ul className="py-1 rounded-lg border border-hairline bg-[#eee] dark:bg-[#161016] shadow-xl shadow-black/15 dark:shadow-black/50 max-h-64 overflow-y-auto drop-scrollbar">
+            <ul className="py-1 rounded-lg border border-hairline bg-[#eee] dark:bg-[#33363d] shadow-xl shadow-black/15 dark:shadow-black/50 max-h-64 overflow-y-auto drop-scrollbar">
               {options.map((opt) => {
                 const active = opt.value === value;
                 return (

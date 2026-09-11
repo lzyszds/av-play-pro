@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
   CheckCircle2,
   XCircle,
@@ -51,7 +52,7 @@ function Row({
           : { icon: <XCircle className="w-4 h-4 text-rose-500" />, ring: "border-rose-500/40 bg-rose-500/5" };
   return (
     <div className={`rounded-xl border p-3 flex items-start gap-3 ${tone.ring}`}>
-      <div className="shrink-0 w-7 h-7 rounded-lg bg-white/70 dark:bg-slate-900/60 border border-slate-200/70 dark:border-slate-700 flex items-center justify-center">
+      <div className="shrink-0 w-7 h-7 rounded-lg bg-white/70 dark:bg-[#33363d]/60 border border-slate-200/70 dark:border-[#4a505b] flex items-center justify-center">
         {icon}
       </div>
       <div className="min-w-0 flex-1">
@@ -68,6 +69,7 @@ function Row({
 }
 
 export const FirstRunGuide: React.FC<Props> = ({ settings, onSettingsChange, onDone, onClose }) => {
+  useEscapeKey(onClose);
   const [checks, setChecks] = useState<CheckState>({
     ffmpeg: "none",
     videoDir: "warn",
@@ -127,7 +129,7 @@ export const FirstRunGuide: React.FC<Props> = ({ settings, onSettingsChange, onD
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm select-none">
-      <div className="w-[min(92vw,640px)] max-h-[88vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl p-6 space-y-5">
+      <div className="w-[min(92vw,640px)] max-h-[88vh] overflow-y-auto rounded-2xl bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#4a505b] shadow-2xl p-6 space-y-5">
         <div className="flex items-start gap-3">
           <div className="shrink-0 w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-rose-500 text-white flex items-center justify-center shadow-lg shadow-amber-500/20">
             <Sparkles className="w-5 h-5" />
@@ -151,7 +153,7 @@ export const FirstRunGuide: React.FC<Props> = ({ settings, onSettingsChange, onD
               <button
                 type="button"
                 onClick={() => pickDir("video_path")}
-                className="mt-2 inline-flex items-center gap-1.5 px-2.5 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-[11px] font-bold cursor-pointer transition"
+                className="mt-2 inline-flex items-center gap-1.5 px-2.5 h-7 rounded-lg bg-slate-100 dark:bg-[#3d424b] hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-[11px] font-bold cursor-pointer transition"
               >
                 <FolderOpen className="w-3.5 h-3.5" />
                 选择目录
@@ -169,7 +171,7 @@ export const FirstRunGuide: React.FC<Props> = ({ settings, onSettingsChange, onD
               <button
                 type="button"
                 onClick={() => pickDir("temp_path")}
-                className="mt-2 inline-flex items-center gap-1.5 px-2.5 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-[11px] font-bold cursor-pointer transition"
+                className="mt-2 inline-flex items-center gap-1.5 px-2.5 h-7 rounded-lg bg-slate-100 dark:bg-[#3d424b] hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-[11px] font-bold cursor-pointer transition"
               >
                 <FolderOpen className="w-3.5 h-3.5" />
                 选择目录

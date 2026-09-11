@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
   Download,
   Trophy,
@@ -29,6 +30,7 @@ export const HolographicCardModal: React.FC<HolographicCardModalProps> = ({
   onClose,
   onAddSystemLog,
 }) => {
+  useEscapeKey(onClose);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [rotate, setRotate] = useState({ x: 0, y: 0 });
   const [glare, setGlare] = useState({ x: 50, y: 50, opacity: 0 });

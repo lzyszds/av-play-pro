@@ -63,10 +63,10 @@ const TIER_META: Record<
     label: "白银勋章",
     xp: 200,
     color: "#64748b",
-    badgeBg: "bg-slate-100 dark:bg-slate-800/60",
+    badgeBg: "bg-slate-100 dark:bg-[#3d424b]/60",
     badgeText: "text-slate-700 dark:text-slate-300",
-    badgeBorder: "border-slate-300 dark:border-slate-700",
-    ring: "border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/40",
+    badgeBorder: "border-slate-300 dark:border-[#4a505b]",
+    ring: "border-slate-300 dark:border-[#565d69] bg-slate-50 dark:bg-[#3d424b]/40",
     iconColor: "text-slate-600 dark:text-slate-300",
   },
   gold: {
@@ -206,13 +206,13 @@ export const AchievementsPanel: React.FC = () => {
   return (
     <div className="space-y-5 anim-fade-in">
       {/* 1. 顶部总览卡片：与整个 Stats 仪表盘无缝统一 */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+      <div className="bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] rounded-2xl p-6 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           {/* 左侧：总进度与等级 */}
           <div className="flex items-center gap-5">
             <div className="relative shrink-0">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 p-0.5 shadow-md shadow-amber-500/20 flex items-center justify-center">
-                <div className="w-full h-full rounded-[14px] bg-white dark:bg-slate-950 flex items-center justify-center text-amber-500">
+                <div className="w-full h-full rounded-[14px] bg-white dark:bg-[#212429] flex items-center justify-center text-amber-500">
                   <Trophy className="w-8 h-8" />
                 </div>
               </div>
@@ -236,7 +236,7 @@ export const AchievementsPanel: React.FC = () => {
 
               {/* 进度条 */}
               <div className="flex items-center gap-3 mt-3 w-64 max-w-full">
-                <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div className="flex-1 h-2 bg-slate-100 dark:bg-[#3d424b] rounded-full overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-amber-500 via-rose-500 to-amber-400 rounded-full transition-all duration-500 shadow-sm"
                     style={{ width: `${completionRate}%` }}
@@ -251,29 +251,29 @@ export const AchievementsPanel: React.FC = () => {
 
           {/* 右侧：4 大奖杯计数与一键检测 */}
           <div className="flex flex-wrap items-center gap-2.5">
-            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 p-2 rounded-xl">
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 shadow-xs">
+            <div className="flex items-center gap-2 bg-slate-50 dark:bg-[#3d424b]/40 border border-slate-200/60 dark:border-[#3d424b] p-2 rounded-xl">
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white dark:bg-[#33363d] border border-slate-200/50 dark:border-[#3d424b] shadow-xs">
                 <span className="text-xs">🏆</span>
                 <span className="text-[11px] font-bold text-cyan-600 dark:text-cyan-400">白金</span>
                 <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
                   {tierCounts.stats.platinum.unlocked}/{tierCounts.stats.platinum.total}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 shadow-xs">
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white dark:bg-[#33363d] border border-slate-200/50 dark:border-[#3d424b] shadow-xs">
                 <span className="text-xs">🥇</span>
                 <span className="text-[11px] font-bold text-amber-600 dark:text-amber-400">黄金</span>
                 <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
                   {tierCounts.stats.gold.unlocked}/{tierCounts.stats.gold.total}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 shadow-xs">
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white dark:bg-[#33363d] border border-slate-200/50 dark:border-[#3d424b] shadow-xs">
                 <span className="text-xs">🥈</span>
                 <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">白银</span>
                 <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
                   {tierCounts.stats.silver.unlocked}/{tierCounts.stats.silver.total}
                 </span>
               </div>
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 shadow-xs">
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white dark:bg-[#33363d] border border-slate-200/50 dark:border-[#3d424b] shadow-xs">
                 <span className="text-xs">🥉</span>
                 <span className="text-[11px] font-bold text-amber-700 dark:text-amber-600">青铜</span>
                 <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200">
@@ -298,7 +298,7 @@ export const AchievementsPanel: React.FC = () => {
       {/* 2. 筛选控制栏 */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         {/* 状态筛选 */}
-        <div className="flex items-center gap-1 p-1 bg-slate-200/60 dark:bg-slate-900/80 rounded-xl border border-slate-200/50 dark:border-slate-800 w-fit">
+        <div className="flex items-center gap-1 p-1 bg-slate-200/60 dark:bg-[#33363d]/80 rounded-xl border border-slate-200/50 dark:border-[#3d424b] w-fit">
           {[
             { id: "all", label: `全部 (${achievements.length})` },
             { id: "unlocked", label: `已达成 (${totalUnlocked})` },
@@ -310,7 +310,7 @@ export const AchievementsPanel: React.FC = () => {
               onClick={() => setStatusFilter(s.id as StatusFilter)}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
                 statusFilter === s.id
-                  ? "bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-xs"
+                  ? "bg-white dark:bg-[#3d424b] text-amber-600 dark:text-amber-400 shadow-xs"
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
               }`}
             >
@@ -336,7 +336,7 @@ export const AchievementsPanel: React.FC = () => {
               className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
                 tierFilter === t.id
                   ? "bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold"
-                  : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-[#3d424b]"
               }`}
             >
               {t.label}
@@ -356,10 +356,10 @@ export const AchievementsPanel: React.FC = () => {
           return (
             <div
               key={ach.id}
-              className={`relative overflow-hidden rounded-2xl border p-4.5 transition-all duration-200 bg-white dark:bg-slate-900 ${
+              className={`relative overflow-hidden rounded-2xl border p-4.5 transition-all duration-200 bg-white dark:bg-[#33363d] ${
                 ach.unlocked
-                  ? "border-slate-200/80 dark:border-slate-800 shadow-xs hover:border-amber-400/40 dark:hover:border-amber-500/40"
-                  : "border-slate-200/40 dark:border-slate-800/50 opacity-75 hover:opacity-100"
+                  ? "border-slate-200/80 dark:border-[#3d424b] shadow-xs hover:border-amber-400/40 dark:hover:border-amber-500/40"
+                  : "border-slate-200/40 dark:border-[#3d424b]/50 opacity-75 hover:opacity-100"
               }`}
             >
               <div className="flex items-start gap-3.5">
@@ -368,7 +368,7 @@ export const AchievementsPanel: React.FC = () => {
                   className={`w-12 h-12 rounded-xl border flex items-center justify-center shrink-0 transition-colors ${
                     ach.unlocked
                       ? meta.ring
-                      : "border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800/40 text-slate-400"
+                      : "border-slate-200 dark:border-[#3d424b] bg-slate-100 dark:bg-[#3d424b]/40 text-slate-400"
                   }`}
                 >
                   {ach.unlocked ? (
@@ -416,7 +416,7 @@ export const AchievementsPanel: React.FC = () => {
                   </p>
 
                   {/* 底部进度或达成日期 */}
-                  <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px]">
+                  <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-[#3d424b]/80 flex items-center justify-between text-[11px]">
                     {ach.unlocked ? (
                       <span className="text-slate-400 font-mono text-[10px]">
                         达成时间：{ach.unlockedAt ? new Date(ach.unlockedAt).toLocaleDateString() : "近期达成"}
@@ -429,7 +429,7 @@ export const AchievementsPanel: React.FC = () => {
                             {currentVal} / {targetVal} {ach.unit || ""}
                           </span>
                         </div>
-                        <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div className="w-full h-1.5 bg-slate-100 dark:bg-[#3d424b] rounded-full overflow-hidden">
                           <div
                             className="h-full bg-amber-500 rounded-full transition-all duration-300"
                             style={{ width: `${pct}%` }}

@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
   Wrench,
   X,
@@ -59,6 +60,7 @@ export function RepairModal({
   onLog,
   onDone,
 }: RepairModalProps) {
+  useEscapeKey(onClose);
   const [fixCover, setFixCover] = useState(true);
   const [fixPreview, setFixPreview] = useState(true);
   const [fixSubtitle, setFixSubtitle] = useState(false);
@@ -336,8 +338,8 @@ export function RepairModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-[460px] max-w-[90vw] max-h-[90vh] flex flex-col anim-pop-in border border-slate-200 dark:border-slate-800">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-slate-800">
+      <div className="bg-white dark:bg-[#33363d] rounded-2xl shadow-2xl w-[460px] max-w-[90vw] max-h-[90vh] flex flex-col anim-pop-in border border-slate-200 dark:border-[#3d424b]">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 dark:border-[#3d424b]">
           <div className="flex items-center gap-2 min-w-0">
             <div className="p-1.5 rounded-md bg-amber-500">
               <Wrench className="w-3.5 h-3.5 text-white" />
@@ -352,7 +354,7 @@ export function RepairModal({
               disabled={running}
               onClick={onClose}
               aria-label="关闭修复窗口"
-              className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer disabled:opacity-40"
+              className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#3d424b] transition cursor-pointer disabled:opacity-40"
             >
               <X className="w-4 h-4" />
             </button>
@@ -416,7 +418,7 @@ export function RepairModal({
           </div>
 
           {(fixCover || fixPreview) && (
-            <div className="space-y-2 border-t border-slate-100 dark:border-slate-800 pt-3">
+            <div className="space-y-2 border-t border-slate-100 dark:border-[#3d424b] pt-3">
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 自定义来源（可选，留空走默认 CDN）
               </div>
@@ -426,7 +428,7 @@ export function RepairModal({
                   placeholder="封面 URL（图片直链）"
                   value={customCoverUrl}
                   onChange={(e) => setCustomCoverUrl(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-mono rounded-lg px-3 py-1.5 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 dark:focus:ring-amber-900/40"
+                  className="w-full bg-white dark:bg-[#3d424b] border border-slate-200 dark:border-[#4a505b] text-slate-700 dark:text-slate-200 text-[11px] font-mono rounded-lg px-3 py-1.5 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 dark:focus:ring-amber-900/40"
                 />
               )}
               {fixPreview && (
@@ -435,14 +437,14 @@ export function RepairModal({
                   placeholder="预览视频 URL（mp4 直链）"
                   value={customPreviewUrl}
                   onChange={(e) => setCustomPreviewUrl(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-mono rounded-lg px-3 py-1.5 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 dark:focus:ring-amber-900/40"
+                  className="w-full bg-white dark:bg-[#3d424b] border border-slate-200 dark:border-[#4a505b] text-slate-700 dark:text-slate-200 text-[11px] font-mono rounded-lg px-3 py-1.5 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100 dark:focus:ring-amber-900/40"
                 />
               )}
             </div>
           )}
 
           {fixSubtitle && (
-            <div className="space-y-2 border-t border-slate-100 dark:border-slate-800 pt-3">
+            <div className="space-y-2 border-t border-slate-100 dark:border-[#3d424b] pt-3">
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 字幕生成参数
               </div>
@@ -454,7 +456,7 @@ export function RepairModal({
                     onChange={(e) =>
                       setWhisperModel(e.target.value as WhisperModel)
                     }
-                    className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-[11px]"
+                    className="bg-white dark:bg-[#3d424b] border border-slate-200 dark:border-[#4a505b] rounded-lg px-2 py-1.5 text-[11px]"
                   >
                     {WHISPER_MODELS.map((m) => (
                       <option key={m} value={m}>
@@ -470,7 +472,7 @@ export function RepairModal({
                     value={whisperLang}
                     onChange={(e) => setWhisperLang(e.target.value)}
                     placeholder="auto / ja / zh / en"
-                    className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 text-[11px] font-mono"
+                    className="bg-white dark:bg-[#3d424b] border border-slate-200 dark:border-[#4a505b] rounded-lg px-2 py-1.5 text-[11px] font-mono"
                   />
                 </label>
               </div>
@@ -489,7 +491,7 @@ export function RepairModal({
             fixThumbs ||
             fixSubtitle) && (
             <div
-              className="space-y-2.5 border-t border-slate-100 dark:border-slate-800 pt-3"
+              className="space-y-2.5 border-t border-slate-100 dark:border-[#3d424b] pt-3"
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
             >
@@ -560,7 +562,7 @@ export function RepairModal({
           )}
         </div>
 
-        <div className="flex gap-2 px-5 py-3 border-t border-slate-100 dark:border-slate-800">
+        <div className="flex gap-2 px-5 py-3 border-t border-slate-100 dark:border-[#3d424b]">
           <Button
             variant="secondary"
             size="md"
@@ -649,7 +651,7 @@ const ConcRow = React.memo(function ConcRow({
               onChange(next);
             }}
             aria-label="减少并发数"
-            className="w-6 h-6 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 cursor-pointer text-xs font-bold shrink-0"
+            className="w-6 h-6 rounded bg-slate-100 dark:bg-[#3d424b] text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#4a505b] disabled:opacity-40 cursor-pointer text-xs font-bold shrink-0"
           >
             −
           </button>
@@ -664,7 +666,7 @@ const ConcRow = React.memo(function ConcRow({
           onValueChange={(v) => setLocalValue(v[0])}
           onValueCommit={(v) => onChange(v[0])}
         >
-          <Slider.Track className="bg-slate-200 dark:bg-slate-700 relative grow rounded-full h-1.5 slider-track-smooth">
+          <Slider.Track className="bg-slate-200 dark:bg-[#4a505b] relative grow rounded-full h-1.5 slider-track-smooth">
             <Slider.Range className="absolute bg-amber-500 rounded-full h-full" />
           </Slider.Track>
           <Slider.Thumb
@@ -682,7 +684,7 @@ const ConcRow = React.memo(function ConcRow({
               onChange(next);
             }}
             aria-label="增加并发数"
-            className="w-6 h-6 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 disabled:opacity-40 cursor-pointer text-xs font-bold shrink-0"
+            className="w-6 h-6 rounded bg-slate-100 dark:bg-[#3d424b] text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#4a505b] disabled:opacity-40 cursor-pointer text-xs font-bold shrink-0"
           >
             +
           </button>
@@ -710,7 +712,7 @@ function Toggle({
       className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-[11px] font-bold transition cursor-pointer ${
         checked
           ? "border-amber-400 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300"
-          : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:border-slate-300"
+          : "border-slate-200 dark:border-[#4a505b] bg-white dark:bg-[#3d424b] text-slate-500 dark:text-slate-400 hover:border-slate-300"
       }`}
     >
       <Icon className="w-3.5 h-3.5" />
@@ -719,7 +721,7 @@ function Toggle({
         className={`w-3 h-3 rounded border ${
           checked
             ? "bg-amber-500 border-amber-500"
-            : "border-slate-300 dark:border-slate-600"
+            : "border-slate-300 dark:border-[#565d69]"
         }`}
       />
     </button>

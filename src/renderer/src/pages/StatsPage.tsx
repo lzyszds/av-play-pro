@@ -218,7 +218,7 @@ function HeatGrid({ values }: { values: Record<string, number> }) {
         const ratio = value / max;
         const cls =
           value === 0
-            ? "bg-slate-100 dark:bg-slate-800"
+            ? "bg-slate-100 dark:bg-[#3d424b]"
             : ratio < 0.34
               ? "bg-amber-200 dark:bg-amber-900"
               : ratio < 0.67
@@ -389,7 +389,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
   });
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+    <div className="bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] rounded-2xl p-5 shadow-sm space-y-4">
       {/* 顶部标题与图例 */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -399,7 +399,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
           <div>
             <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
               <span>365 天观影行为热力天图</span>
-              <span className="text-[10px] font-normal text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] font-normal text-slate-400 bg-slate-100 dark:bg-[#3d424b] px-2 py-0.5 rounded-full">
                 双轨时间轴
               </span>
             </h4>
@@ -413,7 +413,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
           <div className="flex items-center gap-1.5">
             <span>低</span>
             <div className="flex gap-0.5">
-              <span className="w-2.5 h-2.5 rounded-xs bg-slate-200 dark:bg-slate-800" />
+              <span className="w-2.5 h-2.5 rounded-xs bg-slate-200 dark:bg-[#3d424b]" />
               <span className="w-2.5 h-2.5 rounded-xs bg-amber-200 dark:bg-amber-900/60" />
               <span className="w-2.5 h-2.5 rounded-xs bg-amber-300 dark:bg-amber-700" />
               <span className="w-2.5 h-2.5 rounded-xs bg-amber-400 dark:bg-amber-600" />
@@ -560,10 +560,10 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
         </div>
 
         {/* 分割线 (仅在宽屏展示) */}
-        <div className="hidden xl:block w-px bg-slate-100 dark:bg-slate-800 self-stretch my-1 shrink-0" />
+        <div className="hidden xl:block w-px bg-slate-100 dark:bg-[#3d424b] self-stretch my-1 shrink-0" />
 
         {/* 右侧：365天节律数据洞察 / 悬停单日实时聚焦面板 (固定高度严格 268px，杜绝高度跳动) */}
-        <div className="flex-1 min-w-[280px] h-[268px] min-h-[268px] max-h-[268px] flex flex-col justify-between p-4 bg-slate-50/70 dark:bg-slate-800/30 border border-slate-200/60 dark:border-slate-800/60 rounded-xl overflow-hidden">
+        <div className="flex-1 min-w-[280px] h-[268px] min-h-[268px] max-h-[268px] flex flex-col justify-between p-4 bg-slate-50/70 dark:bg-[#3d424b]/30 border border-slate-200/60 dark:border-[#3d424b]/60 rounded-xl overflow-hidden">
           {hoveredCell ? (
             /* 鼠标悬浮单日详情聚焦卡片 */
             <div className="h-full flex flex-col justify-between">
@@ -586,7 +586,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                   className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                     hoveredCell.plays > 0
                       ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                      : "bg-slate-200/60 dark:bg-slate-800 text-slate-400"
+                      : "bg-slate-200/60 dark:bg-[#3d424b] text-slate-400"
                   }`}
                 >
                   {hoveredCell.plays >= 5
@@ -600,7 +600,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
               {/* 4 块单日聚焦指标卡片 (与默认状态尺寸完全对齐) */}
               <div className="grid grid-cols-2 gap-2.5">
                 {/* 指标1: 播放频次 */}
-                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-amber-500/20 shadow-2xs flex flex-col justify-between h-[68px]">
+                <div className="p-2.5 bg-white dark:bg-[#33363d] rounded-lg border border-amber-500/20 shadow-2xs flex flex-col justify-between h-[68px]">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-xs bg-amber-500 inline-block" />
@@ -620,7 +620,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                 </div>
 
                 {/* 指标2: 观看时长 */}
-                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-emerald-500/20 shadow-2xs flex flex-col justify-between h-[68px]">
+                <div className="p-2.5 bg-white dark:bg-[#33363d] rounded-lg border border-emerald-500/20 shadow-2xs flex flex-col justify-between h-[68px]">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <span className="w-2 h-2 rounded-xs bg-emerald-500 inline-block" />
@@ -639,7 +639,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                 </div>
 
                 {/* 指标3: 沉浸等级 */}
-                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-[68px]">
+                <div className="p-2.5 bg-white dark:bg-[#33363d] rounded-lg border border-slate-200/70 dark:border-[#3d424b] shadow-2xs flex flex-col justify-between h-[68px]">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <Sparkles className="w-3 h-3 text-amber-500" />
@@ -658,7 +658,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                 </div>
 
                 {/* 指标4: 全年贡献比 */}
-                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-[68px]">
+                <div className="p-2.5 bg-white dark:bg-[#33363d] rounded-lg border border-slate-200/70 dark:border-[#3d424b] shadow-2xs flex flex-col justify-between h-[68px]">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <Flame className="w-3 h-3 text-rose-500" />
@@ -682,7 +682,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
               </div>
 
               {/* 底部引导栏 */}
-              <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-800">
+              <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-[#3d424b]">
                 <span className="flex items-center gap-1 text-slate-400">
                   <MousePointerClick className="w-3 h-3 text-amber-500" />
                   光标漫游热力图可查看任意历史日期
@@ -715,7 +715,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                     连击 {currentStreak} 天
                   </span>
                 ) : (
-                  <span className="text-[10px] text-slate-400 bg-slate-200/50 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] text-slate-400 bg-slate-200/50 dark:bg-[#3d424b] px-2 py-0.5 rounded-full">
                     暂未连击
                   </span>
                 )}
@@ -724,7 +724,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
               {/* 4 块节律指标卡片 */}
               <div className="grid grid-cols-2 gap-2.5">
                 {/* 指标1: 年度活跃天数 */}
-                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-[68px]">
+                <div className="p-2.5 bg-white dark:bg-[#33363d] rounded-lg border border-slate-200/70 dark:border-[#3d424b] shadow-2xs flex flex-col justify-between h-[68px]">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <CalendarCheck className="w-3 h-3 text-amber-500" />
@@ -738,7 +738,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                     {activeDaysCount}
                     <span className="text-[10px] font-normal text-slate-400 ml-1">/ 365天</span>
                   </div>
-                  <div className="w-full bg-slate-100 dark:bg-slate-800 h-1 rounded-full overflow-hidden">
+                  <div className="w-full bg-slate-100 dark:bg-[#3d424b] h-1 rounded-full overflow-hidden">
                     <div
                       className="bg-gradient-to-r from-amber-400 to-amber-500 h-full rounded-full transition-all duration-500"
                       style={{ width: `${Math.min(100, Math.max(activeDaysCount > 0 ? 3 : 0, coverageRate))}%` }}
@@ -747,7 +747,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                 </div>
 
                 {/* 指标2: 最长连续打卡 */}
-                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-[68px]">
+                <div className="p-2.5 bg-white dark:bg-[#33363d] rounded-lg border border-slate-200/70 dark:border-[#3d424b] shadow-2xs flex flex-col justify-between h-[68px]">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <Zap className="w-3 h-3 text-amber-500" />
@@ -767,7 +767,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                 </div>
 
                 {/* 指标3: 黄金活跃周期 */}
-                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-[68px]">
+                <div className="p-2.5 bg-white dark:bg-[#33363d] rounded-lg border border-slate-200/70 dark:border-[#3d424b] shadow-2xs flex flex-col justify-between h-[68px]">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <Sparkles className="w-3 h-3 text-sky-500" />
@@ -786,7 +786,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
                 </div>
 
                 {/* 指标4: 活跃日均投入 */}
-                <div className="p-2.5 bg-white dark:bg-slate-900 rounded-lg border border-slate-200/70 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-[68px]">
+                <div className="p-2.5 bg-white dark:bg-[#33363d] rounded-lg border border-slate-200/70 dark:border-[#3d424b] shadow-2xs flex flex-col justify-between h-[68px]">
                   <div className="flex items-center justify-between text-[10px] text-slate-400">
                     <span className="flex items-center gap-1">
                       <Clock className="w-3 h-3 text-emerald-500" />
@@ -804,7 +804,7 @@ function DualHeatmap({ daily }: { daily: Record<string, ActivityBucket> }) {
               </div>
 
               {/* 底部引导栏 */}
-              <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-800">
+              <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-[#3d424b]">
                 <span className="flex items-center gap-1 text-slate-400">
                   <MousePointerClick className="w-3 h-3 text-amber-500" />
                   悬停热力方格可实时漫游查看单日
@@ -1056,11 +1056,11 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
   const lastSnapshot = stats?.diskSnapshots?.slice(-1)[0];
 
   return (
-    <div className="relative h-full overflow-y-auto bg-slate-50/50 dark:bg-slate-950 p-6 space-y-6 text-slate-800 dark:text-slate-100">
+    <div className="relative h-full overflow-y-auto bg-slate-50/50 dark:bg-[#212429] p-6 space-y-6 text-slate-800 dark:text-slate-100">
       <PageLoader active={!stats} label="正在汇聚多维数据中心..." />
 
       {/* ================= 1. 顶部 Header & 工具栏（统一 PageHeader） ================= */}
-      <div className="pb-4 border-b border-slate-200/80 dark:border-slate-800/80 shrink-0">
+      <div className="pb-4 border-b border-slate-200/80 dark:border-[#3d424b]/80 shrink-0">
         <PageHeader
           icon={<BarChart3 className="w-5 h-5" />}
           title="数据洞察中心"
@@ -1104,7 +1104,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
       </div>
 
       {/* ================= 2. 标签页导航器 (Tabs) ================= */}
-      <div className="flex items-center gap-1.5 p-1 bg-slate-200/60 dark:bg-slate-900/80 rounded-xl w-fit border border-slate-200/50 dark:border-slate-800">
+      <div className="flex items-center gap-1.5 p-1 bg-slate-200/60 dark:bg-[#33363d]/80 rounded-xl w-fit border border-slate-200/50 dark:border-[#3d424b]">
         {[
           { id: "overview", label: "综合总览", icon: BarChart3 },
           { id: "rankings", label: "演员与系列榜", icon: Award },
@@ -1123,7 +1123,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
               onClick={() => setActiveTab(t.id as TabType)}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 active
-                  ? "bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-sm"
+                  ? "bg-white dark:bg-[#3d424b] text-amber-600 dark:text-amber-400 shadow-sm"
                   : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
               }`}
             >
@@ -1141,7 +1141,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
         <div className="space-y-5 anim-fade-in">
           {/* 5 个核心 Hero KPI */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
-            <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden">
+            <div className="rounded-2xl p-4 bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] shadow-sm relative overflow-hidden">
               <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase">
                 <span>累计播放</span>
                 <Play className="w-4 h-4 text-amber-500" />
@@ -1156,7 +1156,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
               </div>
             </div>
 
-            <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden">
+            <div className="rounded-2xl p-4 bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] shadow-sm relative overflow-hidden">
               <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase">
                 <span>观看总时长</span>
                 <Clock className="w-4 h-4 text-emerald-500" />
@@ -1169,7 +1169,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
               </div>
             </div>
 
-            <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden">
+            <div className="rounded-2xl p-4 bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] shadow-sm relative overflow-hidden">
               <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase">
                 <span>片库覆盖率</span>
                 <Gauge className="w-4 h-4 text-rose-500" />
@@ -1182,7 +1182,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
               </div>
             </div>
 
-            <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden">
+            <div className="rounded-2xl p-4 bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] shadow-sm relative overflow-hidden">
               <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase">
                 <span>磁盘视频占用</span>
                 <HardDrive className="w-4 h-4 text-purple-500" />
@@ -1195,7 +1195,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
               </div>
             </div>
 
-            <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden col-span-2 md:col-span-1">
+            <div className="rounded-2xl p-4 bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] shadow-sm relative overflow-hidden col-span-2 md:col-span-1">
               <div className="flex items-center justify-between text-slate-400 text-xs font-bold uppercase">
                 <span>下载吞吐量</span>
                 <Download className="w-4 h-4 text-sky-500" />
@@ -1214,7 +1214,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
           <DualHeatmap daily={stats.daily} />
 
           {/* 近 30 天观影波动趋势图 */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] rounded-2xl p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
@@ -1228,13 +1228,13 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg text-xs font-bold">
+              <div className="flex items-center gap-1 bg-slate-100 dark:bg-[#3d424b] p-0.5 rounded-lg text-xs font-bold">
                 <button
                   type="button"
                   onClick={() => setTrendMetric("watch")}
                   className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
                     trendMetric === "watch"
-                      ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs"
+                      ? "bg-white dark:bg-[#4a505b] text-emerald-600 dark:text-emerald-400 shadow-xs"
                       : "text-slate-500"
                   }`}
                 >
@@ -1245,7 +1245,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                   onClick={() => setTrendMetric("plays")}
                   className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
                     trendMetric === "plays"
-                      ? "bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-xs"
+                      ? "bg-white dark:bg-[#4a505b] text-amber-600 dark:text-amber-400 shadow-xs"
                       : "text-slate-500"
                   }`}
                 >
@@ -1311,7 +1311,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                 value={searchRanking}
                 onChange={(e) => setSearchRanking(e.target.value)}
                 placeholder="搜索榜单中的演员名或系列..."
-                className="w-full pl-9 pr-3 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs focus:outline-none focus:border-amber-500"
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#3d424b] text-xs focus:outline-none focus:border-amber-500"
               />
             </div>
 
@@ -1323,8 +1323,8 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
           {/* 双栏列表：左侧演员，右侧系列 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* 演员排行榜 */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] rounded-2xl p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#3d424b]">
                 <div className="flex items-center gap-2">
                   <Users className="w-4 h-4 text-purple-500" />
                   <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -1346,7 +1346,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                   return (
                     <div
                       key={actor.name}
-                      className="p-3 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-800/30 hover:border-amber-400/40 transition flex items-center justify-between gap-3 text-xs"
+                      className="p-3 rounded-xl border border-slate-100 dark:border-[#3d424b]/80 bg-slate-50/50 dark:bg-[#3d424b]/30 hover:border-amber-400/40 transition flex items-center justify-between gap-3 text-xs"
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <span
@@ -1354,10 +1354,10 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                             idx === 0
                               ? "bg-amber-500 text-white shadow-xs"
                               : idx === 1
-                                ? "bg-slate-300 dark:bg-slate-700 text-slate-800 dark:text-slate-200"
+                                ? "bg-slate-300 dark:bg-[#4a505b] text-slate-800 dark:text-slate-200"
                                 : idx === 2
                                   ? "bg-amber-700 text-white"
-                                  : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                                  : "bg-slate-100 dark:bg-[#3d424b] text-slate-500"
                           }`}
                         >
                           {idx + 1}
@@ -1366,7 +1366,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                           <div className="font-bold text-slate-800 dark:text-slate-200 truncate">
                             {actor.name}
                           </div>
-                          <div className="w-full bg-slate-200 dark:bg-slate-800 h-1 rounded-full mt-1.5 overflow-hidden">
+                          <div className="w-full bg-slate-200 dark:bg-[#3d424b] h-1 rounded-full mt-1.5 overflow-hidden">
                             <div
                               className="bg-amber-500 h-full rounded-full transition-all"
                               style={{ width: `${ratio}%` }}
@@ -1390,8 +1390,8 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
             </div>
 
             {/* 系列榜单 */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] rounded-2xl p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#3d424b]">
                 <div className="flex items-center gap-2">
                   <Film className="w-4 h-4 text-blue-500" />
                   <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -1413,17 +1413,17 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                   return (
                     <div
                       key={series.name}
-                      className="p-3 rounded-xl border border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-800/30 hover:border-blue-400/40 transition flex items-center justify-between gap-3 text-xs"
+                      className="p-3 rounded-xl border border-slate-100 dark:border-[#3d424b]/80 bg-slate-50/50 dark:bg-[#3d424b]/30 hover:border-blue-400/40 transition flex items-center justify-between gap-3 text-xs"
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-[11px] text-slate-500 shrink-0">
+                        <span className="w-6 h-6 rounded-full bg-slate-100 dark:bg-[#3d424b] flex items-center justify-center font-bold text-[11px] text-slate-500 shrink-0">
                           {idx + 1}
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className="font-bold text-slate-800 dark:text-slate-200 truncate font-mono">
                             {series.name}
                           </div>
-                          <div className="w-full bg-slate-200 dark:bg-slate-800 h-1 rounded-full mt-1.5 overflow-hidden">
+                          <div className="w-full bg-slate-200 dark:bg-[#3d424b] h-1 rounded-full mt-1.5 overflow-hidden">
                             <div
                               className="bg-blue-500 h-full rounded-full transition-all"
                               style={{ width: `${ratio}%` }}
@@ -1453,7 +1453,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
       {activeTab === "habits" && stats && (
         <div className="space-y-5 anim-fade-in">
           {/* 24 小时峰值柱状图 */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3">
+          <div className="bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] rounded-2xl p-5 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-amber-500" />
@@ -1495,8 +1495,8 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
           {/* 星期分布与月度吞吐 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {/* 星期分布 */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] rounded-2xl p-5 shadow-sm space-y-3">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-[#3d424b]">
                 <CalendarDays className="w-4 h-4 text-emerald-500" />
                 <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
                   工作日 vs 周末分布
@@ -1530,8 +1530,8 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
             </div>
 
             {/* 月度下载吞吐 */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] rounded-2xl p-5 shadow-sm space-y-3">
+              <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-[#3d424b]">
                 <LineChartIcon className="w-4 h-4 text-sky-500" />
                 <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
                   月度下载活跃走势
@@ -1542,7 +1542,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                 {Object.entries(stats.monthly || {}).map(([month, bucket]) => (
                   <div
                     key={month}
-                    className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 text-xs"
+                    className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-[#3d424b]/40 text-xs"
                   >
                     <span className="font-mono font-bold text-slate-700 dark:text-slate-200">
                       {month}
@@ -1562,8 +1562,8 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
           {/* 片库入库热力与成就打卡 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* 120天入库热力图 */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] rounded-2xl p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#3d424b]">
                 <div className="flex items-center gap-2">
                   <Flame className="w-4 h-4 text-amber-500" />
                   <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -1578,7 +1578,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
               <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1">
                 <span>少</span>
                 <div className="flex items-center gap-1">
-                  <div className="w-2.5 h-2.5 rounded-xs bg-slate-100 dark:bg-slate-800" />
+                  <div className="w-2.5 h-2.5 rounded-xs bg-slate-100 dark:bg-[#3d424b]" />
                   <div className="w-2.5 h-2.5 rounded-xs bg-amber-200 dark:bg-amber-900" />
                   <div className="w-2.5 h-2.5 rounded-xs bg-amber-400 dark:bg-amber-700" />
                   <div className="w-2.5 h-2.5 rounded-xs bg-amber-500" />
@@ -1588,8 +1588,8 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
             </div>
 
             {/* 片库成就勋章 */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] rounded-2xl p-5 shadow-sm space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#3d424b]">
                 <div className="flex items-center gap-2">
                   <Award className="w-4 h-4 text-violet-500" />
                   <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -1604,7 +1604,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
 
               <div className="space-y-3 pt-1">
                 {(libraryOverview?.achievements || []).map((ach: any) => (
-                  <div key={ach.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800/60">
+                  <div key={ach.id} className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#3d424b]/40 border border-slate-100 dark:border-[#3d424b]/60">
                     <div className="flex items-center justify-between text-xs">
                       <span className={ach.done ? "text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5" : "text-slate-700 dark:text-slate-200 font-medium"}>
                         {ach.done && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />}
@@ -1614,7 +1614,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                         {ach.progress} / {ach.target}
                       </span>
                     </div>
-                    <div className="mt-1.5 h-1.5 rounded-full bg-slate-200/70 dark:bg-slate-700 overflow-hidden">
+                    <div className="mt-1.5 h-1.5 rounded-full bg-slate-200/70 dark:bg-[#4a505b] overflow-hidden">
                       <div
                         className={`h-full transition-all ${ach.done ? "bg-emerald-500" : "bg-violet-500"}`}
                         style={{ width: `${Math.min(100, Math.round((ach.progress / Math.max(1, ach.target)) * 100))}%` }}
@@ -1642,7 +1642,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
               <>
                 {/* 4 个高光指标 */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-rose-200/80 dark:border-rose-900/30">
+                  <div className="rounded-2xl p-4 bg-white dark:bg-[#33363d] border border-rose-200/80 dark:border-rose-900/30">
                     <div className="flex items-center justify-between text-rose-500 text-xs font-bold">
                       <span>总记录次数</span>
                       <Heart className="w-4 h-4" />
@@ -1654,7 +1654,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                     <div className="text-[10px] text-slate-400 mt-1">历史累计会话</div>
                   </div>
 
-                  <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-rose-200/80 dark:border-rose-900/30">
+                  <div className="rounded-2xl p-4 bg-white dark:bg-[#33363d] border border-rose-200/80 dark:border-rose-900/30">
                     <div className="flex items-center justify-between text-rose-500 text-xs font-bold">
                       <span>累计专注时长</span>
                       <Timer className="w-4 h-4" />
@@ -1665,7 +1665,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                     <div className="text-[10px] text-slate-400 mt-1">深度体验总计</div>
                   </div>
 
-                  <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-rose-200/80 dark:border-rose-900/30">
+                  <div className="rounded-2xl p-4 bg-white dark:bg-[#33363d] border border-rose-200/80 dark:border-rose-900/30">
                     <div className="flex items-center justify-between text-rose-500 text-xs font-bold">
                       <span>平均单次时长</span>
                       <Zap className="w-4 h-4" />
@@ -1676,7 +1676,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                     <div className="text-[10px] text-slate-400 mt-1">耐力节奏指数</div>
                   </div>
 
-                  <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-rose-200/80 dark:border-rose-900/30">
+                  <div className="rounded-2xl p-4 bg-white dark:bg-[#33363d] border border-rose-200/80 dark:border-rose-900/30">
                     <div className="flex items-center justify-between text-rose-500 text-xs font-bold">
                       <span>单次巅峰纪录</span>
                       <Award className="w-4 h-4" />
@@ -1689,7 +1689,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                 </div>
 
                 {/* 详细历史记录流 */}
-                <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-3">
+                <div className="bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] rounded-2xl p-5 shadow-sm space-y-3">
                   <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
                     <History className="w-4 h-4 text-rose-500" />
                     <span>私密时刻会话流</span>
@@ -1704,7 +1704,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                     {(arousal.sessions || []).slice(-30).reverse().map((s, idx) => (
                       <div
                         key={`${s.startedAt}-${idx}`}
-                        className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 text-xs"
+                        className="p-3 rounded-xl bg-slate-50 dark:bg-[#3d424b]/40 border border-slate-100 dark:border-[#3d424b] flex items-center justify-between gap-3 text-xs"
                       >
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                           <Heart className="w-4 h-4 text-rose-500 shrink-0" />
@@ -1766,7 +1766,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
           )}
 
           {/* 磁盘占用快照走势图 */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
+          <div className="bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] rounded-2xl p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <HardDrive className="w-4 h-4 text-purple-500" />
@@ -1784,7 +1784,7 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
                 type="button"
                 onClick={handleSnapshot}
                 disabled={isSnapshotting}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-200 transition cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-[#3d424b] text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-200 transition cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSnapshotting ? "animate-spin" : ""}`} />
                 {isSnapshotting ? "正在扫描..." : "即刻拍快照"}
@@ -1830,15 +1830,15 @@ export function StatsPage({ videoPath, onAddSystemLog }: StatsPageProps) {
       {activeTab === "assets" && stats && (
         <div className="space-y-5 anim-fade-in">
           <div className="grid gap-4 lg:grid-cols-[1.4fr_0.9fr]">
-            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">片库质量地形图</h3><p className="mt-1 text-[10px] text-slate-400">横向是片长，纵向是观看频率；颜色越暖，资料资产越完整。</p></div><div className="flex gap-1 rounded-lg bg-slate-100 p-1 text-[10px] dark:bg-slate-800">{[["all","全部"],["ready","完整"],["needsCover","缺封面"],["unwatched","未看"]].map(([id,label]) => <button key={id} type="button" onClick={() => setTerrainFilter(id as typeof terrainFilter)} className={`rounded-md px-2 py-1 font-bold ${terrainFilter === id ? "bg-white text-amber-600 shadow-sm dark:bg-slate-700" : "text-slate-500"}`}>{label}</button>)}</div></div>
-              <div className="relative mt-5 h-72 overflow-hidden rounded-xl border border-slate-100 bg-[linear-gradient(rgba(148,163,184,.12)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,.12)_1px,transparent_1px)] bg-[size:32px_32px] dark:border-slate-800">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-[#3d424b] dark:bg-[#33363d]">
+              <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">片库质量地形图</h3><p className="mt-1 text-[10px] text-slate-400">横向是片长，纵向是观看频率；颜色越暖，资料资产越完整。</p></div><div className="flex gap-1 rounded-lg bg-slate-100 p-1 text-[10px] dark:bg-[#3d424b]">{[["all","全部"],["ready","完整"],["needsCover","缺封面"],["unwatched","未看"]].map(([id,label]) => <button key={id} type="button" onClick={() => setTerrainFilter(id as typeof terrainFilter)} className={`rounded-md px-2 py-1 font-bold ${terrainFilter === id ? "bg-white text-amber-600 shadow-sm dark:bg-[#4a505b]" : "text-slate-500"}`}>{label}</button>)}</div></div>
+              <div className="relative mt-5 h-72 overflow-hidden rounded-xl border border-slate-100 bg-[linear-gradient(rgba(148,163,184,.12)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,.12)_1px,transparent_1px)] bg-[size:32px_32px] dark:border-[#3d424b]">
                 {terrainVisible.map((item) => { const left = 4 + ((item.minutes || (item.index % 90) + 10) / 180) * 88; const bottom = 6 + Math.min(item.playCount, 12) / 12 * 78; const tone = item.quality >= 2 ? "bg-emerald-400" : item.hasCover ? "bg-amber-400" : "bg-rose-400"; return <button key={item.video.id} title={`${item.video.name} · ${item.playCount} 次播放 · ${item.quality}/3 资料完整`} className={`absolute h-3 w-3 -translate-x-1/2 translate-y-1/2 rounded-full ${tone} ring-4 ring-white/50 transition hover:scale-150 dark:ring-slate-900/50`} style={{ left: `${Math.min(left, 94)}%`, bottom: `${bottom}%` }} />; })}
                 {!terrainVisible.length && <div className="flex h-full items-center justify-center text-xs text-slate-400">当前筛选没有可展示的影片</div>}
                 <span className="absolute bottom-2 left-3 text-[9px] text-slate-400">短片</span><span className="absolute bottom-2 right-3 text-[9px] text-slate-400">长片</span><span className="absolute left-3 top-2 text-[9px] text-slate-400">常看</span><span className="absolute left-3 bottom-7 text-[9px] text-slate-400">未看</span>
               </div>
             </div>
-            <div className="rounded-2xl border border-violet-200/70 bg-gradient-to-br from-violet-50 to-white p-5 shadow-sm dark:border-violet-900/50 dark:from-violet-950/30 dark:to-slate-900"><div className="text-[10px] font-bold tracking-[0.2em] text-violet-500">PRIVATE ASSET QUARTERLY</div><h3 className="mt-2 text-lg font-bold text-slate-800 dark:text-slate-100">{new Date().getFullYear()} · Q{quarterReport.quarter} 资源季报</h3><p className="mt-1 text-xs leading-5 text-slate-500">本季度新增 {quarterReport.added} 部资产，封面完备率 {quarterReport.coverRate}%，仍有 {quarterReport.needsCare} 部等待资料完善。</p><div className="mt-5 grid grid-cols-2 gap-2">{[["下载流量",formatBytes(quarterReport.activity.bytes)],["下载任务",`${quarterReport.activity.downloads} 次`],["播放次数",`${quarterReport.activity.plays} 次`],["观看投入",formatDuration(quarterReport.activity.watchSec)]].map(([label,value]) => <div key={label} className="rounded-xl bg-white/80 p-3 dark:bg-slate-800/70"><div className="text-[9px] text-slate-400">{label}</div><div className="mt-1 text-sm font-extrabold text-slate-800 dark:text-slate-100">{value}</div></div>)}</div><div className="mt-4 rounded-xl border border-violet-200/60 bg-violet-100/50 px-3 py-2 text-[10px] text-violet-700 dark:border-violet-800/60 dark:bg-violet-900/20 dark:text-violet-300">季报是本地实时计算，不上传片名、文件或观看记录。</div></div>
+            <div className="rounded-2xl border border-violet-200/70 bg-gradient-to-br from-violet-50 to-white p-5 shadow-sm dark:border-violet-900/50 dark:from-violet-950/30 dark:to-[#33363d]"><div className="text-[10px] font-bold tracking-[0.2em] text-violet-500">PRIVATE ASSET QUARTERLY</div><h3 className="mt-2 text-lg font-bold text-slate-800 dark:text-slate-100">{new Date().getFullYear()} · Q{quarterReport.quarter} 资源季报</h3><p className="mt-1 text-xs leading-5 text-slate-500">本季度新增 {quarterReport.added} 部资产，封面完备率 {quarterReport.coverRate}%，仍有 {quarterReport.needsCare} 部等待资料完善。</p><div className="mt-5 grid grid-cols-2 gap-2">{[["下载流量",formatBytes(quarterReport.activity.bytes)],["下载任务",`${quarterReport.activity.downloads} 次`],["播放次数",`${quarterReport.activity.plays} 次`],["观看投入",formatDuration(quarterReport.activity.watchSec)]].map(([label,value]) => <div key={label} className="rounded-xl bg-white/80 p-3 dark:bg-[#3d424b]/70"><div className="text-[9px] text-slate-400">{label}</div><div className="mt-1 text-sm font-extrabold text-slate-800 dark:text-slate-100">{value}</div></div>)}</div><div className="mt-4 rounded-xl border border-violet-200/60 bg-violet-100/50 px-3 py-2 text-[10px] text-violet-700 dark:border-violet-800/60 dark:bg-violet-900/20 dark:text-violet-300">季报是本地实时计算，不上传片名、文件或观看记录。</div></div>
           </div>
         </div>
       )}

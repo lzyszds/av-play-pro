@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
   X,
   FolderArchive,
@@ -32,6 +33,7 @@ export function OrganizerModal({
   onClose,
   onAddSystemLog,
 }: OrganizerModalProps) {
+  useEscapeKey(onClose);
   const [targetPath, setTargetPath] = useState("");
   const [mode, setMode] = useState<"symlink" | "hardlink" | "copy">("symlink");
   const [items, setItems] = useState<any[]>([]);
@@ -118,9 +120,9 @@ export function OrganizerModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col h-[650px] anim-scale-in">
+      <div className="bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#3d424b] rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col h-[650px] anim-scale-in">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-[#3d424b] flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-[#33363d]/50">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400">
               <FolderArchive className="w-5 h-5" />
@@ -145,7 +147,7 @@ export function OrganizerModal({
               type="button"
               onClick={onClose}
               aria-label="关闭整理器"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#3d424b] transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -153,14 +155,14 @@ export function OrganizerModal({
         </div>
 
         {/* Path and Options Form */}
-        <div className="p-5 border-b border-slate-100 dark:border-slate-800 space-y-3.5 bg-slate-50/30 dark:bg-slate-950/20 shrink-0">
+        <div className="p-5 border-b border-slate-100 dark:border-[#3d424b] space-y-3.5 bg-slate-50/30 dark:bg-[#212429]/20 shrink-0">
           {/* 源目录 & 目标目录 */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 block">
                 原始下载片库路径 (只读读取)
               </label>
-              <div className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-600 dark:text-slate-300 truncate">
+              <div className="px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-[#3d424b]/80 border border-slate-200 dark:border-[#4a505b] text-xs font-mono text-slate-600 dark:text-slate-300 truncate">
                 {sourcePath || "未配置视频路径"}
               </div>
             </div>
@@ -175,7 +177,7 @@ export function OrganizerModal({
                   value={targetPath}
                   onChange={(e) => setTargetPath(e.target.value)}
                   placeholder="选择或输入 Emby 媒体库目录..."
-                  className="flex-1 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
+                  className="flex-1 px-3 py-1.5 bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#4a505b] rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
                 />
                 <button
                   type="button"
@@ -201,7 +203,7 @@ export function OrganizerModal({
                 className={`px-2.5 py-1 rounded-lg font-bold text-xs border transition cursor-pointer flex items-center gap-1 ${
                   mode === "symlink"
                     ? "bg-blue-500 text-white border-blue-500"
-                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700"
+                    : "bg-white dark:bg-[#33363d] text-slate-600 dark:text-slate-400 border-slate-200 dark:border-[#4a505b]"
                 }`}
               >
                 <Link className="w-3 h-3" />
@@ -213,7 +215,7 @@ export function OrganizerModal({
                 className={`px-2.5 py-1 rounded-lg font-bold text-xs border transition cursor-pointer flex items-center gap-1 ${
                   mode === "copy"
                     ? "bg-blue-500 text-white border-blue-500"
-                    : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700"
+                    : "bg-white dark:bg-[#33363d] text-slate-600 dark:text-slate-400 border-slate-200 dark:border-[#4a505b]"
                 }`}
               >
                 <Copy className="w-3 h-3" />
@@ -235,7 +237,7 @@ export function OrganizerModal({
         </div>
 
         {/* List of Scanned Videos */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-2.5 bg-slate-50/40 dark:bg-slate-950/40">
+        <div className="flex-1 overflow-y-auto p-5 space-y-2.5 bg-slate-50/40 dark:bg-[#212429]/40">
           <div className="flex items-center justify-between text-xs font-bold text-slate-500 dark:text-slate-400 pb-1">
             <span>待整理影片列表 ({items.length} 部)</span>
             <button
@@ -251,7 +253,7 @@ export function OrganizerModal({
           {items.map((item) => (
             <div
               key={item.folderPath}
-              className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between gap-3 text-xs"
+              className="p-3 rounded-xl border border-slate-200 dark:border-[#3d424b] bg-white dark:bg-[#33363d] flex items-center justify-between gap-3 text-xs"
             >
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex items-center gap-2">
@@ -260,7 +262,7 @@ export function OrganizerModal({
                       {item.code}
                     </span>
                   ) : (
-                    <span className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-500 font-mono text-[10px]">
+                    <span className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-[#3d424b] text-slate-500 font-mono text-[10px]">
                       未识别番号
                     </span>
                   )}
@@ -315,7 +317,7 @@ export function OrganizerModal({
         )}
 
         {/* Footer Actions */}
-        <div className="px-6 py-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+        <div className="px-6 py-4 bg-slate-50 dark:bg-[#33363d] border-t border-slate-100 dark:border-[#3d424b] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-1.5 text-slate-400 dark:text-slate-500 text-[11px]">
             <Info className="w-3.5 h-3.5 text-blue-500" />
             <span>软链接不占用额外硬盘空间，可安全挂载到任何流媒体服务端</span>

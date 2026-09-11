@@ -90,7 +90,7 @@ export const ActorAvatar: React.FC<Props> = ({
   if (loading) {
     return (
       <div
-        className={`rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse flex items-center justify-center shrink-0 ${clickable}`}
+        className={`rounded-full bg-slate-200 dark:bg-[#4a505b] animate-pulse flex items-center justify-center shrink-0 ${clickable}`}
         style={sizeStyle}
         onClick={onClick}
       >
@@ -124,7 +124,7 @@ export const ActorAvatar: React.FC<Props> = ({
       alt={name}
       title={name}
       onClick={onClick}
-      className={`rounded-full object-cover shrink-0 bg-slate-200 dark:bg-slate-700 ${clickable}`}
+      className={`rounded-full object-cover shrink-0 bg-slate-200 dark:bg-[#4a505b] ${clickable}`}
       style={sizeStyle}
       onError={() => {
         cache.set(name, null);

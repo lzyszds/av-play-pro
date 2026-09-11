@@ -85,7 +85,7 @@ interface DuplicateGroup {
 }
 
 const KIND_LABEL: Record<CleanupItem["kind"], { label: string; color: string }> = {
-  empty: { label: "空文件夹", color: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" },
+  empty: { label: "空文件夹", color: "bg-slate-100 text-slate-600 dark:bg-[#3d424b] dark:text-slate-300" },
   no_video: { label: "无正片残留", color: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300" },
   tiny_video: { label: "损坏/不完整", color: "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300" },
   temp: { label: "临时缓存", color: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300" },
@@ -516,11 +516,11 @@ export function CommandCenterPage({
   }, [healthData]);
 
   return (
-    <div className="relative h-full overflow-y-auto bg-slate-50/50 dark:bg-slate-950 p-6 space-y-6 text-slate-800 dark:text-slate-100">
+    <div className="relative h-full overflow-y-auto bg-slate-50/50 dark:bg-[#212429] p-6 space-y-6 text-slate-800 dark:text-slate-100">
       <PageLoader active={loading} label="同步指挥中枢数据..." />
 
       {/* ===================== 1. 顶栏（统一 PageHeader）：标题与核心行动群 ===================== */}
-      <div className="pb-4 border-b border-slate-200/80 dark:border-slate-800/80 shrink-0">
+      <div className="pb-4 border-b border-slate-200/80 dark:border-[#3d424b]/80 shrink-0">
         <PageHeader
           icon={<Gauge className="w-5 h-5" />}
           title="片库指挥中枢"
@@ -535,7 +535,7 @@ export function CommandCenterPage({
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="搜索番号 / 演员 / 片商..."
-                  className="w-full h-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 pl-9 pr-3 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition shadow-2xs"
+                  className="w-full h-9 rounded-xl bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#3d424b] pl-9 pr-3 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition shadow-2xs"
                 />
                 {query && (
                   <Tooltip content="清空搜索词" placement="bottom">
@@ -599,9 +599,9 @@ export function CommandCenterPage({
                 key={video.id}
                 type="button"
                 onClick={() => handlePlayVideo(video.name)}
-                className="group text-left rounded-xl border border-amber-200/60 dark:border-amber-900/40 bg-white dark:bg-slate-900 overflow-hidden hover:border-amber-400 hover:shadow-md transition cursor-pointer"
+                className="group text-left rounded-xl border border-amber-200/60 dark:border-amber-900/40 bg-white dark:bg-[#33363d] overflow-hidden hover:border-amber-400 hover:shadow-md transition cursor-pointer"
               >
-                <div className="aspect-video bg-slate-100 dark:bg-slate-800 relative">
+                <div className="aspect-video bg-slate-100 dark:bg-[#3d424b] relative">
                   {video.coverUrl ? (
                     <CoverImage src={video.coverUrl} alt={video.name} />
                   ) : (
@@ -631,7 +631,7 @@ export function CommandCenterPage({
       {/* ===================== 2. 控制台驾驶舱：健康雷达 + 4大核心资产胶囊 ===================== */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* 左侧：片库健康综合雷达 (4 cols) */}
-        <div className="lg:col-span-4 rounded-2xl p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col justify-between space-y-4">
+        <div className="lg:col-span-4 rounded-2xl p-5 bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b]/80 shadow-xs flex flex-col justify-between space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {healthMeta.level === "excellent" || healthMeta.level === "good" ? (
@@ -679,7 +679,7 @@ export function CommandCenterPage({
             {healthMeta.summary}
           </p>
 
-          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+          <div className="pt-3 border-t border-slate-100 dark:border-[#3d424b] flex items-center justify-between text-[11px] text-slate-400">
             <span>未看作品: <strong className="text-slate-700 dark:text-slate-200">{totals?.unseen || 0}</strong> 部</span>
             <span>已看/半看: <strong className="text-slate-700 dark:text-slate-200">{totals?.halfWatched || 0}</strong> 部</span>
             <button
@@ -696,7 +696,7 @@ export function CommandCenterPage({
         {/* 右侧：4大资产胶囊指标 (8 cols) */}
         <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
           {/* 胶囊 1: 影片总资产 */}
-          <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col justify-between">
+          <div className="rounded-2xl p-4 bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b]/80 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
               <span>影片资产</span>
               <Film className="w-4 h-4 text-blue-500" />
@@ -710,13 +710,13 @@ export function CommandCenterPage({
                 {totals?.totalSize || "0 B"}
               </div>
             </div>
-            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 truncate">
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-[#3d424b]/60 text-[10px] text-slate-400 truncate">
               覆盖 {totals?.actors || 0} 位演员 · {totals?.studios || 0} 片商
             </div>
           </div>
 
           {/* 胶囊 2: 存储磁盘余量 */}
-          <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col justify-between">
+          <div className="rounded-2xl p-4 bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b]/80 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
               <span>磁盘存储</span>
               <HardDrive className="w-4 h-4 text-purple-500" />
@@ -728,7 +728,7 @@ export function CommandCenterPage({
                   : "--"}
                 <span className="text-xs font-normal text-slate-400 ml-1">可用</span>
               </div>
-              <div className="w-full bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+              <div className="w-full bg-slate-100 dark:bg-[#3d424b] h-1.5 rounded-full mt-2 overflow-hidden">
                 <div
                   className={`h-full rounded-full transition-all ${
                     (diskPercentage || 0) > 90
@@ -741,7 +741,7 @@ export function CommandCenterPage({
                 />
               </div>
             </div>
-            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 truncate">
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-[#3d424b]/60 text-[10px] text-slate-400 truncate">
               {healthData && healthData.totalBytes > 0
                 ? `已用 ${diskPercentage}% / 总量 ${formatBytesClient(healthData.totalBytes)}`
                 : "正在检测磁盘容量"}
@@ -749,7 +749,7 @@ export function CommandCenterPage({
           </div>
 
           {/* 胶囊 3: 元数据完备率 */}
-          <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col justify-between">
+          <div className="rounded-2xl p-4 bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b]/80 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
               <span>资料完备度</span>
               <Clapperboard className="w-4 h-4 text-emerald-500" />
@@ -772,7 +772,7 @@ export function CommandCenterPage({
                 缺封面 {totals?.missingCover || 0} · 缺信息 {totals?.missingMeta || 0}
               </div>
             </div>
-            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 truncate">
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-[#3d424b]/60 text-[10px] text-slate-400 truncate">
               <button
                 type="button"
                 onClick={() => setActiveSubTab("metadata")}
@@ -784,7 +784,7 @@ export function CommandCenterPage({
           </div>
 
           {/* 胶囊 4: 冗余版本与残留 */}
-          <div className="rounded-2xl p-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col justify-between">
+          <div className="rounded-2xl p-4 bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b]/80 shadow-xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-slate-400 text-xs font-semibold">
               <span>冗余与残留</span>
               <Boxes className="w-4 h-4 text-rose-500" />
@@ -798,7 +798,7 @@ export function CommandCenterPage({
                 {cleanupScannedOnce ? `可瘦身 ${cleanupTotalLabel}` : "待扫描残留"}
               </div>
             </div>
-            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 truncate">
+            <div className="mt-3 pt-2 border-t border-slate-100 dark:border-[#3d424b]/60 text-[10px] text-slate-400 truncate">
               <button
                 type="button"
                 onClick={() => {
@@ -814,9 +814,9 @@ export function CommandCenterPage({
       </div>
 
       {/* ===================== 3. 诊断与治理中枢 (Triage & Operations Panel) ===================== */}
-      <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 shadow-xs overflow-hidden">
+      <div className="rounded-2xl border border-slate-200/80 dark:border-[#3d424b]/80 bg-white dark:bg-[#33363d] shadow-xs overflow-hidden">
         {/* 工作台 Tab 切换顶栏 */}
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-5 pt-3">
+        <div className="flex items-center justify-between border-b border-slate-100 dark:border-[#3d424b] px-5 pt-3">
           <div className="flex items-center gap-6">
             <button
               type="button"
@@ -936,7 +936,7 @@ export function CommandCenterPage({
                 {duplicateGroups.map((group) => (
                   <div
                     key={group.code}
-                    className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 space-y-3"
+                    className="p-4 rounded-xl border border-slate-100 dark:border-[#3d424b] bg-slate-50/50 dark:bg-[#3d424b]/30 space-y-3"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -956,7 +956,7 @@ export function CommandCenterPage({
                       {group.videos.map((vid, idx) => (
                         <div
                           key={vid.id || idx}
-                          className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between gap-3 text-xs"
+                          className="p-3 rounded-lg bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b]/80 flex items-center justify-between gap-3 text-xs"
                         >
                           <div className="min-w-0 flex-1">
                             <div className="font-bold text-slate-800 dark:text-slate-200 truncate" title={vid.name}>
@@ -971,7 +971,7 @@ export function CommandCenterPage({
                           <button
                             type="button"
                             onClick={() => handlePlayVideo(vid.name)}
-                            className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-amber-500 hover:text-white text-slate-700 dark:text-slate-300 text-[11px] font-bold transition cursor-pointer shrink-0 flex items-center gap-1"
+                            className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-[#3d424b] hover:bg-amber-500 hover:text-white text-slate-700 dark:text-slate-300 text-[11px] font-bold transition cursor-pointer shrink-0 flex items-center gap-1"
                           >
                             <Play className="w-3 h-3" />
                             <span>试播对比</span>
@@ -992,13 +992,13 @@ export function CommandCenterPage({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-500">分类筛选:</span>
-                <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs">
+                <div className="flex items-center p-0.5 rounded-lg bg-slate-100 dark:bg-[#3d424b] text-xs">
                   <button
                     type="button"
                     onClick={() => setMetaFilter("all")}
                     className={`px-2.5 py-1 rounded-md font-bold transition cursor-pointer ${
                       metaFilter === "all"
-                        ? "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-2xs"
+                        ? "bg-white dark:bg-[#33363d] text-slate-800 dark:text-slate-100 shadow-2xs"
                         : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                     }`}
                   >
@@ -1009,7 +1009,7 @@ export function CommandCenterPage({
                     onClick={() => setMetaFilter("missingCover")}
                     className={`px-2.5 py-1 rounded-md font-bold transition cursor-pointer ${
                       metaFilter === "missingCover"
-                        ? "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-2xs"
+                        ? "bg-white dark:bg-[#33363d] text-slate-800 dark:text-slate-100 shadow-2xs"
                         : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                     }`}
                   >
@@ -1020,7 +1020,7 @@ export function CommandCenterPage({
                     onClick={() => setMetaFilter("missingMeta")}
                     className={`px-2.5 py-1 rounded-md font-bold transition cursor-pointer ${
                       metaFilter === "missingMeta"
-                        ? "bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 shadow-2xs"
+                        ? "bg-white dark:bg-[#33363d] text-slate-800 dark:text-slate-100 shadow-2xs"
                         : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
                     }`}
                   >
@@ -1063,7 +1063,7 @@ export function CommandCenterPage({
                 {filteredMissingItems.map((vid) => (
                   <div
                     key={vid.id}
-                    className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/40 dark:bg-slate-800/30 flex items-center justify-between gap-3 text-xs"
+                    className="p-3 rounded-xl border border-slate-200/80 dark:border-[#3d424b]/80 bg-slate-50/40 dark:bg-[#3d424b]/30 flex items-center justify-between gap-3 text-xs"
                   >
                     <div className="min-w-0 flex-1">
                       <div className="font-bold text-slate-800 dark:text-slate-200 truncate" title={vid.name}>
@@ -1087,7 +1087,7 @@ export function CommandCenterPage({
                     <button
                       type="button"
                       onClick={() => handlePlayVideo(vid.name)}
-                      className="px-2 py-1 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:text-amber-500 text-slate-600 dark:text-slate-300 text-[11px] font-bold transition cursor-pointer shrink-0"
+                      className="px-2 py-1 rounded-lg bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#4a505b] hover:text-amber-500 text-slate-600 dark:text-slate-300 text-[11px] font-bold transition cursor-pointer shrink-0"
                       title="在内置播放器打开查看"
                     >
                       去播放
@@ -1130,7 +1130,7 @@ export function CommandCenterPage({
                 return (
                   <div
                     key={step.key}
-                    className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 flex flex-col justify-between space-y-3"
+                    className="p-4 rounded-xl bg-slate-50 dark:bg-[#3d424b]/50 border border-slate-100 dark:border-[#3d424b] flex flex-col justify-between space-y-3"
                   >
                     <div className="flex items-center justify-between text-xs font-bold">
                       <span className="text-slate-400 font-mono text-[10px]">STEP 0{idx + 1}</span>
@@ -1141,7 +1141,7 @@ export function CommandCenterPage({
                       <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
                         {step.label}
                       </div>
-                      <div className="mt-2 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                      <div className="mt-2 h-1.5 rounded-full bg-slate-200 dark:bg-[#4a505b] overflow-hidden">
                         <div className="h-full bg-cyan-500 rounded-full transition-all" style={{ width: `${pct}%` }} />
                       </div>
                     </div>
@@ -1177,7 +1177,7 @@ export function CommandCenterPage({
         {activeSubTab === "cleaner" && (
           <div className="p-5 space-y-4 anim-fade-in">
             {/* B194 完整性自愈：坏 meta / 空封面·预览 / 原子写残留 */}
-            <div className="rounded-2xl border border-sky-200/70 dark:border-sky-900/40 bg-gradient-to-br from-sky-50/80 to-white dark:from-sky-950/20 dark:to-slate-900/40 p-4 space-y-3">
+            <div className="rounded-2xl border border-sky-200/70 dark:border-sky-900/40 bg-gradient-to-br from-sky-50/80 to-white dark:from-sky-950/20 dark:to-[#33363d]/40 p-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-xl bg-sky-500/15 border border-sky-500/30 flex items-center justify-center">
@@ -1197,7 +1197,7 @@ export function CommandCenterPage({
                     type="button"
                     onClick={scanIntegrity}
                     disabled={integrityScanning || !videoPath}
-                    className="h-8 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                    className="h-8 px-3 rounded-lg bg-slate-100 dark:bg-[#3d424b] hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${integrityScanning ? "animate-spin" : ""}`} />
                     <span>{integrityScanning ? "扫描中..." : "扫描"}</span>
@@ -1235,7 +1235,7 @@ export function CommandCenterPage({
               )}
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-[#3d424b]">
               <div>
                 <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                   <Trash2 className="w-3.5 h-3.5 text-rose-500" />
@@ -1251,7 +1251,7 @@ export function CommandCenterPage({
                   type="button"
                   onClick={scanCleanup}
                   disabled={cleanupScanning || !videoPath}
-                  className="h-8 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                  className="h-8 px-3 rounded-lg bg-slate-100 dark:bg-[#3d424b] hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${cleanupScanning ? "animate-spin" : ""}`} />
                   <span>{cleanupScanning ? "扫描中..." : "重新扫描"}</span>
@@ -1336,7 +1336,7 @@ export function CommandCenterPage({
                         className={`flex items-start gap-3 rounded-xl p-3 cursor-pointer border transition ${
                           checked
                             ? "bg-rose-50/50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40"
-                            : "bg-slate-50 dark:bg-slate-800/40 border-transparent hover:border-slate-200 dark:hover:border-slate-700"
+                            : "bg-slate-50 dark:bg-[#3d424b]/40 border-transparent hover:border-slate-200 dark:hover:border-[#4a505b]"
                         }`}
                       >
                         <input
@@ -1375,8 +1375,8 @@ export function CommandCenterPage({
       {/* ===================== 4. 底部联动：系统动态与最近入库速览 ===================== */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* 左侧：待办与事件通知中心 (5 cols) */}
-        <div className="lg:col-span-5 rounded-2xl p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+        <div className="lg:col-span-5 rounded-2xl p-5 bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b]/80 shadow-xs space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#3d424b]">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-emerald-500" />
               <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -1393,7 +1393,7 @@ export function CommandCenterPage({
             {(healthData?.checks || []).map((chk: any, idx: number) => (
               <div
                 key={idx}
-                className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 text-xs"
+                className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#3d424b]/40 border border-slate-100 dark:border-[#3d424b] flex items-center justify-between gap-2 text-xs"
               >
                 <div className="flex items-center gap-2 min-w-0">
                   {chk.status === "ok" ? (
@@ -1428,8 +1428,8 @@ export function CommandCenterPage({
         </div>
 
         {/* 右侧：最近入库快速通道 (7 cols) */}
-        <div className="lg:col-span-7 rounded-2xl p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 shadow-xs space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+        <div className="lg:col-span-7 rounded-2xl p-5 bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b]/80 shadow-xs space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-[#3d424b]">
             <div className="flex items-center gap-2">
               <PlayCircle className="w-4 h-4 text-amber-500" />
               <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
@@ -1451,9 +1451,9 @@ export function CommandCenterPage({
                 key={vid.id}
                 type="button"
                 onClick={() => handlePlayVideo(vid.name)}
-                className="group text-left rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-800/30 overflow-hidden hover:border-amber-400 hover:shadow-md transition cursor-pointer"
+                className="group text-left rounded-xl border border-slate-200/80 dark:border-[#3d424b]/80 bg-slate-50/50 dark:bg-[#3d424b]/30 overflow-hidden hover:border-amber-400 hover:shadow-md transition cursor-pointer"
               >
-                <div className="aspect-video bg-slate-100 dark:bg-slate-800 relative">
+                <div className="aspect-video bg-slate-100 dark:bg-[#3d424b] relative">
                   {convertVideo(vid).coverUrl ? (
                     <CoverImage src={convertVideo(vid).coverUrl} alt={vid.name} />
                   ) : (

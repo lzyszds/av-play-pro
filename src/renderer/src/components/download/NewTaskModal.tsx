@@ -279,11 +279,11 @@ export function NewTaskModal({
       }}
     >
       <div
-        className="w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xl overflow-hidden anim-scale-in"
+        className="w-full max-w-2xl max-h-[92vh] flex flex-col rounded-2xl bg-white dark:bg-[#33363d] border border-slate-200/80 dark:border-[#3d424b] shadow-2xl overflow-hidden anim-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
         {/* 顶部 Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-[#3d424b] shrink-0">
           <div className="flex items-center gap-3">
             <div className="bg-accent-500/10 dark:bg-accent-500/20 p-2.5 rounded-xl border border-accent-500/20">
               <Download className="w-5 h-5 text-accent-500" />
@@ -352,7 +352,7 @@ export function NewTaskModal({
                 }}
                 rows={2}
                 placeholder="请粘贴以 .m3u8 结尾的播放地址或媒体流链接..."
-                className="w-full bg-white/70 dark:bg-slate-800/80 border border-hairline hover:border-accent-500/50 focus:border-accent-500 rounded-2xl px-3.5 py-2.5 text-xs font-mono text-text-1 placeholder-text-3/60 focus:outline-none focus:ring-2 focus:ring-accent-500/20 transition leading-relaxed resize-none shadow-sm"
+                className="w-full bg-white/70 dark:bg-[#3d424b]/80 border border-hairline hover:border-accent-500/50 focus:border-accent-500 rounded-2xl px-3.5 py-2.5 text-xs font-mono text-text-1 placeholder-text-3/60 focus:outline-none focus:ring-2 focus:ring-accent-500/20 transition leading-relaxed resize-none shadow-sm"
                 required
               />
               {url.toLowerCase().includes(".m3u8") && (
@@ -386,7 +386,7 @@ export function NewTaskModal({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={extractedCode ? `建议番号: ${extractedCode}` : "不填则自动按流标题或时间戳命名"}
-                className="w-full bg-white/70 dark:bg-slate-800/80 border border-hairline hover:border-accent-500/50 focus:border-accent-500 rounded-2xl px-3.5 py-2.5 text-xs text-text-1 placeholder-text-3/60 focus:outline-none focus:ring-2 focus:ring-accent-500/20 transition shadow-sm"
+                className="w-full bg-white/70 dark:bg-[#3d424b]/80 border border-hairline hover:border-accent-500/50 focus:border-accent-500 rounded-2xl px-3.5 py-2.5 text-xs text-text-1 placeholder-text-3/60 focus:outline-none focus:ring-2 focus:ring-accent-500/20 transition shadow-sm"
               />
             </div>
           </div>
@@ -403,7 +403,7 @@ export function NewTaskModal({
                 value={savePath}
                 onChange={(e) => setSavePath(e.target.value)}
                 placeholder="/Users/xxx/Downloads"
-                className="flex-1 bg-white/70 dark:bg-slate-800/80 border border-hairline hover:border-accent-500/50 focus:border-accent-500 rounded-2xl px-3.5 py-2 text-xs font-mono text-text-1 placeholder-text-3/60 focus:outline-none focus:ring-2 focus:ring-accent-500/20 transition shadow-sm truncate"
+                className="flex-1 bg-white/70 dark:bg-[#3d424b]/80 border border-hairline hover:border-accent-500/50 focus:border-accent-500 rounded-2xl px-3.5 py-2 text-xs font-mono text-text-1 placeholder-text-3/60 focus:outline-none focus:ring-2 focus:ring-accent-500/20 transition shadow-sm truncate"
               />
               <button
                 type="button"
@@ -420,7 +420,7 @@ export function NewTaskModal({
           {/* 4. 关键配置卡片网格：格式切换、线程控制 */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-1">
             {/* 封装格式 */}
-            <div className="p-3.5 rounded-2xl bg-surface-2/60 dark:bg-slate-800/50 border border-hairline space-y-2">
+            <div className="p-3.5 rounded-2xl bg-surface-2/60 dark:bg-[#3d424b]/50 border border-hairline space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-text-1 flex items-center gap-1.5">
                   <Layers className="w-3.5 h-3.5 text-accent-500" />
@@ -439,7 +439,7 @@ export function NewTaskModal({
                     className={`py-1.5 rounded-xl font-bold text-xs transition cursor-pointer text-center ${
                       format === fmt
                         ? "bg-accent-500 text-white shadow-sm shadow-accent-500/20"
-                        : "bg-surface-1 dark:bg-slate-800 text-text-2 hover:text-text-1 hover:bg-black/5 dark:hover:bg-white/5 border border-hairline"
+                        : "bg-surface-1 dark:bg-[#3d424b] text-text-2 hover:text-text-1 hover:bg-black/5 dark:hover:bg-white/5 border border-hairline"
                     }`}
                   >
                     {fmt}
@@ -449,7 +449,7 @@ export function NewTaskModal({
             </div>
 
             {/* 并发线程数 */}
-            <div className="p-3.5 rounded-2xl bg-surface-2/60 dark:bg-slate-800/50 border border-hairline space-y-2">
+            <div className="p-3.5 rounded-2xl bg-surface-2/60 dark:bg-[#3d424b]/50 border border-hairline space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-text-1 flex items-center gap-1.5">
                   <Cpu className="w-3.5 h-3.5 text-accent-500" />
@@ -468,7 +468,7 @@ export function NewTaskModal({
                     className={`flex-1 py-1.5 rounded-xl font-mono text-[11px] font-bold transition cursor-pointer text-center ${
                       threads === t
                         ? "bg-accent-500 text-white shadow-sm shadow-accent-500/20"
-                        : "bg-surface-1 dark:bg-slate-800 text-text-2 hover:text-text-1 hover:bg-black/5 dark:hover:bg-white/5 border border-hairline"
+                        : "bg-surface-1 dark:bg-[#3d424b] text-text-2 hover:text-text-1 hover:bg-black/5 dark:hover:bg-white/5 border border-hairline"
                     }`}
                   >
                     {t}
@@ -513,7 +513,7 @@ export function NewTaskModal({
           </div>
 
           {/* 6. 定时预约下载卡片 */}
-          <div className="rounded-2xl border border-hairline overflow-hidden bg-surface-2/40 dark:bg-slate-800/40">
+          <div className="rounded-2xl border border-hairline overflow-hidden bg-surface-2/40 dark:bg-[#3d424b]/40">
             <div className="flex items-center justify-between px-4 py-3">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-accent-500" />
@@ -527,12 +527,12 @@ export function NewTaskModal({
                   onChange={(e) => setScheduledEnabled(e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-9 h-5 bg-black/15 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-accent-500" />
+                <div className="w-9 h-5 bg-black/15 peer-focus:outline-none rounded-full peer dark:bg-[#4a505b] peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-accent-500" />
               </label>
             </div>
 
             {scheduledEnabled && (
-              <div className="px-4 pb-4 pt-1 space-y-3 border-t border-hairline/60 bg-surface-1/50 dark:bg-slate-900/40">
+              <div className="px-4 pb-4 pt-1 space-y-3 border-t border-hairline/60 bg-surface-1/50 dark:bg-[#33363d]/40">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <span className="text-[10px] text-text-3 block mb-1">执行日期</span>
@@ -540,7 +540,7 @@ export function NewTaskModal({
                       type="date"
                       value={scheduledDate}
                       onChange={(e) => setScheduledDate(e.target.value)}
-                      className="w-full bg-white dark:bg-slate-800 border border-hairline rounded-xl px-3 py-1.5 text-xs font-mono text-text-1 focus:outline-none focus:border-accent-500 transition"
+                      className="w-full bg-white dark:bg-[#3d424b] border border-hairline rounded-xl px-3 py-1.5 text-xs font-mono text-text-1 focus:outline-none focus:border-accent-500 transition"
                     />
                   </div>
                   <div>
@@ -549,7 +549,7 @@ export function NewTaskModal({
                       type="time"
                       value={scheduledTime}
                       onChange={(e) => setScheduledTime(e.target.value)}
-                      className="w-full bg-white dark:bg-slate-800 border border-hairline rounded-xl px-3 py-1.5 text-xs font-mono text-text-1 focus:outline-none focus:border-accent-500 transition"
+                      className="w-full bg-white dark:bg-[#3d424b] border border-hairline rounded-xl px-3 py-1.5 text-xs font-mono text-text-1 focus:outline-none focus:border-accent-500 transition"
                     />
                   </div>
                 </div>
@@ -616,7 +616,7 @@ export function NewTaskModal({
           </div>
 
           {/* 7. 高级网络与封面定制（折叠手风琴） */}
-          <div className="rounded-2xl border border-hairline overflow-hidden bg-surface-2/40 dark:bg-slate-800/40">
+          <div className="rounded-2xl border border-hairline overflow-hidden bg-surface-2/40 dark:bg-[#3d424b]/40">
             <button
               type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
@@ -635,7 +635,7 @@ export function NewTaskModal({
             </button>
 
             {showAdvanced && (
-              <div className="p-4 border-t border-hairline space-y-3.5 bg-surface-1/40 dark:bg-slate-900/40">
+              <div className="p-4 border-t border-hairline space-y-3.5 bg-surface-1/40 dark:bg-[#33363d]/40">
                 {/* Headers */}
                 <div className="space-y-1">
                   <span className="text-[11px] font-bold text-text-2 block">
@@ -645,7 +645,7 @@ export function NewTaskModal({
                     value={headersText}
                     onChange={(e) => setHeadersText(e.target.value)}
                     rows={3}
-                    className="w-full bg-white dark:bg-slate-800 border border-hairline rounded-xl p-2.5 text-[10px] font-mono text-text-1 focus:outline-none focus:border-accent-500 leading-relaxed"
+                    className="w-full bg-white dark:bg-[#3d424b] border border-hairline rounded-xl p-2.5 text-[10px] font-mono text-text-1 focus:outline-none focus:border-accent-500 leading-relaxed"
                     placeholder="User-Agent: Mozilla/5.0...&#10;Referer: https://...&#10;Cookie: ..."
                   />
                 </div>
@@ -659,7 +659,7 @@ export function NewTaskModal({
                       value={coverUrl}
                       onChange={(e) => setCoverUrl(e.target.value)}
                       placeholder="https://.../cover.jpg"
-                      className="w-full bg-white dark:bg-slate-800 border border-hairline rounded-xl px-3 py-1.5 text-[10px] font-mono text-text-1 focus:outline-none focus:border-accent-500"
+                      className="w-full bg-white dark:bg-[#3d424b] border border-hairline rounded-xl px-3 py-1.5 text-[10px] font-mono text-text-1 focus:outline-none focus:border-accent-500"
                     />
                   </div>
                   <div className="space-y-1">
@@ -669,7 +669,7 @@ export function NewTaskModal({
                       value={previewUrl}
                       onChange={(e) => setPreviewUrl(e.target.value)}
                       placeholder="https://.../preview.mp4"
-                      className="w-full bg-white dark:bg-slate-800 border border-hairline rounded-xl px-3 py-1.5 text-[10px] font-mono text-text-1 focus:outline-none focus:border-accent-500"
+                      className="w-full bg-white dark:bg-[#3d424b] border border-hairline rounded-xl px-3 py-1.5 text-[10px] font-mono text-text-1 focus:outline-none focus:border-accent-500"
                     />
                   </div>
                 </div>

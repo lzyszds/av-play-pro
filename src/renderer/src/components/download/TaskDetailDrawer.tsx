@@ -213,7 +213,7 @@ export function TaskDetailDrawer({
       : "rgb(251, 146, 60)";
 
   return (
-    <div className="shrink-0 w-full border-t border-white/60 dark:border-white/[0.08] bg-white/55 dark:bg-[#090d14]/98 backdrop-blur-2xl transition-all duration-300 shadow-[0_-10px_35px_rgba(0,0,0,0.08)] dark:shadow-[0_-10px_35px_rgba(0,0,0,0.6)] z-20">
+    <div className="shrink-0 w-full border-t border-white/60 dark:border-white/[0.08] bg-white/55 dark:bg-[#2d3138]/98 backdrop-blur-2xl transition-all duration-300 shadow-[0_-10px_35px_rgba(0,0,0,0.08)] dark:shadow-[0_-10px_35px_rgba(0,0,0,0.6)] z-20">
       {/* 1. 顶部极简信息导轨 */}
       <div className="h-9 px-4 border-b border-white/50 dark:border-white/[0.04] bg-white/40 dark:bg-white/[0.015] flex items-center justify-between gap-3 text-xs">
         {/* 左侧：标识与任务名 */}

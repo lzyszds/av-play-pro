@@ -1,4 +1,5 @@
 import { uiStorage } from "../../stores/uiStorage";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import React, { useState, useEffect } from "react";
 import {
   Sparkles,
@@ -207,6 +208,7 @@ export const VideoShaderModal: React.FC<Props> = ({
   onChange,
   onClose,
 }) => {
+  useEscapeKey(onClose);
   const [localSettings, setLocalSettings] =
     useState<VideoFilterSettings>(settings);
 
@@ -263,11 +265,11 @@ export const VideoShaderModal: React.FC<Props> = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        className="w-full max-w-lg bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#3d424b] rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-[#3d424b] bg-slate-50/50 dark:bg-[#3d424b]/20">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-600 text-white shadow-sm shadow-amber-500/20">
               <Sparkles className="w-4 h-4" />
@@ -291,7 +293,7 @@ export const VideoShaderModal: React.FC<Props> = ({
               type="button"
               onClick={onClose}
               aria-label="关闭画质增强"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#3d424b] cursor-pointer transition"
             >
               <X className="w-4 h-4" />
             </button>
@@ -328,7 +330,7 @@ export const VideoShaderModal: React.FC<Props> = ({
                     className={`p-3 rounded-xl border text-left transition relative cursor-pointer ${
                       active
                         ? "bg-amber-500/10 dark:bg-amber-500/15 border-amber-500 ring-2 ring-amber-500/20 shadow-xs"
-                        : "bg-slate-50/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
+                        : "bg-slate-50/60 dark:bg-[#3d424b]/40 border-slate-200 dark:border-[#3d424b] hover:border-slate-300 dark:hover:border-[#4a505b]"
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
@@ -339,7 +341,7 @@ export const VideoShaderModal: React.FC<Props> = ({
                         className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
                           active
                             ? "bg-amber-500 text-white"
-                            : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                            : "bg-slate-200 dark:bg-[#4a505b] text-slate-600 dark:text-slate-300"
                         }`}
                       >
                         {config.badge}
@@ -360,7 +362,7 @@ export const VideoShaderModal: React.FC<Props> = ({
           </div>
 
           {/* 高级精细调谐滑块 */}
-          <div className="p-4 bg-slate-50/80 dark:bg-slate-800/30 border border-slate-200/80 dark:border-slate-800 rounded-xl space-y-4">
+          <div className="p-4 bg-slate-50/80 dark:bg-[#3d424b]/30 border border-slate-200/80 dark:border-[#3d424b] rounded-xl space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                 <Sliders className="w-3.5 h-3.5 text-amber-500" />
@@ -374,7 +376,7 @@ export const VideoShaderModal: React.FC<Props> = ({
                 className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border transition cursor-pointer flex items-center gap-1 ${
                   localSettings.sharpen
                     ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30"
-                    : "bg-slate-200/50 dark:bg-slate-800 text-slate-400 border-transparent"
+                    : "bg-slate-200/50 dark:bg-[#3d424b] text-slate-400 border-transparent"
                 }`}
               >
                 <Eye className="w-3 h-3" />
@@ -455,13 +457,13 @@ export const VideoShaderModal: React.FC<Props> = ({
           </div>
 
           {/* 智能环境舒适度与自适应调光 (B125) */}
-          <div className="p-4 bg-slate-50/80 dark:bg-slate-800/30 border border-slate-200/80 dark:border-slate-800 rounded-xl space-y-3">
+          <div className="p-4 bg-slate-50/80 dark:bg-[#3d424b]/30 border border-slate-200/80 dark:border-[#3d424b] rounded-xl space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                 智能自适应舒适度 (True-Black & Anti-Glare)
               </span>
-              <span className="text-[10px] font-mono bg-slate-200/60 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded">
+              <span className="text-[10px] font-mono bg-slate-200/60 dark:bg-[#3d424b] text-slate-500 px-1.5 py-0.5 rounded">
                 APL 毫秒采样
               </span>
             </div>
@@ -482,14 +484,14 @@ export const VideoShaderModal: React.FC<Props> = ({
                 className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex items-start gap-2.5 ${
                   localSettings.autoShadowLift
                     ? "bg-amber-500/10 border-amber-500/40 text-slate-800 dark:text-slate-100"
-                    : "bg-white dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-400"
+                    : "bg-white dark:bg-[#3d424b]/40 border-slate-200 dark:border-[#3d424b] text-slate-400"
                 }`}
               >
                 <div
                   className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${
                     localSettings.autoShadowLift
                       ? "bg-amber-500 text-white"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-400"
+                      : "bg-slate-100 dark:bg-[#3d424b] text-slate-400"
                   }`}
                 >
                   <Sun className="w-3.5 h-3.5" />
@@ -522,14 +524,14 @@ export const VideoShaderModal: React.FC<Props> = ({
                 className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex items-start gap-2.5 ${
                   localSettings.antiGlare
                     ? "bg-amber-500/10 border-amber-500/40 text-slate-800 dark:text-slate-100"
-                    : "bg-white dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-400"
+                    : "bg-white dark:bg-[#3d424b]/40 border-slate-200 dark:border-[#3d424b] text-slate-400"
                 }`}
               >
                 <div
                   className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${
                     localSettings.antiGlare
                       ? "bg-amber-500 text-white"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-400"
+                      : "bg-slate-100 dark:bg-[#3d424b] text-slate-400"
                   }`}
                 >
                   <Eye className="w-3.5 h-3.5" />
@@ -551,7 +553,7 @@ export const VideoShaderModal: React.FC<Props> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3.5 bg-slate-50/80 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div className="px-5 py-3.5 bg-slate-50/80 dark:bg-[#3d424b]/40 border-t border-slate-100 dark:border-[#3d424b] flex items-center justify-between">
           <div className="text-[10px] text-slate-400 flex items-center gap-1">
             <span>💡 设置会自动保存并在播放所有视频时生效</span>
           </div>

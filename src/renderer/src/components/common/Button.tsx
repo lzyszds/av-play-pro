@@ -36,11 +36,11 @@ const variantStyles: Record<ButtonVariant, string> = {
   primary:
     "bg-accent-500 hover:bg-accent-600 text-white font-bold border border-accent-600/30 shadow-sm shadow-accent-500/20 active:scale-[0.98]",
   secondary:
-    "bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 font-semibold shadow-2xs active:scale-[0.98]",
+    "bg-white hover:bg-slate-50 dark:bg-[#33363d] dark:hover:bg-[#3d424b] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#3d424b] hover:border-slate-300 dark:hover:border-[#4a505b] font-semibold shadow-2xs active:scale-[0.98]",
   outline:
-    "bg-transparent hover:bg-slate-100/80 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 font-semibold active:scale-[0.98]",
+    "bg-transparent hover:bg-slate-100/80 dark:hover:bg-[#3d424b]/80 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-[#3d424b] hover:border-slate-300 dark:hover:border-[#4a505b] font-semibold active:scale-[0.98]",
   ghost:
-    "bg-transparent hover:bg-slate-100/80 dark:hover:bg-slate-800/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-semibold active:scale-[0.98]",
+    "bg-transparent hover:bg-slate-100/80 dark:hover:bg-[#3d424b]/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white font-semibold active:scale-[0.98]",
   danger:
     "bg-rose-500 hover:bg-rose-600 text-white font-bold border border-rose-600/30 shadow-sm shadow-rose-500/20 active:scale-[0.98]",
   "danger-subtle":
@@ -146,7 +146,7 @@ export function ButtonGroup({
 }) {
   return (
     <div
-      className={`inline-flex items-center p-1 bg-slate-200/60 dark:bg-slate-900/80 rounded-xl border border-slate-200/50 dark:border-slate-800 gap-1 ${className}`}
+      className={`inline-flex items-center p-1 bg-slate-200/60 dark:bg-[#33363d]/80 rounded-xl border border-slate-200/50 dark:border-[#3d424b] gap-1 ${className}`}
     >
       {children}
     </div>

@@ -35,7 +35,7 @@ export function Toggle({
       onClick={() => onChange(!checked)}
       title={title ?? (checked ? "点击关闭" : "点击开启")}
       className={`relative rounded-full transition-colors cursor-pointer shrink-0 disabled:cursor-not-allowed disabled:opacity-50 ${
-        checked ? "bg-accent-500" : "bg-slate-300 dark:bg-slate-700"
+        checked ? "bg-accent-500" : "bg-slate-300 dark:bg-[#4a505b]"
       } ${trackCls}`}
     >
       <span

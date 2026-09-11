@@ -122,16 +122,16 @@ export function FloatingBall({
           }}
           className={`fixed z-50 ${popoverWidthClass} anim-pop-in`}
         >
-          <div className="rounded-2xl overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.35)] ring-1 ring-white/10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl text-slate-700 dark:text-slate-200">
+          <div className="rounded-2xl overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,0,0,0.35)] ring-1 ring-white/10 bg-white/95 dark:bg-[#33363d]/95 backdrop-blur-xl text-slate-700 dark:text-slate-200">
             {popoverTitle && (
-              <div className="px-4 py-2.5 border-b border-slate-100/70 dark:border-slate-800/70 font-bold text-sm flex items-center gap-2 bg-gradient-to-r from-white to-slate-50 dark:from-slate-900 dark:to-slate-800">
+              <div className="px-4 py-2.5 border-b border-slate-100/70 dark:border-[#3d424b]/70 font-bold text-sm flex items-center gap-2 bg-gradient-to-r from-white to-slate-50 dark:from-[#33363d] dark:to-[#3d424b]">
                 {popoverTitle}
               </div>
             )}
             {popover}
           </div>
           {/* 小三角指向悬浮球 */}
-          <div className="absolute bottom-[-6px] right-6 w-3 h-3 rotate-45 bg-white dark:bg-slate-900 ring-1 ring-white/10 dark:ring-slate-800/30 shadow-sm" />
+          <div className="absolute bottom-[-6px] right-6 w-3 h-3 rotate-45 bg-white dark:bg-[#33363d] ring-1 ring-white/10 dark:ring-slate-800/30 shadow-sm" />
         </div>
       )}
 

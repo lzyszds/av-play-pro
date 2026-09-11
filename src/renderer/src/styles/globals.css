@@ -251,6 +251,46 @@ body {
   display: none !important;
 }
 
+/* Aero 胶囊音量滑杆：index.html 的全局 range 重置抹掉了原生 thumb，
+   这里为该滑杆补回自定义轨道与拇指样式（!important 以覆盖全局重置） */
+#volume-slider {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  height: 6px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.22);
+  cursor: pointer;
+}
+#volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: #ff466b;
+  border: none !important;
+  box-shadow: 0 0 6px rgba(255, 70, 107, 0.55);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+#volume-slider:active::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+#volume-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: #ff466b;
+  border: none !important;
+  box-shadow: 0 0 6px rgba(255, 70, 107, 0.55);
+  cursor: pointer;
+}
+#volume-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 9999px;
+  background: transparent;
+}
+
 button {
   user-select: none;
 }
@@ -1813,18 +1853,18 @@ button:active:not(:disabled):not(.plyr__control) {
 
 /* ---- CSS 变量：统一色系 ---- */
 :root {
-  --cyber-bg: #080c14;
-  --cyber-surface: rgba(14, 20, 35, 0.72);
-  --cyber-surface-hover: rgba(20, 30, 55, 0.82);
-  --cyber-border: rgba(99, 130, 200, 0.18);
-  --cyber-border-hover: rgba(139, 168, 255, 0.38);
+  --cyber-bg: #26292f;
+  --cyber-surface: rgba(44, 48, 56, 0.72);
+  --cyber-surface-hover: rgba(58, 63, 72, 0.82);
+  --cyber-border: rgba(255, 255, 255, 0.1);
+  --cyber-border-hover: rgba(244, 63, 94, 0.45);
   --cyber-glow-rose: rgba(244, 63, 94, 0.45);
   --cyber-glow-blue: rgba(99, 179, 255, 0.35);
   --cyber-glow-purple: rgba(168, 85, 247, 0.35);
   --cyber-glow-amber: rgba(251, 191, 36, 0.4);
-  --cyber-text-primary: #e8edf7;
-  --cyber-text-secondary: rgba(180, 196, 230, 0.75);
-  --cyber-text-muted: rgba(120, 145, 185, 0.6);
+  --cyber-text-primary: #eceef2;
+  --cyber-text-secondary: rgba(222, 226, 234, 0.75);
+  --cyber-text-muted: rgba(160, 166, 178, 0.6);
   --cyber-accent-rose: #f43f5e;
   --cyber-accent-blue: #60a5fa;
   --cyber-accent-purple: #a855f7;
@@ -1834,7 +1874,7 @@ button:active:not(:disabled):not(.plyr__control) {
 
 /* ---- 深色页面底板 ---- */
 .cyber-page {
-  background: linear-gradient(135deg, #080c14 0%, #0d1525 40%, #0a1020 100%);
+  background: linear-gradient(135deg, #26292f 0%, #2c3037 40%, #282c33 100%);
   background-attachment: fixed;
   min-height: 100%;
   position: relative;
@@ -1857,10 +1897,10 @@ button:active:not(:disabled):not(.plyr__control) {
 
 /* ---- 玻璃卡片 ---- */
 .glass-card {
-  background: rgba(15, 22, 40, 0.65);
+  background: rgba(44, 48, 56, 0.65);
   backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
-  border: 1px solid rgba(99, 130, 200, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 14px;
   box-shadow:
     0 4px 24px rgba(0, 0, 0, 0.35),
@@ -1868,10 +1908,10 @@ button:active:not(:disabled):not(.plyr__control) {
   transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.2s ease;
 }
 .glass-card:hover {
-  border-color: rgba(139, 168, 255, 0.3);
+  border-color: rgba(244, 63, 94, 0.4);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.45),
-    0 0 0 1px rgba(99, 130, 200, 0.18),
+    0 0 0 1px rgba(255, 255, 255, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
@@ -1886,10 +1926,10 @@ button:active:not(:disabled):not(.plyr__control) {
 
 /* ---- 玻璃卡片（带蓝紫辉光） ---- */
 .glass-card-blue:hover {
-  border-color: rgba(96, 165, 250, 0.4);
+  border-color: rgba(244, 63, 94, 0.45);
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.4),
-    0 0 20px rgba(96, 165, 250, 0.15),
+    0 0 20px rgba(244, 63, 94, 0.15),
     inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
@@ -1913,28 +1953,28 @@ button:active:not(:disabled):not(.plyr__control) {
 
 /* ---- 顶部工具栏玻璃效果 ---- */
 .cyber-toolbar {
-  background: rgba(10, 16, 30, 0.75);
+  background: rgba(38, 42, 48, 0.75);
   backdrop-filter: blur(20px) saturate(1.6);
   -webkit-backdrop-filter: blur(20px) saturate(1.6);
-  border-bottom: 1px solid rgba(99, 130, 200, 0.15);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
   box-shadow: 0 2px 16px rgba(0, 0, 0, 0.3);
 }
 
 /* ---- 赛博输入框 ---- */
 .cyber-input {
-  background: rgba(8, 15, 30, 0.6);
-  border: 1px solid rgba(99, 130, 200, 0.2);
+  background: rgba(34, 37, 43, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
-  color: #d1d9ee;
+  color: #e2e6ee;
   transition: border-color 0.2s, box-shadow 0.2s;
   outline: none;
 }
 .cyber-input::placeholder {
-  color: rgba(120, 145, 185, 0.5);
+  color: rgba(160, 166, 178, 0.55);
 }
 .cyber-input:focus {
-  border-color: rgba(96, 165, 250, 0.5);
-  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1), 0 0 12px rgba(96, 165, 250, 0.08);
+  border-color: rgba(244, 63, 94, 0.55);
+  box-shadow: 0 0 0 3px rgba(244, 63, 94, 0.12), 0 0 12px rgba(244, 63, 94, 0.08);
 }
 
 /* ---- 赛博按钮（主要） ---- */
@@ -1965,29 +2005,29 @@ button:active:not(:disabled):not(.plyr__control) {
 
 /* ---- 赛博按钮（次要/幽灵） ---- */
 .cyber-btn-ghost {
-  background: rgba(15, 22, 40, 0.6);
-  border: 1px solid rgba(99, 130, 200, 0.22);
+  background: rgba(44, 48, 56, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 10px;
-  color: rgba(180, 196, 230, 0.85);
+  color: rgba(226, 230, 238, 0.85);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 .cyber-btn-ghost:hover {
-  background: rgba(25, 40, 70, 0.75);
-  border-color: rgba(139, 168, 255, 0.4);
-  color: #d1d9ee;
-  box-shadow: 0 0 12px rgba(99, 130, 200, 0.12);
+  background: rgba(58, 62, 71, 0.75);
+  border-color: rgba(244, 63, 94, 0.45);
+  color: #e2e6ee;
+  box-shadow: 0 0 12px rgba(244, 63, 94, 0.12);
 }
 
 /* ---- 赛博徽章/标签 ---- */
 .cyber-badge {
-  background: rgba(15, 22, 40, 0.7);
-  border: 1px solid rgba(99, 130, 200, 0.2);
+  background: rgba(44, 48, 56, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 6px;
   font-size: 10px;
   font-weight: 500;
   padding: 2px 7px;
-  color: rgba(160, 180, 220, 0.9);
+  color: rgba(222, 226, 234, 0.9);
   white-space: nowrap;
 }
 .cyber-badge-rose {
@@ -2018,10 +2058,10 @@ button:active:not(:disabled):not(.plyr__control) {
 
 /* ---- 数据卡片（统计数字） ---- */
 .cyber-stat-card {
-  background: rgba(12, 18, 35, 0.7);
+  background: rgba(51, 54, 61, 0.72);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(99, 130, 200, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 12px;
   padding: 14px 16px;
   position: relative;
@@ -2036,15 +2076,15 @@ button:active:not(:disabled):not(.plyr__control) {
   background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
 }
 .cyber-stat-card:hover {
-  border-color: rgba(99, 130, 200, 0.3);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35), 0 0 16px rgba(99, 130, 200, 0.08);
+  border-color: rgba(244, 63, 94, 0.35);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35), 0 0 16px rgba(244, 63, 94, 0.08);
   transform: translateY(-2px);
 }
 
 /* ---- 分隔线 ---- */
 .cyber-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(99, 130, 200, 0.2), rgba(99, 130, 200, 0.12), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.08), transparent);
   border: none;
   margin: 0;
 }
@@ -2055,7 +2095,7 @@ button:active:not(:disabled):not(.plyr__control) {
   font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1;
-  background: linear-gradient(135deg, #e8edf7 30%, #b4c4e6);
+  background: linear-gradient(135deg, #eceef2 30%, #c3c9d6);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -2159,7 +2199,7 @@ button:active:not(:disabled):not(.plyr__control) {
   justify-content: center;
   gap: 12px;
   padding: 64px 24px;
-  color: rgba(120, 145, 185, 0.5);
+  color: rgba(160, 166, 178, 0.55);
 }
 
 /* ---- 滚动条（暗黑） ---- */
@@ -2167,21 +2207,21 @@ button:active:not(:disabled):not(.plyr__control) {
   width: 5px;
 }
 .cyber-scroll::-webkit-scrollbar-track {
-  background: rgba(8, 15, 30, 0.3);
+  background: rgba(34, 37, 43, 0.3);
 }
 .cyber-scroll::-webkit-scrollbar-thumb {
-  background: rgba(99, 130, 200, 0.25);
+  background: rgba(255, 255, 255, 0.18);
   border-radius: 3px;
 }
 .cyber-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(139, 168, 255, 0.45);
+  background: rgba(244, 63, 94, 0.5);
 }
 
 /* ---- 页眉标题区渐变下划线 ---- */
 .cyber-heading {
   position: relative;
   display: inline-block;
-  color: #e8edf7;
+  color: #eceef2;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
@@ -2199,28 +2239,28 @@ button:active:not(:disabled):not(.plyr__control) {
 
 /* ---- 发现页卡片增强 ---- */
 .discover-card {
-  background: rgba(12, 18, 35, 0.7);
+  background: rgba(51, 54, 61, 0.72);
   /* 性能：卡片不再逐个 backdrop-filter（20 个模糊层叠在壁纸上会拖帧），用更实的深底替代；
      contain 隔离布局/绘制，卡片变化不牵动整页重排 */
-  border: 1px solid rgba(99, 130, 200, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 12px;
   overflow: hidden;
   contain: layout paint;
   transition: border-color 0.22s, box-shadow 0.22s;
 }
 .discover-card:hover {
-  border-color: rgba(96, 165, 250, 0.35);
+  border-color: rgba(244, 63, 94, 0.45);
   box-shadow:
     0 10px 36px rgba(0, 0, 0, 0.5),
-    0 0 20px rgba(96, 165, 250, 0.1);
+    0 0 20px rgba(244, 63, 94, 0.12);
 }
 
 /* ---- 演员卡片 ---- */
 .actor-card {
-  background: rgba(12, 18, 35, 0.65);
+  background: rgba(51, 54, 61, 0.68);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(99, 130, 200, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 14px;
   overflow: hidden;
   cursor: pointer;
@@ -2266,8 +2306,8 @@ button:active:not(:disabled):not(.plyr__control) {
   box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.18);
 }
 .dark .ui-input {
-  background-color: #0f172a;
-  border-color: #1e293b;
+  background-color: #33363d;
+  border-color: #3d424b;
   color: #f1f5f9;
 }
 .dark .ui-input::placeholder {
@@ -2337,14 +2377,14 @@ button:active:not(:disabled):not(.plyr__control) {
   border-color: #cbd5e1;
 }
 .dark .ui-btn-secondary {
-  background-color: #0f172a;
+  background-color: #33363d;
   color: #e2e8f0;
-  border-color: #1e293b;
+  border-color: #3d424b;
 }
 .dark .ui-btn-secondary:hover {
-  background-color: #1e293b;
+  background-color: #3d424b;
   color: #ffffff;
-  border-color: #334155;
+  border-color: #4a505b;
 }
 
 /* ========================================================
@@ -2375,10 +2415,10 @@ button:active:not(:disabled):not(.plyr__control) {
    语义令牌深色值：无层 .dark 覆盖压过 Tailwind theme 层，运行时随主题生效。
    ================================================================ */
 .dark {
-  --color-canvas: #0b090b;
-  --color-surface-1: rgb(30 24 28 / 0.62);
+  --color-canvas: #2a2d33;
+  --color-surface-1: rgb(56 61 71 / 0.62);
   --color-surface-2: rgb(255 255 255 / 0.045);
-  --color-panel: #161016;
+  --color-panel: #33363d;
   --color-hairline: rgb(255 255 255 / 0.1);
   --color-hairline-strong: rgb(255 255 255 / 0.16);
   --color-text-1: #f4edf1;
@@ -2477,7 +2517,7 @@ html.privacy-image-mode *::after {
 
 /* 发现页抓取状态条：底缘流光进度线 */
 .cyber-race-track {
-  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.7), transparent);
+  background: linear-gradient(90deg, transparent, rgba(244, 63, 94, 0.7), transparent);
   background-size: 40% 100%;
   background-repeat: no-repeat;
   animation: cyber-race 1.4s linear infinite;

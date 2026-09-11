@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
   X,
   Sparkles,
@@ -46,6 +47,7 @@ export function AnnualReportModal({
   onClose,
   onAddSystemLog,
 }: AnnualReportModalProps) {
+  useEscapeKey(onClose);
   const [syncingCloud, setSyncingCloud] = useState(false);
   const [cloudSynced, setCloudSynced] = useState(false);
   const [copied, setCopied] = useState(false);

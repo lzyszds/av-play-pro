@@ -356,7 +356,7 @@ export const TitleBar: React.FC<TitleBarProps> = ({
               left: Math.min(window.innerWidth - 200, arousalMenu.x - 100),
               zIndex: 999999,
             }}
-            className="w-48 bg-panel dark:bg-[#161016] border border-hairline rounded-xl p-1.5 shadow-2xl text-text-1 text-xs animate-in fade-in zoom-in-95 duration-150"
+            className="w-48 bg-panel dark:bg-[#33363d] border border-hairline rounded-xl p-1.5 shadow-2xl text-text-1 text-xs animate-in fade-in zoom-in-95 duration-150"
           >
             <div className="px-2.5 py-1 text-[10px] font-bold text-text-3 border-b border-hairline mb-1 flex items-center justify-between">
               <span>私密时间追溯调整</span>

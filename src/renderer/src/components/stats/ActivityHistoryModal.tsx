@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useEscapeKey } from "../../hooks/useEscapeKey";
 import {
   X,
   History,
@@ -46,6 +47,7 @@ export function ActivityHistoryModal({
   onClose,
   onAddSystemLog,
 }: ActivityHistoryModalProps) {
+  useEscapeKey(onClose);
   const [items, setItems] = useState<ActivityRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -98,9 +100,9 @@ export function ActivityHistoryModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col h-[650px] anim-scale-in">
+      <div className="bg-white dark:bg-[#33363d] border border-slate-200 dark:border-[#3d424b] rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col h-[650px] anim-scale-in">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-[#3d424b] flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-[#33363d]/50">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400">
               <History className="w-5 h-5" />
@@ -110,7 +112,7 @@ export function ActivityHistoryModal({
                 <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">
                   操作与行为历史时间线
                 </h2>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-[#3d424b] text-slate-600 dark:text-slate-300 font-mono">
                   {total} 条记录
                 </span>
               </div>
@@ -135,7 +137,7 @@ export function ActivityHistoryModal({
               <button
                 type="button"
                 onClick={loadData}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#3d424b] transition cursor-pointer"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-amber-500" : ""}`} />
               </button>
@@ -145,7 +147,7 @@ export function ActivityHistoryModal({
                 type="button"
                 onClick={onClose}
                 aria-label="关闭时间线"
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#3d424b] transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -154,8 +156,8 @@ export function ActivityHistoryModal({
         </div>
 
         {/* Filter & Search Bar (无横向滚动条，分段胶囊设计) */}
-        <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800/70 rounded-xl">
+        <div className="px-6 py-3 border-b border-slate-100 dark:border-[#3d424b] bg-white dark:bg-[#33363d] flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-[#3d424b]/70 rounded-xl">
             {Object.entries(TYPE_CONFIG).map(([key, cfg]) => {
               const Icon = cfg.icon;
               const isSelected = selectedType === key;
@@ -169,7 +171,7 @@ export function ActivityHistoryModal({
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer whitespace-nowrap ${
                     isSelected
                       ? "bg-amber-500 text-white font-bold shadow-sm shadow-amber-500/20"
-                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-slate-700/60"
+                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-[#4a505b]/60"
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -179,7 +181,7 @@ export function ActivityHistoryModal({
                       className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
                         isSelected
                           ? "bg-white/20 text-white font-bold"
-                          : "bg-slate-200/80 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+                          : "bg-slate-200/80 dark:bg-[#4a505b] text-slate-500 dark:text-slate-400"
                       }`}
                     >
                       {count}
@@ -197,13 +199,13 @@ export function ActivityHistoryModal({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="搜索操作记录..."
-              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+              className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-[#3d424b]/50 border border-slate-200 dark:border-[#4a505b] rounded-lg text-xs text-slate-700 dark:text-slate-200 focus:outline-none focus:border-amber-500"
             />
           </div>
         </div>
 
         {/* Timeline List */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-slate-50/30 dark:bg-slate-950/40">
+        <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-slate-50/30 dark:bg-[#212429]/40">
           {items.length === 0 && !loading && (
             <div className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 gap-2">
               <Clock className="w-8 h-8 stroke-[1.5]" />
@@ -223,7 +225,7 @@ export function ActivityHistoryModal({
             return (
               <div
                 key={item.id}
-                className="flex items-start gap-3.5 p-3 rounded-xl border border-slate-200/70 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:border-amber-400/40 transition"
+                className="flex items-start gap-3.5 p-3 rounded-xl border border-slate-200/70 dark:border-[#3d424b] bg-white dark:bg-[#33363d] shadow-sm hover:border-amber-400/40 transition"
               >
                 <div
                   className={`p-2 rounded-xl border shrink-0 mt-0.5 ${config.color}`}

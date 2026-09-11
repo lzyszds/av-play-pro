@@ -32,14 +32,14 @@ export function ThumbnailQueueWidget({
 
   const popover = (
     <>
-      <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+      <div className="px-3 py-2 border-b border-slate-100 dark:border-[#3d424b] flex items-center justify-between">
         <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
           {running.length} 处理 · {pending.length} 排队 / {jobs.length} 总
         </span>
         <Tooltip content="清理已结束任务" placement="left">
           <button
             onClick={() => thumbnailQueue.clearFinished()}
-            className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded hover:bg-slate-100 dark:hover:bg-[#3d424b] transition cursor-pointer"
           >
             <Trash2 className="w-3 h-3" />
           </button>
@@ -47,7 +47,7 @@ export function ThumbnailQueueWidget({
       </div>
 
       {running.length > 0 && (
-        <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800">
+        <div className="px-3 py-2 border-b border-slate-100 dark:border-[#3d424b]">
           <div className="flex items-center justify-between text-[10px] mb-1">
             <span className="text-slate-500">
               处理中进度（{running.length} 个）
@@ -74,7 +74,7 @@ export function ThumbnailQueueWidget({
           return (
             <div
               key={j.id}
-              className="px-3 py-1.5 border-b border-slate-50 dark:border-slate-800 last:border-b-0"
+              className="px-3 py-1.5 border-b border-slate-50 dark:border-[#3d424b] last:border-b-0"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate text-[11px] text-slate-700 dark:text-slate-200 font-medium">
@@ -83,7 +83,7 @@ export function ThumbnailQueueWidget({
                 <StatusBadge status={j.status} />
               </div>
               <div className="flex items-center gap-2 mt-1">
-                <div className="flex-1 h-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <div className="flex-1 h-1 rounded-full bg-slate-100 dark:bg-[#3d424b] overflow-hidden">
                   <div
                     className={`h-full transition-[width] duration-300 ${
                       j.status === "failed"
@@ -160,12 +160,12 @@ export function ThumbnailQueueWidget({
 
 function StatusBadge({ status }: { status: ThumbJob["status"] }) {
   const map: Record<ThumbJob["status"], string> = {
-    pending: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
+    pending: "bg-slate-100 text-slate-500 dark:bg-[#3d424b] dark:text-slate-400",
     running:
       "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300",
     done: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300",
     failed: "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300",
-    cancelled: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
+    cancelled: "bg-slate-100 text-slate-500 dark:bg-[#3d424b] dark:text-slate-400",
     skipped: "bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-300",
   };
   const label = {

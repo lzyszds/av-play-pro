@@ -109,7 +109,7 @@ export function SettingsPanel({
   const [isInstallingExtension, setIsInstallingExtension] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(settings.theme);
   const [playerLayout, setPlayerLayout] = useState<PlayerLayout>(
-    settings.playerLayout ?? "classic",
+    settings.playerLayout ?? "capsule",
   );
   const [closeAction, setCloseAction] = useState<CloseAction>(
     settings.closeAction,
@@ -848,12 +848,12 @@ export function SettingsPanel({
                   <div className="grid grid-cols-3 gap-2">
                     {(
                       [
-                        { v: "zero", l: "零界面放映", d: "边缘唤出操作与片库" },
                         {
                           v: "capsule",
                           l: "Aero 胶囊",
                           d: "Rose Noir 悬浮胶囊与抽屉",
                         },
+                        { v: "zero", l: "零界面放映", d: "边缘唤出操作与片库" },
                         { v: "classic", l: "经典右栏", d: "播放器 + 完整片库" },
                       ] as Array<{ v: PlayerLayout; l: string; d: string }>
                     ).map(({ v, l, d }) => (

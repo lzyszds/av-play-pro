@@ -57,7 +57,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   newsEndpoint: "https://avplay-news.1024327189.workers.dev",
   newsApiKey: "Aa395878870",
   autoArousalOnPlay: true,
-  playerLayout: "classic",
+  playerLayout: "capsule",
   downloadBgVisible: true,
   downloadBgOpacity: 42,
   downloadBgDim: 0,
@@ -549,7 +549,7 @@ export default function App() {
             <PlayerPage
               active={currentPage === "player"}
               videoPath={settings.video_path}
-              layout={settings.playerLayout ?? "classic"}
+              layout={settings.playerLayout ?? "capsule"}
               onAddSystemLog={addLog}
               pendingPlayName={pendingPlayName}
               onConsumePendingPlay={() => setPendingPlayName(null)}

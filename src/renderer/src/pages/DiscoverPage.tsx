@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEscapeKey } from "../hooks/useEscapeKey";
 import { createPortal } from "react-dom";
 import { PageLoader } from "../components/PageLoader";
 import { Tooltip } from "../components/common/Tooltip";
@@ -115,7 +116,7 @@ const DiscoverCard = React.memo(function DiscoverCard({
       {/* 封面区 */}
       <div
         style={{ height: coverH }}
-        className="relative shrink-0 bg-slate-900/80 overflow-hidden"
+        className="relative shrink-0 bg-[#212429]/80 overflow-hidden"
       >
         {cover ? (
           <img
@@ -155,7 +156,7 @@ const DiscoverCard = React.memo(function DiscoverCard({
           </span>
         )}
         {preview && (
-          <span className="absolute top-1.5 right-1.5 z-20 text-[8px] px-1.5 py-0.5 rounded-md cyber-badge-cyan font-semibold tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <span className="absolute top-1.5 right-1.5 z-20 text-[8px] px-1.5 py-0.5 rounded-md cyber-badge-rose font-semibold tracking-wide opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             ▶ 预览
           </span>
         )}
@@ -167,9 +168,9 @@ const DiscoverCard = React.memo(function DiscoverCard({
       </div>
 
       {/* 底部信息区：番号 + 操作按钮 */}
-      <div className="shrink-0 px-2.5 py-1.5 flex items-center gap-1.5 bg-slate-900/60">
+      <div className="shrink-0 px-2.5 py-1.5 flex items-center gap-1.5 bg-[#212429]/60">
         {item.code && (
-          <span className="cyber-badge cyber-badge-blue font-mono truncate max-w-4xl">
+          <span className="cyber-badge cyber-badge-rose font-mono truncate max-w-4xl">
             {item.code}
           </span>
         )}
@@ -218,7 +219,7 @@ const DiscoverCard = React.memo(function DiscoverCard({
               <button
                 type="button"
                 onClick={() => onCopy(item.code!)}
-                className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-cyan-400 hover:border-cyan-500/40 transition-all cursor-pointer"
+                className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 transition-all cursor-pointer"
               >
                 <Copy className="w-3 h-3" />
               </button>
@@ -243,10 +244,10 @@ const DiscoverCard = React.memo(function DiscoverCard({
                 disabled={playState === "resolving"}
                 className={`w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border transition-all cursor-pointer disabled:cursor-not-allowed ${
                   playState === "loaded"
-                    ? "border-cyan-500/40 text-cyan-400"
+                    ? "border-rose-500/40 text-rose-400"
                     : playState === "error"
                       ? "border-rose-500/40 text-rose-400"
-                      : "border-white/10 text-slate-400 hover:text-cyan-400 hover:border-cyan-500/40"
+                      : "border-white/10 text-slate-400 hover:text-rose-400 hover:border-rose-500/40"
                 }`}
               >
                 {playState === "resolving" ? (
@@ -263,7 +264,7 @@ const DiscoverCard = React.memo(function DiscoverCard({
             <button
               type="button"
               onClick={() => window.open(item.url, "_blank")}
-              className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-blue-400 hover:border-blue-500/40 transition-all cursor-pointer"
+              className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 transition-all cursor-pointer"
             >
               <ExternalLink className="w-3 h-3" />
             </button>
@@ -314,6 +315,8 @@ export function DiscoverPage({ onAddSystemLog, onPlayStream }: Props) {
   }, [running]);
   // 抓取启动弹窗：点「一键抓取」时让用户选方式与页码范围
   const [showScrapeDialog, setShowScrapeDialog] = useState(false);
+  // 刮削弹窗支持 Esc 关闭
+  useEscapeKey(() => setShowScrapeDialog(false), showScrapeDialog);
   const [dlgMethod, setDlgMethod] = useState<"webview" | "jina">("webview");
   const [dlgStart, setDlgStart] = useState(1);
   const [dlgEnd, setDlgEnd] = useState(3);
@@ -652,6 +655,67 @@ export function DiscoverPage({ onAddSystemLog, onPlayStream }: Props) {
     }
     setPage(1);
   }, [keyword]);
+  // 统一翻页入口：夹紧到合法范围并回到列表顶部（首页/末页/省略号快跳/键盘共用）
+  const goToPage = (p: number): void => {
+    const target = Math.min(totalPages, Math.max(1, Math.floor(p)));
+    if (target === currentPage) return;
+    setPage(target);
+    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const goToPageRef = useRef(goToPage);
+  goToPageRef.current = goToPage;
+  // 跳页输入框：受控临时值，回车生效，失焦还原（placeholder 常显当前页码）
+  const [jumpInput, setJumpInput] = useState("");
+  // 键盘翻页：←/→ 前后翻页，PageUp/PageDown 同步，Home/End 直达首末页。
+  // 组件卸载即注销；输入类控件聚焦或带修饰键时忽略，避免打字/快捷键误触。
+  const pageMetaRef = useRef({ current: currentPage, total: totalPages });
+  pageMetaRef.current = { current: currentPage, total: totalPages };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT" ||
+          t.isContentEditable)
+      ) {
+        return;
+      }
+      const { current, total } = pageMetaRef.current;
+      switch (e.key) {
+        case "ArrowLeft":
+        case "PageUp":
+          if (current > 1) {
+            goToPageRef.current(current - 1);
+            e.preventDefault();
+          }
+          break;
+        case "ArrowRight":
+        case "PageDown":
+          if (current < total) {
+            goToPageRef.current(current + 1);
+            e.preventDefault();
+          }
+          break;
+        case "Home":
+          if (current > 1) {
+            goToPageRef.current(1);
+            e.preventDefault();
+          }
+          break;
+        case "End":
+          if (current < total) {
+            goToPageRef.current(total);
+            e.preventDefault();
+          }
+          break;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const pagedItems = useMemo(
     () =>
       filtered.slice(
@@ -1056,8 +1120,8 @@ export function DiscoverPage({ onAddSystemLog, onPlayStream }: Props) {
             >
               {/* 头部 */}
               <div className="px-5 pt-4 pb-3 flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center">
-                  <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                <div className="w-6 h-6 rounded-md bg-rose-500/15 border border-rose-500/30 flex items-center justify-center">
+                  <Zap className="w-3.5 h-3.5 text-rose-400" />
                 </div>
                 <span className="text-sm font-bold text-slate-100">开始抓取</span>
               </div>
@@ -1070,7 +1134,7 @@ export function DiscoverPage({ onAddSystemLog, onPlayStream }: Props) {
                     <button
                       type="button"
                       onClick={() => setDlgMethod("webview")}
-                      className={`px-3 py-2.5 text-xs rounded-xl border transition cursor-pointer text-left ${dlgMethod === "webview" ? "border-blue-500/60 bg-blue-500/10 text-blue-200" : "border-slate-700/40 text-slate-400 hover:text-slate-200"}`}
+                      className={`px-3 py-2.5 text-xs rounded-xl border transition cursor-pointer text-left ${dlgMethod === "webview" ? "border-rose-500/60 bg-rose-500/10 text-rose-200" : "border-slate-700/40 text-slate-400 hover:text-slate-200"}`}
                     >
                       <span className="font-semibold">过盾抓取</span>
                       <span className="mt-0.5 block text-[10px] text-slate-500">弹浏览器过验证 · 慢但稳</span>
@@ -1078,7 +1142,7 @@ export function DiscoverPage({ onAddSystemLog, onPlayStream }: Props) {
                     <button
                       type="button"
                       onClick={() => setDlgMethod("jina")}
-                      className={`px-3 py-2.5 text-xs rounded-xl border transition cursor-pointer text-left ${dlgMethod === "jina" ? "border-cyan-500/60 bg-cyan-500/10 text-cyan-200" : "border-slate-700/40 text-slate-400 hover:text-slate-200"}`}
+                      className={`px-3 py-2.5 text-xs rounded-xl border transition cursor-pointer text-left ${dlgMethod === "jina" ? "border-rose-500/60 bg-rose-500/10 text-rose-200" : "border-slate-700/40 text-slate-400 hover:text-slate-200"}`}
                     >
                       <span className="font-semibold">Jina 快速</span>
                       <span className="mt-0.5 block text-[10px] text-slate-500">第三方代理 · 快 · 免过盾</span>
@@ -1129,7 +1193,7 @@ export function DiscoverPage({ onAddSystemLog, onPlayStream }: Props) {
                       type="checkbox"
                       checked={dlgAutoOnStartup}
                       onChange={(e) => setDlgAutoOnStartup(e.target.checked)}
-                      className="accent-blue-500"
+                      className="accent-rose-500"
                     />
                     启动时自动抓取
                   </label>
@@ -1160,8 +1224,8 @@ export function DiscoverPage({ onAddSystemLog, onPlayStream }: Props) {
       {/* 内容网格 */}
       {filtered.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-4">
-          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-900/40 to-purple-900/30 border border-blue-500/20 flex items-center justify-center">
-            <Compass className="w-9 h-9 text-blue-500/50" />
+          <div className="w-20 h-20 rounded-full bg-gradient-to-br from-rose-900/40 to-purple-900/30 border border-rose-500/20 flex items-center justify-center">
+            <Compass className="w-9 h-9 text-rose-500/50" />
           </div>
           {items.length === 0 ? (
             <div className="text-center space-y-2 max-w-xs">
@@ -1219,11 +1283,19 @@ export function DiscoverPage({ onAddSystemLog, onPlayStream }: Props) {
             <div className="shrink-0 px-4 py-3 cyber-toolbar flex items-center justify-center gap-2 flex-wrap">
               <button
                 type="button"
-                onClick={() => {
-                  setPage((p) => Math.max(1, p - 1));
-                  scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-                }}
+                onClick={() => goToPage(1)}
                 disabled={currentPage <= 1}
+                title="回到第一页（Home）"
+                className="px-3 py-1.5 text-xs rounded-lg cyber-btn-ghost transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                首页
+              </button>
+
+              <button
+                type="button"
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1}
+                title="上一页（←）"
                 className="px-3 py-1.5 text-xs rounded-lg cyber-btn-ghost transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 上一页
@@ -1242,16 +1314,30 @@ export function DiscoverPage({ onAddSystemLog, onPlayStream }: Props) {
                     return (
                       <React.Fragment key={p}>
                         {showEllipsis && (
-                          <span className="px-1 text-xs text-slate-600">…</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              goToPage(
+                                p > currentPage
+                                  ? currentPage + 5
+                                  : currentPage - 5,
+                              )
+                            }
+                            title={
+                              p > currentPage
+                                ? `向后快跳 5 页（至 ${Math.min(totalPages, currentPage + 5)}）`
+                                : `向前快跳 5 页（至 ${Math.max(1, currentPage - 5)}）`
+                            }
+                            className="px-1.5 py-1 text-xs text-slate-600 hover:text-rose-400 transition-colors cursor-pointer"
+                          >
+                            …
+                          </button>
                         )}
                         <button
                           type="button"
-                          onClick={() => {
-                            setPage(p);
-                            scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-                          }}
+                          onClick={() => goToPage(p)}
                           className={`min-w-[32px] px-2 py-1 text-xs rounded-lg transition-all cursor-pointer ${p === currentPage
-                              ? "bg-blue-500/20 text-blue-400 border border-blue-500/40"
+                              ? "bg-rose-500/20 text-rose-400 border border-rose-500/40"
                               : "cyber-btn-ghost"
                             }`}
                         >
@@ -1264,19 +1350,48 @@ export function DiscoverPage({ onAddSystemLog, onPlayStream }: Props) {
 
               <button
                 type="button"
-                onClick={() => {
-                  setPage((p) => Math.min(totalPages, p + 1));
-                  scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-                }}
+                onClick={() => goToPage(currentPage + 1)}
                 disabled={currentPage >= totalPages}
+                title="下一页（→）"
                 className="px-3 py-1.5 text-xs rounded-lg cyber-btn-ghost transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 下一页
               </button>
 
+              <button
+                type="button"
+                onClick={() => goToPage(totalPages)}
+                disabled={currentPage >= totalPages}
+                title="跳到最后一页（End）"
+                className="px-3 py-1.5 text-xs rounded-lg cyber-btn-ghost transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                末页
+              </button>
+
               <span className="ml-2 text-[11px] text-slate-500">
                 第 {currentPage} / {totalPages} 页 · 共 {filtered.length} 条
               </span>
+
+              <div className="ml-1 flex items-center gap-1.5 text-[11px] text-slate-500">
+                <span>跳至</span>
+                <input
+                  value={jumpInput}
+                  onChange={(e) =>
+                    setJumpInput(e.target.value.replace(/\D/g, ""))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    const n = Number(jumpInput);
+                    if (jumpInput && n >= 1) goToPage(n);
+                    e.currentTarget.blur();
+                  }}
+                  onBlur={() => setJumpInput("")}
+                  placeholder={String(currentPage)}
+                  title="输入页码后回车跳转"
+                  className="w-12 px-1.5 py-1 text-xs text-center rounded-lg cyber-input outline-none"
+                />
+                <span>页</span>
+              </div>
             </div>
           )}
         </>

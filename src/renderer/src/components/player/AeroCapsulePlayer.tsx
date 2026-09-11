@@ -25,6 +25,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Tooltip } from "../common/Tooltip";
+import { resolutionLabel } from "../../lib/resolution";
 import { useVirtualizer } from "@tanstack/react-virtual";
 
 interface AeroCapsulePlayerProps {
@@ -158,7 +159,7 @@ const DrawerCardImpl: React.FC<DrawerCardProps> = ({
         </span>
         {/* 时长徽标 */}
         <span className="absolute bottom-1.5 right-1.5 z-20 text-[9px] px-1.5 py-0.5 rounded-md bg-black/70 text-white/90 font-mono backdrop-blur-sm">
-          {item.duration || item.resolution || "本地"}
+          {[item.duration, resolutionLabel(item.resolution)].filter(Boolean).join(" · ") || "本地"}
         </span>
         {/* 播放中均衡器 */}
         {isPlaying && (
@@ -1099,7 +1100,7 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
             ) : (
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide bg-[#FF466B]/15 text-[#FF466B] border border-[#FF466B]/30 shadow-[0_0_10px_rgba(255,70,107,0.25)] shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#FF466B] mr-1.5 animate-pulse" />
-                {activeVideo.resolution || "4K UHD"}
+                {resolutionLabel(activeVideo.resolution) || "4K UHD"}
               </span>
             )}
             <h2

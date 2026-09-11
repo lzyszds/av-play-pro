@@ -13,6 +13,7 @@ import React, {
   useMemo,
 } from "react";
 import { trpc } from "../lib/trpc";
+import { resolutionLabel } from "../lib/resolution";
 import { LocalVideoCard } from "../components/player/LocalVideoCard";
 import { TonightPanel } from "../components/player/TonightPanel";
 import {
@@ -2778,9 +2779,8 @@ function formatZeroLibSubline(video: VideoItem): string {
   if (video.studio?.trim()) parts.push(video.studio.trim());
   if (video.genres?.length) parts.push(video.genres.slice(0, 2).join(" / "));
   if (video.playCount != null && video.playCount > 0) parts.push(`播放 ${video.playCount} 次`);
-  if (video.resolution && video.resolution !== "local" && /^\d+x\d+$/i.test(video.resolution)) {
-    parts.push(video.resolution);
-  }
+  const resLabel = resolutionLabel(video.resolution);
+  if (resLabel) parts.push(resLabel);
   return parts.length ? parts.join("  ·  ") : "暂无元数据";
 }
 
@@ -3115,7 +3115,7 @@ function PlayerLayoutRail({
           </div>
           <div className="mt-2 truncate text-[10px] font-bold">{selected.name}</div>
           <div className="mt-1 flex gap-1 text-[9px] text-slate-400">
-            <span>{selected.resolution}</span><span>·</span><span>{selected.duration || "本地影片"}</span>
+            <span>{resolutionLabel(selected.resolution) || "本地"}</span><span>·</span><span>{selected.duration || "本地影片"}</span>
           </div>
         </div>
       )}
@@ -3135,7 +3135,7 @@ function PlayerLayoutRail({
             </div>
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pb-1.5 pt-7">
               <div className="truncate text-[10px] font-bold text-white">{video.name}</div>
-              <div className="text-[9px] text-slate-300">{video.resolution}</div>
+              <div className="text-[9px] text-slate-300">{resolutionLabel(video.resolution) || "本地"}</div>
             </div>
             {onDelete && (
               <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

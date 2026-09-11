@@ -1,6 +1,8 @@
 import * as fs from "fs";
 import * as fsPromises from "fs/promises";
 import * as path from "path";
+import { spawn } from "child_process";
+import { getMainWindow } from "../windowState";
 import { t } from "../trpc";
 import { smartMatch } from "../lib/searchMatch";
 import { atomicWriteFile, atomicWriteFileSync } from "../lib/fsutil";
@@ -171,6 +173,7 @@ async function loadMeta(
     return {
       _metaMtime: st.mtimeMs,
       code: m.code,
+      resolution: typeof m.resolution === "string" ? m.resolution : undefined,
       title: m.title,
       actors: Array.isArray(m.actors) ? m.actors : undefined,
       releaseDate: m.releaseDate,
@@ -186,6 +189,125 @@ async function loadMeta(
     };
   } catch {
     return { _metaMtime: 0 };
+  }
+}
+
+/** 用 ffmpeg -i 探测视频分辨率（宽x高，如 "1920x1080"）；失败返回 undefined */
+async function probeResolution(filePath: string): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    let stderr = "";
+    const child = spawn("ffmpeg", ["-hide_banner", "-i", filePath], {
+      windowsHide: true,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    child.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        /* 忽略 */
+      }
+      resolve(undefined);
+    }, 20000);
+    child.on("close", () => {
+      clearTimeout(timer);
+      // 视频流行形如：Stream #0:0 ... Video: h264 ..., yuv420p, 1920x1080 [SAR ...]
+      const m = /Video:.*?,\s*(\d{2,5})x(\d{2,5})/.exec(stderr);
+      if (!m) return resolve(undefined);
+      const w = Number(m[1]);
+      const h = Number(m[2]);
+      if (w <= 0 || h <= 0) return resolve(undefined);
+      resolve(`${w}x${h}`);
+    });
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve(undefined);
+    });
+  });
+}
+
+// —— 分辨率探测后台队列：补齐 meta.json 缺失 resolution 的影片，限流避免占满磁盘/CPU ——
+const PROBE_CONCURRENCY = 4;
+const resolutionProbePending = new Map<string, string>(); // id -> 视频文件路径
+const resolutionProbeQueued = new Set<string>(); // 本次进程生命周期内已排队/已探测，防重复
+let resolutionProbeRunning = false;
+
+/** 把探测结果写回 meta.json 持久化（原子写，失败不影响主流程） */
+function writeResolutionToMeta(folderPath: string, resolution: string): void {
+  try {
+    const names = fs.readdirSync(folderPath);
+    const metaName = pickCaseInsensitive(names, "meta.json");
+    if (!metaName) return;
+    const mPath = path.join(folderPath, metaName);
+    const m = JSON.parse(fs.readFileSync(mPath, "utf8"));
+    if (m.resolution === resolution) return;
+    m.resolution = resolution;
+    atomicWriteFileSync(mPath, JSON.stringify(m, null, 2));
+  } catch {
+    /* meta 不存在或不可写：下次启动会重新探测 */
+  }
+}
+
+function notifyResolutionRefresh(): void {
+  getMainWindow()?.webContents.send("library:updated", {
+    name: "分辨率探测",
+    at: Date.now(),
+  });
+}
+
+/** 扫描缓存里还没有真实分辨率的条目，排队后台探测 */
+function queueResolutionBackfill(videoDir: string, cache: CacheFile): void {
+  let hasNew = false;
+  for (const id of cache.sortedIds) {
+    const entry = cache.entries[id];
+    if (!entry) continue;
+    const res = entry.video.resolution;
+    if (res && res !== "local") continue;
+    if (resolutionProbeQueued.has(id)) continue;
+    resolutionProbeQueued.add(id);
+    resolutionProbePending.set(id, entry.video.url);
+    hasNew = true;
+  }
+  if (hasNew && !resolutionProbeRunning) {
+    void drainResolutionQueue(videoDir);
+  }
+}
+
+async function drainResolutionQueue(videoDir: string): Promise<void> {
+  resolutionProbeRunning = true;
+  try {
+    let probed = 0;
+    while (resolutionProbePending.size > 0) {
+      const batch = [...resolutionProbePending.keys()].slice(
+        0,
+        PROBE_CONCURRENCY,
+      );
+      await Promise.all(
+        batch.map(async (id) => {
+          const file = resolutionProbePending.get(id)!;
+          resolutionProbePending.delete(id);
+          const res = await probeResolution(file);
+          if (res) writeResolutionToMeta(path.join(videoDir, id), res);
+          probed++;
+        }),
+      );
+      // 每探测 200 部通知一次渲染端刷新，边探边显示
+      if (probed >= 200) {
+        probed = 0;
+        notifyResolutionRefresh();
+      }
+    }
+    // 结束后走一次增量重建：meta.json 已写入 → 文件夹 mtime 变化 → 缓存带上 resolution
+    try {
+      await getCacheFile(videoDir);
+    } catch {
+      /* 忽略 */
+    }
+    notifyResolutionRefresh();
+  } finally {
+    resolutionProbeRunning = false;
   }
 }
 
@@ -237,7 +359,7 @@ async function buildEntry(
       id: folderName,
       name: folderName,
       url: videoFile,
-      resolution: "local",
+      resolution: metaExtras.resolution || "local",
       encryptionType: "decrypted",
       coverUrl: coverFile,
       previewUrl: previewFile,
@@ -416,10 +538,12 @@ async function getCacheFile(videoDir: string): Promise<CacheFile> {
       if (cached) {
         const inc = await buildCacheIncremental(videoDir, cached);
         if (inc !== cached) void saveDiskCache(videoDir, inc);
+        queueResolutionBackfill(videoDir, inc);
         return inc;
       }
       const fresh = await buildCacheFromScratch(videoDir);
       void saveDiskCache(videoDir, fresh);
+      queueResolutionBackfill(videoDir, fresh);
       return fresh;
     })();
   }

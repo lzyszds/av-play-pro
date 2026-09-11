@@ -21,6 +21,7 @@ import {
 import type { VideoItem } from "../../pages/player/types";
 import { CoverImage } from "../CoverImage";
 import { Tooltip } from "../common/Tooltip";
+import { resolutionLabel } from "../../lib/resolution";
 
 interface LocalVideoCardProps {
   video: VideoItem;
@@ -494,6 +495,11 @@ const LocalVideoCardImpl: React.FC<LocalVideoCardProps> = ({
               </>
             ) : (
               <span className="text-slate-300">—</span>
+            )}
+            {resolutionLabel(video.resolution) && (
+              <span className="text-[10px] font-mono text-slate-400">
+                {resolutionLabel(video.resolution)}
+              </span>
             )}
           </span>
           <div className="flex items-center gap-0.5 shrink-0">

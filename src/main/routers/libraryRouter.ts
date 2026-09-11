@@ -1078,8 +1078,9 @@ export const libraryRouter = t.router({
       let freedBytes = 0;
 
       for (const video of toDelete) {
-        const target = path.resolve(video.url);
-        // 安全检查：必须在片库根目录下，且是一级子项
+        // video.url 是视频文件路径，删除目标是其所在文件夹（如 根目录/LULU-396/）
+        const target = path.dirname(path.resolve(video.url));
+        // 安全检查：文件夹必须在片库根目录下，且是一级子项
         const rel = path.relative(rootResolved, target);
         const underRoot =
           rel !== "" &&

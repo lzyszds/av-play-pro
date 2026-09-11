@@ -24,6 +24,7 @@ import { organizerRouter } from "./routers/organizerRouter";
 import { achievementsRouter } from "./routers/achievementsRouter";
 import { newsRouter } from "./routers/newsRouter";
 import { intensityRouter } from "./routers/intensityRouter";
+import { uiStateRouter } from "./routers/uiStateRouter";
 
 export const appRouter = t.router({
   download: downloadRouter,
@@ -51,6 +52,7 @@ export const appRouter = t.router({
   achievements: achievementsRouter,
   news: newsRouter,
   intensity: intensityRouter,
+  uiState: uiStateRouter,
 });
 
 export type AppRouter = typeof appRouter;

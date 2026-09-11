@@ -2,6 +2,7 @@
 // - 偏好画像：从 stats 反推（最常看的演员/标签/片商权重）
 // - 新鲜度：未播放 > 长期未看 > 近期看过
 // - 多样性：同一演员最多出现 N 次
+import { uiStorage } from "../stores/uiStorage";
 import type { VideoItem } from "../pages/player/types";
 
 export interface UserProfile {
@@ -138,7 +139,7 @@ export function generateTonightPicks(
 const CACHE_KEY = "tonightPicks";
 export function loadCachedPicks(): { date: string; ids: string[] } | null {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
+    const raw = uiStorage.get(CACHE_KEY);
     if (!raw) return null;
     const obj = JSON.parse(raw);
     if (!obj || obj.date !== todayKey()) return null;
@@ -149,7 +150,7 @@ export function loadCachedPicks(): { date: string; ids: string[] } | null {
 }
 export function saveCachedPicks(ids: string[]) {
   try {
-    localStorage.setItem(
+    uiStorage.set(
       CACHE_KEY,
       JSON.stringify({ date: todayKey(), ids }),
     );
@@ -157,6 +158,6 @@ export function saveCachedPicks(ids: string[]) {
 }
 export function clearCachedPicks() {
   try {
-    localStorage.removeItem(CACHE_KEY);
+    uiStorage.remove(CACHE_KEY);
   } catch {}
 }

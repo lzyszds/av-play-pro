@@ -11,6 +11,7 @@ import {
   type ScrapedItem,
 } from "../lib/scraperControl";
 import { toCdnImg } from "../lib/cdn";
+import { useDiscoverStore } from "../stores/discoverStore";
 import {
   Compass,
   Zap,
@@ -319,13 +320,12 @@ export function DiscoverPage({ onAddSystemLog, onPlayStream }: Props) {
   const [dlgBaseUrl, setDlgBaseUrl] = useState("");
   const [dlgAutoOnStartup, setDlgAutoOnStartup] = useState(false);
 
-  // —— 页码记忆（双保险一）：loadAll 拉到数据后立即恢复上次页码，同步写回缓存 ——
+  // —— 页码记忆（双保险一）：loadAll 拉到数据后立即恢复上次页码 ——
+  // 状态在主进程 JSON 文件里（zustand persist），localStorage 在打包后不可靠，已弃用
   const restorePage = useCallback((totalPages: number): void => {
-    const saved = Number(localStorage.getItem("avplay:discover:lastPage") || "1");
+    const saved = useDiscoverStore.getState().lastPage;
     if (saved > 1) {
-      const target = Math.min(saved, Math.max(1, totalPages));
-      setPage(target);
-      localStorage.setItem("avplay:discover:lastPage", String(target));
+      setPage(Math.min(saved, Math.max(1, totalPages)));
     }
   }, []);
 
@@ -616,20 +616,31 @@ export function DiscoverPage({ onAddSystemLog, onPlayStream }: Props) {
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, totalPages);
-  // 上次浏览页码持久化：进入发现页恢复；切页即保存
+  // 上次浏览页码持久化：进入发现页恢复；切页即保存。
+  // 恢复走双保险（loadAll 后 + 这里）；storage 是异步 IPC，需等 persist hydration 完成再读
   const pageRestoreDoneRef = useRef(false);
+  const restorePageRef = useRef(restorePage);
+  restorePageRef.current = restorePage;
   useEffect(() => {
-    if (items.length > 0 && !pageRestoreDoneRef.current) {
+    if (items.length === 0 || pageRestoreDoneRef.current) return;
+    const run = (): void => {
+      if (pageRestoreDoneRef.current) return;
       pageRestoreDoneRef.current = true;
-      const saved = Number(
-        localStorage.getItem("avplay:discover:lastPage") || "1",
-      );
-      if (saved > 1) setPage(Math.min(saved, totalPages));
+      restorePageRef.current(totalPages);
+    };
+    if (useDiscoverStore.persist.hasHydrated()) {
+      run();
+      return;
     }
+    // 数据先到、hydration 未完成：注册 hydration 完成回调再恢复
+    const off = useDiscoverStore.persist.onFinishHydration(run);
+    return () => off();
   }, [items.length, totalPages]);
+  // 闸门：恢复完成（pageRestoreDoneRef 置位）之前绝不写入，
+  // 否则挂载初期 lastPage 初始值 1 会把上次浏览页码覆盖掉
   useEffect(() => {
-    if (currentPage > 0) {
-      localStorage.setItem("avplay:discover:lastPage", String(currentPage));
+    if (pageRestoreDoneRef.current && currentPage > 0) {
+      useDiscoverStore.getState().setLastPage(currentPage);
     }
   }, [currentPage]);
   // 关键词变化时回到第 1 页（跳过首次挂载，避免覆盖恢复的页码）

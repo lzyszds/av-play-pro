@@ -1,3 +1,4 @@
+import { uiStorage } from "./stores/uiStorage";
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { TitleBar, type Page } from "./components/TitleBar";
 import { GlobalConsole } from "./components/GlobalConsole";
@@ -79,7 +80,7 @@ const SETTINGS_CACHE_KEY = "avplay:cached_settings";
 
 function getCachedSettings(): AppSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_CACHE_KEY);
+    const raw = uiStorage.get(SETTINGS_CACHE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === "object") {
@@ -98,7 +99,7 @@ function getCachedSettings(): AppSettings {
 
 function syncSettingsCache(settings: AppSettings): void {
   try {
-    localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(settings));
+    uiStorage.set(SETTINGS_CACHE_KEY, JSON.stringify(settings));
   } catch {
     /* ignore */
   }
@@ -479,7 +480,7 @@ export default function App() {
     if (setZoom) void setZoom(pct / 100);
   }, [settings.uiZoom, settingsLoaded]);
 
-  // 设置变更落盘（防抖 500ms，localStorage 缓存即时同步保障刷新无闪烁）
+  // 设置变更落盘（防抖 500ms，uiStorage 镜像即时同步保障刷新无闪烁）
   useEffect(() => {
     if (!settingsLoaded) return;
     syncSettingsCache(settings);

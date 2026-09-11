@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { uiStorage } from "../stores/uiStorage";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import React, {
   useState,
@@ -59,7 +60,7 @@ const AMBIENT_LIGHT_KEY = "av-play-pro:ambientLight";
 
 function loadFavorites(): Set<string> {
   try {
-    const raw = localStorage.getItem(FAVORITES_KEY);
+    const raw = uiStorage.get(FAVORITES_KEY);
     if (!raw) return new Set();
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return new Set();
@@ -71,7 +72,7 @@ function loadFavorites(): Set<string> {
 
 function saveFavorites(set: Set<string>): void {
   try {
-    localStorage.setItem(FAVORITES_KEY, JSON.stringify(Array.from(set)));
+    uiStorage.set(FAVORITES_KEY, JSON.stringify(Array.from(set)));
   } catch {
     /* ignore */
   }
@@ -90,7 +91,7 @@ const RESUME_OFFER_MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
 function loadLastPlayed(): LastPlayedRecord | null {
   try {
-    const raw = localStorage.getItem(LAST_PLAYED_KEY);
+    const raw = uiStorage.get(LAST_PLAYED_KEY);
     if (!raw) return null;
     const rec = JSON.parse(raw) as LastPlayedRecord;
     if (!rec || !rec.name || !rec.url) return null;
@@ -104,7 +105,7 @@ function loadLastPlayed(): LastPlayedRecord | null {
 
 function clearLastPlayed(): void {
   try {
-    localStorage.removeItem(LAST_PLAYED_KEY);
+    uiStorage.remove(LAST_PLAYED_KEY);
   } catch {
     /* ignore */
   }
@@ -208,11 +209,11 @@ export function PlayerPage({
   onOpenActor,
   onLayoutChange,
 }: PlayerPageProps) {
-  // 双重保底机制：若父层传入的 rawLayout 为空或经典默认值，优先核对 localStorage 缓存中的真实 playerLayout，杜绝刷新时经典默认播放器闪现一瞬间
+  // 双重保底机制：若父层传入的 rawLayout 为空或经典默认值，优先核对 uiStorage 镜像中的真实 playerLayout，杜绝刷新时经典默认播放器闪现一瞬间
   const layout: PlayerLayout = useMemo(() => {
     if (rawLayout && rawLayout !== "classic") return rawLayout;
     try {
-      const raw = localStorage.getItem("avplay:cached_settings");
+      const raw = uiStorage.get("avplay:cached_settings");
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed?.playerLayout) return parsed.playerLayout;
@@ -237,7 +238,7 @@ export function PlayerPage({
   }, [active, videoEl]);
   const [ambientEnabled, setAmbientEnabled] = useState(() => {
     try {
-      return localStorage.getItem(AMBIENT_LIGHT_KEY) !== "false";
+      return uiStorage.get(AMBIENT_LIGHT_KEY) !== "false";
     } catch {
       return true;
     }
@@ -304,7 +305,7 @@ export function PlayerPage({
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [isHlsExpanded, setIsHlsExpanded] = useState(() => {
     try {
-      return localStorage.getItem(HLS_EXPANDED_KEY) === "true";
+      return uiStorage.get(HLS_EXPANDED_KEY) === "true";
     } catch {
       return false;
     }
@@ -313,7 +314,7 @@ export function PlayerPage({
     setIsHlsExpanded((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem(HLS_EXPANDED_KEY, String(next));
+        uiStorage.set(HLS_EXPANDED_KEY, String(next));
       } catch {
         /* ignore */
       }
@@ -322,7 +323,7 @@ export function PlayerPage({
   };
   const [isFilterExpanded, setIsFilterExpanded] = useState(() => {
     try {
-      const val = localStorage.getItem(FILTER_COLLAPSED_KEY);
+      const val = uiStorage.get(FILTER_COLLAPSED_KEY);
       return val === "true";
     } catch {
       return false;
@@ -333,7 +334,7 @@ export function PlayerPage({
     setIsFilterExpanded((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem(FILTER_COLLAPSED_KEY, String(next));
+        uiStorage.set(FILTER_COLLAPSED_KEY, String(next));
       } catch {
         /* ignore */
       }
@@ -353,9 +354,9 @@ export function PlayerPage({
       if (atTop) {
         // 回到顶部，恢复之前的状态
         try {
-          const hls = localStorage.getItem(HLS_EXPANDED_KEY);
+          const hls = uiStorage.get(HLS_EXPANDED_KEY);
           if (hls !== null) setIsHlsExpanded(hls === "true");
-          const filter = localStorage.getItem(FILTER_COLLAPSED_KEY);
+          const filter = uiStorage.get(FILTER_COLLAPSED_KEY);
           if (filter !== null) setIsFilterExpanded(filter === "true");
         } catch {
           /* ignore */
@@ -378,7 +379,7 @@ export function PlayerPage({
     );
   }, [videoSearchQuery]);
 
-  // 心爱（收藏）：用 id 集合管理；持久化到 localStorage
+  // 心爱（收藏）：用 id 集合管理；持久化到 uiStorage
   const [favorites, setFavorites] = useState<Set<string>>(() =>
     loadFavorites(),
   );
@@ -760,7 +761,7 @@ export function PlayerPage({
     setAmbientEnabled((enabled) => {
       const next = !enabled;
       try {
-        localStorage.setItem(AMBIENT_LIGHT_KEY, String(next));
+        uiStorage.set(AMBIENT_LIGHT_KEY, String(next));
       } catch {
         /* ignore */
       }
@@ -786,7 +787,7 @@ export function PlayerPage({
         position: videoEl.currentTime,
         duration: videoEl.duration || null,
       });
-      localStorage.setItem(
+      uiStorage.set(
         LAST_PLAYED_KEY,
         JSON.stringify({
           name: folder,
@@ -809,7 +810,7 @@ export function PlayerPage({
     const handleEnded = () => {
       pendingWatchSecRef.current = 0;
       try {
-        localStorage.setItem(
+        uiStorage.set(
           LAST_PLAYED_KEY,
           JSON.stringify({
             name: folder,

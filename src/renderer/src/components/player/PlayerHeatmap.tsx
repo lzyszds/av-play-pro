@@ -1,3 +1,4 @@
+import { uiStorage } from "../../stores/uiStorage";
 import React, { useMemo, useState, useEffect } from "react";
 
 export interface HeatmapPoint {
@@ -62,7 +63,7 @@ export function recordUserSeekHeat(videoKey: string, timeSec: number, duration: 
   if (!videoKey || !duration || duration <= 0) return;
   try {
     const key = HEATMAP_STORAGE_PREFIX + videoKey;
-    const existingRaw = localStorage.getItem(key);
+    const existingRaw = uiStorage.get(key);
     let arr: number[] = existingRaw ? JSON.parse(existingRaw) : new Array(80).fill(0);
     if (!Array.isArray(arr) || arr.length !== 80) arr = new Array(80).fill(0);
 
@@ -72,7 +73,7 @@ export function recordUserSeekHeat(videoKey: string, timeSec: number, duration: 
     if (bucket > 0) arr[bucket - 1] += 0.5;
     if (bucket < 79) arr[bucket + 1] += 0.5;
 
-    localStorage.setItem(key, JSON.stringify(arr));
+    uiStorage.set(key, JSON.stringify(arr));
   } catch {
     /* ignore storage quota */
   }
@@ -92,7 +93,7 @@ export const PlayerHeatmap: React.FC<PlayerHeatmapProps> = ({
   useEffect(() => {
     if (!videoKey) return;
     try {
-      const raw = localStorage.getItem(HEATMAP_STORAGE_PREFIX + videoKey);
+      const raw = uiStorage.get(HEATMAP_STORAGE_PREFIX + videoKey);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length === 80) {

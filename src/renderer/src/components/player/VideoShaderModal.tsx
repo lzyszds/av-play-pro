@@ -1,3 +1,4 @@
+import { uiStorage } from "../../stores/uiStorage";
 import React, { useState, useEffect } from "react";
 import {
   Sparkles,
@@ -143,7 +144,7 @@ const FILTER_STORAGE_KEY = "avplay:video_filter_settings";
 
 export function loadSavedFilterSettings(): VideoFilterSettings {
   try {
-    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+    const raw = uiStorage.get(FILTER_STORAGE_KEY);
     if (!raw) return DEFAULT_FILTER_SETTINGS;
     return { ...DEFAULT_FILTER_SETTINGS, ...JSON.parse(raw) };
   } catch {
@@ -153,7 +154,7 @@ export function loadSavedFilterSettings(): VideoFilterSettings {
 
 export function saveFilterSettings(settings: VideoFilterSettings): void {
   try {
-    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(settings));
+    uiStorage.set(FILTER_STORAGE_KEY, JSON.stringify(settings));
   } catch {
     /* ignore */
   }

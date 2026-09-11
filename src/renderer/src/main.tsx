@@ -3,7 +3,14 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import { LibraryWidget } from './components/LibraryWidget'
 import { DownloadWidget } from './widgets/DownloadWidget'
+import { uiStorage } from './stores/uiStorage'
 import './styles/globals.css'
+
+// 挂载前先把 UI 状态镜像（主进程 ui-state.json）载入内存：
+// 各处的同步读取（useState 初始化器、useMemo）因此可以像 localStorage 一样
+// 首帧就拿到真实值，主题/布局/页码不会闪变。2s 超时兜底，主进程无响应时
+// 以默认值启动。widget 窗口不依赖这些状态，多等几毫秒无碍。
+await uiStorage.whenReady()
 
 const params = new URLSearchParams(window.location.search)
 const widget = params.get('widget')

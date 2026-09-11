@@ -82,15 +82,24 @@ body {
   background: transparent;
 }
 
-/* 视频列表滚动条：全局隐藏（2026-09 起不再显示，保留占位） */
+/* 视频列表滚动条：恢复可见（片库右栏 / Aero 选集抽屉等视频列表统一使用） */
+.video-list-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+}
 .video-list-scroll::-webkit-scrollbar {
-  width: 10px;
+  width: 8px;
+  height: 8px;
 }
 .video-list-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 .video-list-scroll::-webkit-scrollbar-thumb {
-  background: transparent;
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 9999px;
+}
+.video-list-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.85);
 }
 
 /* Radix Slider：默认 90ms 平滑过渡（让 +/-、点击轨道、键盘不再瞬移）；
@@ -163,19 +172,23 @@ body {
 /* 零界面放映面板滚动条：原为可见滚动条，2026-09 起全应用隐藏滚动条，
    保留间距占位避免布局跳动 */
 .zero-scroll {
-  scrollbar-width: none;
-  scrollbar-color: transparent transparent;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
 }
 .zero-scroll::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: 8px;
+  height: 8px;
 }
 .zero-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 .zero-scroll::-webkit-scrollbar-thumb {
-  background: transparent;
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
   min-height: 40px;
+}
+.zero-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.7);
 }
 .zero-scroll-visible {
   overflow-y: scroll !important;

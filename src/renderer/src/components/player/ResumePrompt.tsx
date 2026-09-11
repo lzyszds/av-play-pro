@@ -54,7 +54,7 @@ export const ResumePrompt: React.FC<ResumePromptProps> = ({
   }, [autoCloseMs, onClose]);
 
   return (
-    <div className="absolute top-4 left-4 z-50 w-80 rounded-xl bg-white dark:bg-slate-900 border border-amber-200/70 dark:border-amber-500/30 shadow-2xl shadow-amber-500/10 overflow-hidden anim-resume-prompt">
+    <div className="absolute top-4 left-4 z-50 w-80 rounded-xl bg-white dark:bg-[#33363d] border border-amber-200/70 dark:border-amber-500/30 shadow-2xl shadow-amber-500/10 overflow-hidden anim-resume-prompt">
       <div className="px-4 pt-3 pb-3">
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex items-center gap-2 min-w-0">
@@ -74,7 +74,7 @@ export const ResumePrompt: React.FC<ResumePromptProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="shrink-0 p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              className="shrink-0 p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#3d424b] transition cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>

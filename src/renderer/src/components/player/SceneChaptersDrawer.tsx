@@ -172,11 +172,11 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
       onClick={onClose}
     >
       <div
-        className="h-full w-full max-w-md bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col animate-in slide-in-from-right duration-250"
+        className="h-full w-full max-w-md bg-white dark:bg-[#33363d] border-l border-slate-200 dark:border-[#3d424b] shadow-2xl flex flex-col animate-in slide-in-from-right duration-250"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-800/30">
+        <div className="p-4 border-b border-slate-100 dark:border-[#3d424b] flex items-center justify-between bg-slate-50/50 dark:bg-[#3d424b]/30">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-600 text-white shadow-xs">
               <Film className="w-4 h-4" />
@@ -195,7 +195,7 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
               type="button"
               onClick={onClose}
               aria-label="关闭分幕抽屉"
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#3d424b] cursor-pointer transition"
             >
               <X className="w-4 h-4" />
             </button>
@@ -203,13 +203,13 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
         </div>
 
         {/* Tab 切换 */}
-        <div className="flex p-2 bg-slate-100/60 dark:bg-slate-800/40 border-b border-slate-200/60 dark:border-slate-800 gap-1">
+        <div className="flex p-2 bg-slate-100/60 dark:bg-[#3d424b]/40 border-b border-slate-200/60 dark:border-[#3d424b] gap-1">
           <button
             type="button"
             onClick={() => setActiveTab("chapters")}
             className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
               activeTab === "chapters"
-                ? "bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-xs"
+                ? "bg-white dark:bg-[#33363d] text-amber-600 dark:text-amber-400 shadow-xs"
                 : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
             }`}
           >
@@ -221,7 +221,7 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
             onClick={() => setActiveTab("grid9")}
             className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
               activeTab === "grid9"
-                ? "bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-xs"
+                ? "bg-white dark:bg-[#33363d] text-amber-600 dark:text-amber-400 shadow-xs"
                 : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
             }`}
           >
@@ -254,7 +254,7 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
                     className={`p-3 rounded-xl border transition-all cursor-pointer relative group ${
                       isPlaying
                         ? "bg-amber-500/10 dark:bg-amber-500/15 border-amber-500/60 ring-2 ring-amber-500/20 shadow-xs"
-                        : "bg-slate-50/60 dark:bg-slate-800/30 border-slate-200/80 dark:border-slate-800 hover:border-amber-400/60 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                        : "bg-slate-50/60 dark:bg-[#3d424b]/30 border-slate-200/80 dark:border-[#3d424b] hover:border-amber-400/60 hover:bg-slate-50 dark:hover:bg-[#3d424b]/60"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -263,7 +263,7 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
                           className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-extrabold shrink-0 ${
                             isPlaying
                               ? "bg-amber-500 text-white shadow-xs"
-                              : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                              : "bg-slate-200 dark:bg-[#4a505b] text-slate-600 dark:text-slate-300"
                           }`}
                         >
                           {chap.actNumber}
@@ -298,7 +298,7 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
 
                     {/* 章节内进度条指示 */}
                     {isPlaying && (
-                      <div className="w-full bg-slate-200/60 dark:bg-slate-800 h-1 rounded-full mt-2.5 overflow-hidden">
+                      <div className="w-full bg-slate-200/60 dark:bg-[#3d424b] h-1 rounded-full mt-2.5 overflow-hidden">
                         <div
                           className="bg-amber-500 h-full rounded-full transition-all duration-300"
                           style={{
@@ -321,7 +321,7 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
 
               {/* B197 真实镜头分幕：ffmpeg 场景检测产物 */}
               {realSceneCuts && realSceneCuts.length > 0 && (
-                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="pt-3 border-t border-slate-200 dark:border-[#3d424b] space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                       <Film className="w-3.5 h-3.5 text-sky-500" />
@@ -341,7 +341,7 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
                           className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition border ${
                             isCurrent
                               ? "bg-sky-500/10 border-sky-500/50 text-sky-600 dark:text-sky-300"
-                              : "bg-slate-50/60 dark:bg-slate-800/30 border-slate-200/70 dark:border-slate-800 hover:border-sky-400/60"
+                              : "bg-slate-50/60 dark:bg-[#3d424b]/30 border-slate-200/70 dark:border-[#3d424b] hover:border-sky-400/60"
                           }`}
                         >
                           <span className="text-slate-600 dark:text-slate-300 flex items-center gap-1.5 truncate">
@@ -375,7 +375,7 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
 
               {/* 用户自定义高能书签 */}
               {bookmarks.length > 0 && (
-                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="pt-3 border-t border-slate-200 dark:border-[#3d424b] space-y-2">
                   <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                     <Bookmark className="w-3.5 h-3.5 text-amber-500" />
                     <span>自定义打点高能书签 ({bookmarks.length})</span>
@@ -416,7 +416,7 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
                     className={`group relative aspect-video rounded-xl border p-2 flex flex-col justify-between transition-all cursor-pointer overflow-hidden ${
                       pt.isNearCurrent
                         ? "bg-amber-500/15 border-amber-500 ring-2 ring-amber-500/20 shadow-xs"
-                        : "bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 hover:border-amber-400 hover:scale-[1.02]"
+                        : "bg-slate-50 dark:bg-[#3d424b]/40 border-slate-200 dark:border-[#3d424b] hover:border-amber-400 hover:scale-[1.02]"
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -450,7 +450,7 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-3.5 bg-slate-50/80 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div className="p-3.5 bg-slate-50/80 dark:bg-[#3d424b]/40 border-t border-slate-100 dark:border-[#3d424b] flex items-center justify-between">
           <span className="text-[10px] text-slate-400 flex items-center gap-1">
             <FastForward className="w-3 h-3 text-amber-500" />
             支持随时点击分幕或 9 宫格切播
@@ -458,7 +458,7 @@ export const SceneChaptersDrawer: React.FC<Props> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold transition cursor-pointer"
+            className="px-3 py-1 bg-slate-200 dark:bg-[#4a505b] hover:bg-slate-300 dark:hover:bg-[#565d69] text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold transition cursor-pointer"
           >
             关闭
           </button>

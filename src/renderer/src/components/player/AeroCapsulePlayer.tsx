@@ -94,8 +94,6 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
   const hlsRef = useRef<Hls | null>(null);
 
   // 缓冲冻结帧：seek/缓冲期间把最后一帧画到遮罩上（底衬环境色而非黑），避免黑屏闪变
-  const freezeCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [freezeVisible, setFreezeVisible] = useState(false);
 
   // 刻度图（雪碧图）解析：vtt 里按时间区间给出 thumbs.webp 的 xywh 裁剪框
   const spriteRef = useRef<HTMLImageElement | null>(null);
@@ -153,15 +151,19 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
 
   // 播放状态
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [bufferedPct, setBufferedPct] = useState(0);
-  const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1.0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   // 乐观跳转：点击刻度/进度条后立即把游标指到目标位置，缓冲完成前显示「加载中」
-  const [pendingSeek, setPendingSeek] = useState<number | null>(null);
+  // （走 ref 直写，不进 React 状态，避免 timeupdate/拖拽高频重渲染）
+  const pendingSeekRef = useRef<number | null>(null);
+  const isTimelineDraggingRef = useRef(false);
+  const lastDragSeekRef = useRef(0);
+  // 最近一次涟漪闪现时刻：长按快进时按键重复高频触发，节流避免两侧提示常亮遮挡
+  const lastRippleAtRef = useRef(0);
+  // 进度轴 rect 缓存：move 中「读 rect + 写样式」交替会触发强制同步重排（卡顿根源）
+  const timelineRectRef = useRef<DOMRect | null>(null);
   // 在线流可选画质：hls.js 母带解析出的档位（降序展示，默认当前自动档）
   const [hlsLevels, setHlsLevels] = useState<
     Array<{ i: number; h: number }>
@@ -172,10 +174,17 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
   const [controlsVisible, setControlsVisible] = useState(true);
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
   const [autoNext, setAutoNext] = useState(true);
-  const [hoverTimeText, setHoverTimeText] = useState("00:00");
   const [isHoveringTimeline, setIsHoveringTimeline] = useState(false);
   const [isSpeedIslandActive, setIsSpeedIslandActive] = useState(false);
 
+  // 进度/时间/悬停/音量热路径的 DOM 直写 ref：
+  // timeupdate 与拖拽逐帧更新，绕过 setState 全树重渲染（否则高频拖拽必卡）
+  const progressBarRef = useRef<HTMLDivElement | null>(null);
+  const progressThumbRef = useRef<HTMLDivElement | null>(null);
+  const bufferBarRef = useRef<HTMLDivElement | null>(null);
+  const currentTimeTextRef = useRef<HTMLSpanElement | null>(null);
+  const hoverTimeRef = useRef<HTMLSpanElement | null>(null);
+  const volumeSliderRef = useRef<HTMLInputElement | null>(null);
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
   const normalRateRef = useRef(1.0);
@@ -256,81 +265,39 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
-      setFreezeVisible(false);
     };
   }, [activeVideo.url, activeVideo.referer, onVideoEl]);
 
-  // 1.5 缓冲冻结帧：seeking/waiting 时截当前帧铺在缓冲遮罩上，杜绝黑屏背景
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const drawFreeze = () => {
-      const canvas = freezeCanvasRef.current;
-      const box = containerRef.current;
-      if (!canvas || !box) return;
-      const vw = video.videoWidth || 1280;
-      const vh = video.videoHeight || 720;
-      canvas.width = Math.max(2, box.clientWidth);
-      canvas.height = Math.max(2, box.clientHeight);
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      // 底衬：环境色（不使用纯黑）
-      const grad = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
-      grad.addColorStop(0, "#191d26");
-      grad.addColorStop(1, "#10131b");
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      try {
-        // 与 video 的 object-contain 相同的等比居中
-        const scale = Math.min(canvas.width / vw, canvas.height / vh);
-        const dw = vw * scale;
-        const dh = vh * scale;
-        ctx.drawImage(
-          video,
-          (canvas.width - dw) / 2,
-          (canvas.height - dh) / 2,
-          dw,
-          dh,
-        );
-        setFreezeVisible(true);
-      } catch {
-        setFreezeVisible(false);
-      }
-    };
-
-    const hideFreeze = () => setFreezeVisible(false);
-
-    video.addEventListener("seeking", drawFreeze);
-    video.addEventListener("waiting", drawFreeze);
-    video.addEventListener("canplay", hideFreeze);
-    video.addEventListener("seeked", hideFreeze);
-    video.addEventListener("playing", hideFreeze);
-    return () => {
-      video.removeEventListener("seeking", drawFreeze);
-      video.removeEventListener("waiting", drawFreeze);
-      video.removeEventListener("canplay", hideFreeze);
-      video.removeEventListener("seeked", hideFreeze);
-      video.removeEventListener("playing", hideFreeze);
-      setFreezeVisible(false);
-    };
-  }, [activeVideo.url]);
 
   // 2. 视频事件监听
   const handleTimeUpdate = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
-    setCurrentTime(video.currentTime || 0);
-    // 乐观跳转：video 追到目标位附近（seek 真正生效）后解除冻结
-    setPendingSeek((pending) => {
-      if (pending == null) return null;
-      return Math.abs(video.currentTime - pending) <= 2 ? null : pending;
-    });
-
-    // 计算已缓冲范围
-    if (video.buffered.length > 0 && video.duration > 0) {
-      const bufEnd = video.buffered.end(video.buffered.length - 1);
-      setBufferedPct(Math.min(100, (bufEnd / video.duration) * 100));
+    const t = video.currentTime || 0;
+    const dur = video.duration || 0;
+    // 乐观跳转冻结：video 追到目标位附近前不改写 UI（游标保持在目标位）
+    const pending = pendingSeekRef.current;
+    if (pending != null) {
+      if (Math.abs(t - pending) <= 2) {
+        pendingSeekRef.current = null;
+      } else {
+        return;
+      }
+    }
+    // 热路径 DOM 直写：进度条/游标/时间文本，不触发 React 重渲染
+    const pct = dur > 0 ? (t / dur) * 100 : 0;
+    if (progressBarRef.current) progressBarRef.current.style.width = `${pct}%`;
+    if (progressThumbRef.current) progressThumbRef.current.style.left = `${pct}%`;
+    if (currentTimeTextRef.current) {
+      currentTimeTextRef.current.textContent = formatTime(t);
+    }
+    if (bufferBarRef.current) {
+      if (video.buffered.length > 0 && dur > 0) {
+        const bufEnd = video.buffered.end(video.buffered.length - 1);
+        bufferBarRef.current.style.width = `${Math.min(100, (bufEnd / dur) * 100)}%`;
+      } else {
+        bufferBarRef.current.style.width = "0%";
+      }
     }
   }, []);
 
@@ -339,6 +306,14 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
     if (!video) return;
     setDuration(video.duration || 0);
     onMeta?.({ width: video.videoWidth, height: video.videoHeight });
+    // 换片后进度 UI 归零（热路径为 DOM 直写，需手动复位）
+    pendingSeekRef.current = null;
+    if (progressBarRef.current) progressBarRef.current.style.width = "0%";
+    if (progressThumbRef.current) progressThumbRef.current.style.left = "0%";
+    if (bufferBarRef.current) bufferBarRef.current.style.width = "0%";
+    if (currentTimeTextRef.current) {
+      currentTimeTextRef.current.textContent = formatTime(0);
+    }
   }, [onMeta]);
 
   const handleEnded = useCallback(() => {
@@ -415,7 +390,18 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
   }, [resetIdleTimer]);
 
   // 6. 涟漪微光反馈与双击手势
+  /** 统一 seek 入口：记录跳转前播放位置，供冻结帧遮罩按跳转距离决定是否显示 */
+  const seekVideoTo = (t: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = t;
+  };
+
   const flashRipple = (type: "left" | "right") => {
+    // 节流：长按/连点快进时按键重复高频触发，不重复闪现（单次快进仍正常提示）
+    const now = performance.now();
+    if (now - lastRippleAtRef.current < 600) return;
+    lastRippleAtRef.current = now;
     const el = type === "left" ? rippleLeftRef.current : rippleRightRef.current;
     if (!el) return;
     el.classList.remove("opacity-0");
@@ -444,10 +430,10 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
       const video = videoRef.current;
       if (video) {
         if (isLeft) {
-          video.currentTime = Math.max(0, video.currentTime - 10);
+          seekVideoTo(Math.max(0, video.currentTime - 10));
           flashRipple("left");
         } else {
-          video.currentTime = Math.min(video.duration || 0, video.currentTime + 10);
+          seekVideoTo(Math.min(video.duration || 0, video.currentTime + 10));
           flashRipple("right");
         }
       }
@@ -507,18 +493,26 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
     const previewCanvas = previewCanvasRef.current;
     if (!box || !video || !duration) return;
 
-    const rect = box.getBoundingClientRect();
+    if (!timelineRectRef.current) {
+      timelineRectRef.current = box.getBoundingClientRect();
+    }
+    const rect = timelineRectRef.current;
     const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     if (hoverCard && !isOnlineStream) {
       hoverCard.style.left = `${pos * 100}%`;
     }
     const targetTime = pos * duration;
-    setHoverTimeText(formatTime(targetTime));
+    if (hoverTimeRef.current) {
+      hoverTimeRef.current.textContent = formatTime(targetTime);
+    }
     if (isOnlineStream) return;
 
     if (previewCanvas) {
-      previewCanvas.width = 96;
-      previewCanvas.height = 56;
+      // 尺寸只设一次：每次 move 重设 width/height 会清空画布并重新分配
+      if (previewCanvas.width !== 96) {
+        previewCanvas.width = 96;
+        previewCanvas.height = 56;
+      }
       const ctx = previewCanvas.getContext("2d");
       if (ctx) {
         // 有刻度雪碧图：按目标时间对应的格子裁剪绘制（这才是真实画面的预览）
@@ -547,18 +541,56 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
     }
   };
 
-  const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const box = timelineBoxRef.current;
+  /** 拖拽/点击进度轴共用：UI 游标实时跟手（DOM 直写），seek 节流下发防卡顿 */
+  const seekTimelineTo = (
+    clientX: number,
+    box: HTMLDivElement,
+    immediate: boolean,
+  ) => {
     const video = videoRef.current;
-    if (!box || !video || !duration) return;
-    const rect = box.getBoundingClientRect();
-    const pos = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    if (!video || !duration) return;
+    if (!timelineRectRef.current) {
+      timelineRectRef.current = box.getBoundingClientRect();
+    }
+    const rect = timelineRectRef.current;
+    const pos = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     const target = pos * duration;
-    // 乐观跳转：先把 UI 游标划到目标位置，缓冲完成后由 timeupdate 自然接管
-    setCurrentTime(target);
-    setPendingSeek(target);
-    video.currentTime = target;
+    // 乐观跳转：游标直写到目标位，缓冲完成后由 timeupdate 自然接管
+    pendingSeekRef.current = target;
+    const pct = (target / duration) * 100;
+    if (progressBarRef.current) progressBarRef.current.style.width = `${pct}%`;
+    if (progressThumbRef.current) progressThumbRef.current.style.left = `${pct}%`;
+    if (currentTimeTextRef.current) {
+      currentTimeTextRef.current.textContent = formatTime(target);
+    }
+    // seek 节流：拖拽中每 200ms 下发一次真实跳转，松手/单击立即精确跳转
+    const now = performance.now();
+    if (immediate || now - lastDragSeekRef.current > 200) {
+      lastDragSeekRef.current = now;
+      seekVideoTo(target);
+    }
     resetIdleTimer();
+  };
+
+  const handleTimelinePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    // pointer capture：按住拖到轴外也持续跟手
+    e.currentTarget.setPointerCapture(e.pointerId);
+    isTimelineDraggingRef.current = true;
+    timelineRectRef.current = e.currentTarget.getBoundingClientRect();
+    seekTimelineTo(e.clientX, e.currentTarget, true);
+  };
+
+  const handleTimelinePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isTimelineDraggingRef.current) return;
+    seekTimelineTo(e.clientX, e.currentTarget, false);
+  };
+
+  const handleTimelinePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isTimelineDraggingRef.current) return;
+    isTimelineDraggingRef.current = false;
+    seekTimelineTo(e.clientX, e.currentTarget, true);
   };
 
   // 9. 倍速、音量、全屏、画中画操作
@@ -571,11 +603,27 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
     }
   };
 
+  /** 音量滑杆渐变填充直写（不经 React 状态，拖拽零重渲染） */
+  const syncVolumeSlider = useCallback((v: number) => {
+    const el = volumeSliderRef.current;
+    if (el) {
+      el.value = String(v);
+      el.style.background = `linear-gradient(to right, #FF466B ${v * 100}%, rgba(255, 255, 255, 0.22) ${v * 100}%)`;
+    }
+  }, []);
+
+  // 初始渐变填充（音量默认 1）
+  useEffect(() => {
+    syncVolumeSlider(videoRef.current?.volume ?? 1);
+  }, [syncVolumeSlider]);
+
   const toggleMute = () => {
     const video = videoRef.current;
     if (!video) return;
     video.muted = !video.muted;
     setIsMuted(video.muted);
+    // 滑杆填充同步：静音显示空槽，取消静音恢复实际音量
+    syncVolumeSlider(video.muted ? 0 : video.volume);
   };
 
   const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -584,9 +632,10 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
     if (video) {
       video.volume = val;
       video.muted = val === 0;
-      setVolume(val);
-      setIsMuted(val === 0);
     }
+    // 渐变直写；setIsMuted 同值时 React 会 bail-out，仅在跨越静音边界时重渲染
+    syncVolumeSlider(val);
+    setIsMuted(val === 0);
   };
 
   const togglePip = async () => {
@@ -644,13 +693,13 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
           break;
         case "ArrowRight":
           if (video) {
-            video.currentTime = Math.min(video.duration || 0, video.currentTime + 10);
+            seekVideoTo(Math.min(video.duration || 0, video.currentTime + 10));
             flashRipple("right");
           }
           break;
         case "ArrowLeft":
           if (video) {
-            video.currentTime = Math.max(0, video.currentTime - 10);
+            seekVideoTo(Math.max(0, video.currentTime - 10));
             flashRipple("left");
           }
           break;
@@ -658,7 +707,7 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
           if (video) {
             const nextVol = Math.min(1, video.volume + 0.1);
             video.volume = nextVol;
-            setVolume(nextVol);
+            syncVolumeSlider(nextVol);
             setIsMuted(false);
           }
           break;
@@ -666,7 +715,7 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
           if (video) {
             const nextVol = Math.max(0, video.volume - 0.1);
             video.volume = nextVol;
-            setVolume(nextVol);
+            syncVolumeSlider(nextVol);
             setIsMuted(nextVol === 0);
           }
           break;
@@ -683,14 +732,6 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [togglePlay, resetIdleTimer, active]);
-
-  // 乐观跳转冻结：pending 期间进度显示固定在目标位，避免 timeupdate 把游标拉回旧位置
-  const isPendingFrozen =
-    pendingSeek != null &&
-    (currentTime < pendingSeek - 2 ||
-      Math.abs(currentTime - pendingSeek) <= 0.01);
-  const displayTime = isPendingFrozen ? pendingSeek : currentTime;
-  const progressPct = duration > 0 ? (displayTime / duration) * 100 : 0;
 
   return (
     <div className="relative w-full h-full flex items-center justify-center p-0 font-sans text-neutral-200 select-none overflow-hidden bg-neutral-950">
@@ -730,17 +771,10 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
           onEnded={handleEnded}
         />
 
-        {/* 缓冲冻结帧遮罩（ seeking/waiting 期间显示最后一帧 + 环境色底衬，无黑屏） */}
-        <canvas
-          ref={freezeCanvasRef}
-          className={`absolute inset-0 z-[1] w-full h-full pointer-events-none transition-opacity duration-150 ${
-            freezeVisible ? "opacity-100" : "opacity-0"
-          }`}
-        />
 
         {/* 无激活媒体时的沉浸式就绪引导层 */}
         {!activeVideo.url && (
-          <div className="absolute inset-0 isolate flex items-center justify-center overflow-hidden bg-[#050506]/95 text-white z-10 pointer-events-auto">
+          <div className="absolute inset-0 isolate flex items-center justify-center overflow-hidden bg-[#2a2d33]/95 text-white z-10 pointer-events-auto">
             <div
               aria-hidden="true"
               className="absolute inset-0 opacity-70 [background-image:linear-gradient(rgba(255,255,255,0.028)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.028)_1px,transparent_1px)] [background-size:32px_32px]"
@@ -992,7 +1026,7 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 if (videoRef.current) {
-                  videoRef.current.currentTime = Math.max(0, videoRef.current.currentTime - 10);
+                  seekVideoTo(Math.max(0, videoRef.current.currentTime - 10));
                   flashRipple("left");
                 }
               }}
@@ -1021,9 +1055,11 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 if (videoRef.current) {
-                  videoRef.current.currentTime = Math.min(
-                    videoRef.current.duration || 0,
-                    videoRef.current.currentTime + 10,
+                  seekVideoTo(
+                    Math.min(
+                      videoRef.current.duration || 0,
+                      videoRef.current.currentTime + 10,
+                    ),
                   );
                   flashRipple("right");
                 }
@@ -1050,17 +1086,24 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
             <div
               ref={timelineBoxRef}
               id="timeline-box"
-              onClick={handleTimelineClick}
+              onPointerDown={handleTimelinePointerDown}
+              onPointerMove={handleTimelinePointerMove}
+              onPointerUp={handleTimelinePointerUp}
+              onPointerCancel={handleTimelinePointerUp}
               onMouseMove={handleTimelineMouseMove}
-              onMouseEnter={() => setIsHoveringTimeline(true)}
+              onMouseEnter={() => {
+                timelineRectRef.current =
+                  timelineBoxRef.current?.getBoundingClientRect() ?? null;
+                setIsHoveringTimeline(true);
+              }}
               onMouseLeave={() => setIsHoveringTimeline(false)}
-              className="relative flex-1 group/progress cursor-pointer py-2"
+              className="relative flex-1 group/progress cursor-pointer py-2 touch-none"
             >
               {/* 刻度画面预览小窗口（在线流没有本地雪碧图 → 整窗隐藏） */}
               <div
                 ref={hoverCardRef}
                 id="hover-card"
-                className={`absolute -top-24 -translate-x-1/2 flex-col items-center pointer-events-none transition-all duration-75 z-40 ${
+                className={`absolute -top-24 -translate-x-1/2 flex-col items-center pointer-events-none z-40 ${
                   isOnlineStream || !isHoveringTimeline ? "hidden" : "flex"
                 }`}
               >
@@ -1072,10 +1115,11 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
                       className="w-full h-full object-cover"
                     />
                     <span
+                      ref={hoverTimeRef}
                       id="hover-time"
                       className="absolute bottom-1 right-1 text-[9px] font-mono bg-black/80 px-1 py-0.2 rounded text-[#FF466B] font-bold"
                     >
-                      {hoverTimeText}
+                      00:00
                     </span>
                   </div>
                 </div>
@@ -1095,29 +1139,33 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
                   />
                 </svg>
                 <div
+                  ref={bufferBarRef}
                   id="buffer-bar"
                   className="absolute h-full bg-white/20 rounded-full"
-                  style={{ width: `${bufferedPct}%` }}
                 />
                 <div
+                  ref={progressBarRef}
                   id="progress-bar"
                   className="absolute h-full bg-gradient-to-r from-[#FF466B] via-[#FF6584] to-[#FFA07A] rounded-full"
-                  style={{ width: `${progressPct}%` }}
                 />
               </div>
 
               {/* 磁吸阻尼游标 */}
               <div
+                ref={progressThumbRef}
                 id="progress-thumb"
                 className="absolute top-1/2 -mt-2 -ml-2 w-4 h-4 rounded-full bg-white shadow-md border-2 border-[#FF466B] scale-0 group-hover/progress:scale-100 transition-transform duration-150 pointer-events-none shadow-[0_0_10px_rgba(255,70,107,0.8)]"
-                style={{ left: `${progressPct}%` }}
               />
             </div>
 
             {/* 精准时间戳 */}
             <div className="text-xs font-mono text-neutral-400 flex-shrink-0 tracking-tight select-none">
-              <span id="current-time" className="text-white font-medium">
-                {formatTime(currentTime)}
+              <span
+                ref={currentTimeTextRef}
+                id="current-time"
+                className="text-white font-medium"
+              >
+                00:00
               </span>
               <span className="opacity-30 mx-0.5">/</span>
               <span id="duration-time">{formatTime(duration)}</span>
@@ -1134,7 +1182,7 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
                 }}
                 className="text-neutral-400 hover:text-white transition p-1 cursor-pointer"
               >
-                {isMuted || volume === 0 ? (
+                {isMuted ? (
                   <svg
                     id="icon-muted"
                     className="w-5 h-5 text-[#FF466B]"
@@ -1174,15 +1222,16 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
               </button>
               <div className="w-0 group-hover/vol:w-16 transition-all duration-200 overflow-hidden flex items-center">
                 <input
+                  ref={volumeSliderRef}
                   id="volume-slider"
                   type="range"
                   min="0"
                   max="1"
                   step="0.05"
-                  value={isMuted ? 0 : volume}
+                  defaultValue={1}
                   onChange={handleVolumeChange}
                   onClick={(e) => e.stopPropagation()}
-                  className="w-14 h-1.5 ml-1 accent-[#FF466B] bg-white/20 rounded-lg cursor-pointer"
+                  className="w-14 h-1.5 ml-1 rounded-lg cursor-pointer"
                 />
               </div>
             </div>

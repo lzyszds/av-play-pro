@@ -209,9 +209,9 @@ export function PlayerPage({
   onOpenActor,
   onLayoutChange,
 }: PlayerPageProps) {
-  // 双重保底机制：若父层传入的 rawLayout 为空或经典默认值，优先核对 uiStorage 镜像中的真实 playerLayout，杜绝刷新时经典默认播放器闪现一瞬间
+  // 双重保底机制：若父层传入的 rawLayout 为空或默认值，优先核对 uiStorage 镜像中的真实 playerLayout，杜绝刷新时默认播放器闪现一瞬间
   const layout: PlayerLayout = useMemo(() => {
-    if (rawLayout && rawLayout !== "classic") return rawLayout;
+    if (rawLayout && rawLayout !== "capsule") return rawLayout;
     try {
       const raw = uiStorage.get("avplay:cached_settings");
       if (raw) {
@@ -221,7 +221,7 @@ export function PlayerPage({
     } catch {
       /* ignore */
     }
-    return rawLayout || "classic";
+    return rawLayout || "capsule";
   }, [rawLayout]);
 
   const isClassicLayout = layout === "classic";
@@ -1182,6 +1182,12 @@ export function PlayerPage({
     ]);
   };
 
+  // 选集抽屉「打开目录」：从 local-media URL 反推磁盘文件夹
+  const handleOpenVideoFolder = useCallback((v: VideoItem) => {
+    const folder = deriveFolderFromUrl(v.url);
+    if (folder) void trpc.system.openPath.mutate({ path: folder });
+  }, []);
+
   const [isBackfilling, setIsBackfilling] = useState(false);
   const handleBackfillMeta = async (e: React.MouseEvent) => {
     if (!videoPath || isBackfilling) return;
@@ -2062,6 +2068,11 @@ export function PlayerPage({
                 onOpenChapters={() => setChaptersDrawerOpen(true)}
                 onOpenCut={() => setIntensityCutOpen(true)}
                 onAddBookmark={handleAddTimelineBookmark}
+                onDeleteVideo={setDeleteTarget}
+                onRepairVideo={openRepairForVideo}
+                onToggleFavorite={toggleFavorite}
+                isFavoriteVideo={(v) => favorites.has(v.id)}
+                onOpenFolder={handleOpenVideoFolder}
               />
             ) : activeStream.url ? (
               <div className="h-full overflow-hidden" style={{ transform: `scale(${playerZoom})`, transformOrigin: "center center" }}>
@@ -3108,7 +3119,7 @@ function PlayerLayoutRail({
           </div>
         </div>
       )}
-      <div className={`flex gap-2 ${layout === "runway" ? "h-[calc(100%-34px)] overflow-x-auto pb-1" : "max-h-[calc(100%-43px)] flex-col overflow-y-auto pr-1"}`}>
+      <div className={`flex gap-2 ${layout === "runway" ? "h-[calc(100%-34px)] overflow-x-auto pb-1" : "max-h-[calc(100%-43px)] flex-col overflow-y-auto pr-1 video-list-scroll"}`}>
         {videos.slice(0, layout === "runway" ? 18 : 12).map((video, index) => (
           <button
             key={video.id}

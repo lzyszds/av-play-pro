@@ -12,13 +12,20 @@ import React, {
 import Hls from "hls.js";
 import type { VideoItem } from "../../pages/player/types";
 import { Dropdown } from "../Dropdown";
+import { CoverImage } from "../CoverImage";
 import {
   Sparkles,
   Film,
   Scissors,
   BookmarkPlus,
   Layers,
+  Heart,
+  FolderOpen,
+  Wrench,
+  Trash2,
 } from "lucide-react";
+import { Tooltip } from "../common/Tooltip";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 interface AeroCapsulePlayerProps {
   activeVideo: {
@@ -38,6 +45,12 @@ interface AeroCapsulePlayerProps {
   onOpenChapters?: () => void;
   onOpenCut?: () => void;
   onAddBookmark?: () => void;
+  /** 选集抽屉卡片操作（与下载页卡片同款按钮行） */
+  onDeleteVideo?: (video: VideoItem) => void;
+  onRepairVideo?: (video: VideoItem) => void;
+  onToggleFavorite?: (video: VideoItem) => void;
+  isFavoriteVideo?: (video: VideoItem) => boolean;
+  onOpenFolder?: (video: VideoItem) => void;
   /** 本地视频的刻度图 WebVTT（雪碧图）；在线流无此数据，悬停仍显示当前帧 */
   previewVttUrl?: string | null;
   /** 播放页是否激活（常驻挂载时用于屏蔽后台快捷键） */
@@ -68,6 +81,172 @@ function formatTime(sec: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+interface DrawerCardProps {
+  item: VideoItem;
+  index: number;
+  isPlaying: boolean;
+  isPreview: boolean;
+  isFav: boolean;
+  hasActions: boolean;
+  onPlay: (item: VideoItem, index: number) => void;
+  onEnter: (id: string) => void;
+  onLeave: () => void;
+  onToggleFavorite?: (video: VideoItem) => void;
+  onOpenFolder?: (video: VideoItem) => void;
+  onRepair?: (video: VideoItem) => void;
+  onDelete?: (video: VideoItem) => void;
+}
+
+// memo 化选集卡片：悬停预览 / 播放切换只重渲染受影响的 1-2 张卡片，
+// 而不是整份片库（千部级片库下顶层 setState 重渲染全列表必卡）
+const DrawerCardImpl: React.FC<DrawerCardProps> = ({
+  item,
+  index,
+  isPlaying,
+  isPreview,
+  isFav,
+  hasActions,
+  onPlay,
+  onEnter,
+  onLeave,
+  onToggleFavorite,
+  onOpenFolder,
+  onRepair,
+  onDelete,
+}) => {
+  const itemKey = item.id || item.name;
+  const previewSrc = item.previewUrl || item.url;
+  return (
+    <div
+      onClick={() => onPlay(item, index)}
+      onMouseEnter={() => onEnter(itemKey)}
+      onMouseLeave={onLeave}
+      className={`group/card relative flex flex-col overflow-hidden rounded-xl cursor-pointer border transition-all duration-200 ${
+        isPlaying
+          ? "bg-[#FF466B]/15 border-[#FF466B]/50 shadow-[0_0_15px_rgba(255,70,107,0.2)]"
+          : "bg-white/5 border-white/5 hover:border-white/20 hover:bg-white/10"
+      }`}
+    >
+      {/* 封面占满卡片主体，文字压在封面内部（与发现页卡片同款） */}
+      <div className="relative h-44 shrink-0 overflow-hidden bg-black/60">
+        <CoverImage src={item.coverUrl} alt={item.name} />
+        {isPreview && previewSrc && (
+          <video
+            src={previewSrc}
+            muted
+            loop={!!item.previewUrl}
+            playsInline
+            preload="auto"
+            autoPlay
+            onError={(e) => {
+              e.currentTarget.style.display = "none";
+            }}
+            className="absolute inset-0 w-full h-full object-cover bg-black"
+          />
+        )}
+        {/* 底部遮罩渐变 + 标题 overlay */}
+        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none" />
+        <h3
+          className="absolute inset-x-0 bottom-2 px-2.5 text-[11px] font-semibold text-white line-clamp-2 leading-snug z-10 drop-shadow"
+          title={item.name}
+        >
+          {item.title || item.code || item.name}
+        </h3>
+        {/* 集数角标 */}
+        <span className="absolute top-1.5 left-1.5 z-20 text-[9px] px-1.5 py-0.5 rounded-md bg-black/70 text-white/90 font-mono backdrop-blur-sm">
+          {String(index + 1).padStart(2, "0")}
+        </span>
+        {/* 时长徽标 */}
+        <span className="absolute bottom-1.5 right-1.5 z-20 text-[9px] px-1.5 py-0.5 rounded-md bg-black/70 text-white/90 font-mono backdrop-blur-sm">
+          {item.duration || item.resolution || "本地"}
+        </span>
+        {/* 播放中均衡器 */}
+        {isPlaying && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/35">
+            <div className="flex items-end space-x-0.5 h-4">
+              <span className="w-0.5 h-full bg-[#FF466B] animate-pulse" />
+              <span className="w-0.5 h-2/3 bg-[#FF466B] animate-ping" />
+              <span className="w-0.5 h-4/5 bg-[#FF466B] animate-pulse" />
+            </div>
+          </div>
+        )}
+      </div>
+      {/* 底部信息条：番号 / 演员 + 操作按钮（与发现页同款） */}
+      <div className="shrink-0 px-2.5 py-1.5 flex items-center gap-1.5 bg-white/[0.03]">
+        {item.code && (
+          <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-[#FF466B]/15 text-[#FF466B] border border-[#FF466B]/30 font-mono font-bold truncate max-w-[40%]">
+            {item.code}
+          </span>
+        )}
+        <span className="flex-1 min-w-0 text-[10px] text-neutral-400 truncate">
+          {item.actors?.length ? item.actors.join(", ") : ""}
+        </span>
+        {hasActions && (
+          <div
+            className="ml-auto flex items-center gap-1 shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {onToggleFavorite && (
+              <Tooltip content={isFav ? "取消心爱" : "加入心爱"} placement="top">
+                <button
+                  type="button"
+                  onClick={() => onToggleFavorite(item)}
+                  className={`w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border transition-all cursor-pointer ${
+                    isFav
+                      ? "border-rose-500/40 text-rose-400"
+                      : "border-white/10 text-slate-400 hover:text-rose-400 hover:border-rose-500/40"
+                  }`}
+                  title={isFav ? "取消心爱" : "加入心爱"}
+                >
+                  <Heart className={`w-3 h-3 ${isFav ? "fill-current" : ""}`} />
+                </button>
+              </Tooltip>
+            )}
+            {onOpenFolder && (
+              <Tooltip content="打开所在目录" placement="top">
+                <button
+                  type="button"
+                  onClick={() => onOpenFolder(item)}
+                  className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-sky-400 hover:border-sky-500/40 transition-all cursor-pointer"
+                  title="打开目录"
+                >
+                  <FolderOpen className="w-3 h-3" />
+                </button>
+              </Tooltip>
+            )}
+            {onRepair && (
+              <Tooltip content="修复封面/预览" placement="top">
+                <button
+                  type="button"
+                  onClick={() => onRepair(item)}
+                  className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-amber-400 hover:border-amber-500/40 transition-all cursor-pointer"
+                  title="修复封面/预览"
+                >
+                  <Wrench className="w-3 h-3" />
+                </button>
+              </Tooltip>
+            )}
+            {onDelete && (
+              <Tooltip content="删除影片" placement="top">
+                <button
+                  type="button"
+                  onClick={() => onDelete(item)}
+                  className="w-6 h-6 flex items-center justify-center rounded-md bg-white/5 border border-white/10 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 transition-all cursor-pointer"
+                  title="删除"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </Tooltip>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const DrawerCard = React.memo(DrawerCardImpl);
+
 export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
   activeVideo,
   videos,
@@ -80,6 +259,11 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
   onOpenChapters,
   onOpenCut,
   onAddBookmark,
+  onDeleteVideo,
+  onRepairVideo,
+  onToggleFavorite,
+  isFavoriteVideo,
+  onOpenFolder,
   previewVttUrl,
   active = true,
 }) => {
@@ -92,6 +276,20 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
   const rippleLeftRef = useRef<HTMLDivElement | null>(null);
   const rippleRightRef = useRef<HTMLDivElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+
+  // 选集抽屉：悬停 220ms 后挂载微动预览（与片库卡片同策略，避免快速划过频繁解码）
+  const [drawerPreviewId, setDrawerPreviewId] = useState<string | null>(null);
+  const drawerPreviewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleDrawerEnter = useCallback((id: string) => {
+    if (drawerPreviewTimer.current) clearTimeout(drawerPreviewTimer.current);
+    drawerPreviewTimer.current = setTimeout(() => setDrawerPreviewId(id), 220);
+  }, []);
+  const handleDrawerLeave = useCallback(() => {
+    if (drawerPreviewTimer.current) clearTimeout(drawerPreviewTimer.current);
+    setDrawerPreviewId(null);
+  }, []);
+
+
 
   // 缓冲冻结帧：seek/缓冲期间把最后一帧画到遮罩上（底衬环境色而非黑），避免黑屏闪变
 
@@ -173,6 +371,51 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
   // 交互状态
   const [controlsVisible, setControlsVisible] = useState(true);
   const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
+  // 抽屉虚拟滚动：只挂载视口内卡片（卡片高度固定：封面 h-44 + 信息条 ≈ 208px）
+  const drawerScrollRef = useRef<HTMLDivElement | null>(null);
+  const DRAWER_ROW_HEIGHT = 208 + 10; // 卡片高 + space-y 间距
+  const drawerVirtualizer = useVirtualizer({
+    count: videos.length,
+    getScrollElement: () => drawerScrollRef.current,
+    estimateSize: () => DRAWER_ROW_HEIGHT,
+    overscan: 4,
+  });
+
+  // 借 ref 持有最新 props，给卡片发稳定回调（避免父层内联箭头函数打穿 memo）
+  const cardActionsRef = useRef({
+    onSelectVideo,
+    onDeleteVideo,
+    onRepairVideo,
+    onToggleFavorite,
+    onOpenFolder,
+  });
+  cardActionsRef.current = {
+    onSelectVideo,
+    onDeleteVideo,
+    onRepairVideo,
+    onToggleFavorite,
+    onOpenFolder,
+  };
+  const handleCardPlay = useCallback((item: VideoItem, index: number) => {
+    cardActionsRef.current.onSelectVideo(item, index);
+    setIsPlaylistOpen(false);
+  }, []);
+  const handleCardFav = useCallback(
+    (v: VideoItem) => cardActionsRef.current.onToggleFavorite?.(v),
+    [],
+  );
+  const handleCardFolder = useCallback(
+    (v: VideoItem) => cardActionsRef.current.onOpenFolder?.(v),
+    [],
+  );
+  const handleCardRepair = useCallback(
+    (v: VideoItem) => cardActionsRef.current.onRepairVideo?.(v),
+    [],
+  );
+  const handleCardDelete = useCallback(
+    (v: VideoItem) => cardActionsRef.current.onDeleteVideo?.(v),
+    [],
+  );
   const [autoNext, setAutoNext] = useState(true);
   const [isHoveringTimeline, setIsHoveringTimeline] = useState(false);
   const [isSpeedIslandActive, setIsSpeedIslandActive] = useState(false);
@@ -1361,7 +1604,7 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
         <div
           id="playlist-drawer"
           onClick={(e) => e.stopPropagation()}
-          className={`absolute inset-y-0 right-0 w-80 sm:w-88 glass-pill rounded-r-none rounded-l-3xl border-r-0 p-6 flex flex-col transition-transform duration-300 ease-out z-40 ${
+          className={`absolute inset-y-0 right-0 w-[22rem] sm:w-[24rem] glass-pill rounded-r-none rounded-l-3xl border-r-0 p-5 flex flex-col transition-transform duration-300 ease-out z-40 ${
             isPlaylistOpen ? "translate-x-0" : "translate-x-full"
           }`}
         >
@@ -1401,64 +1644,69 @@ export const AeroCapsulePlayer: React.FC<AeroCapsulePlayerProps> = ({
             </button>
           </div>
 
-          {/* 剧集卡片列表 (支持滚轮滑动) */}
+          {/* 剧集卡片列表：抽屉关闭时不渲染；打开时虚拟滚动只挂载视口内卡片 */}
           <div
+            ref={drawerScrollRef}
             id="playlist-items-container"
-            className="flex-1 overflow-y-auto space-y-2.5 py-4 pr-1 custom-scroll"
+            className="flex-1 overflow-y-auto py-4 pr-1 video-list-scroll"
           >
-            {videos.length === 0 ? (
-              <div className="py-12 text-center text-xs text-neutral-500">
-                本地片库暂无视频
-              </div>
-            ) : (
-              videos.map((item, index) => {
-                const isItemPlaying =
-                  item.id === selectedVideoId || item.name === activeVideo.name;
-                return (
-                  <div
-                    key={item.id || item.name}
-                    onClick={() => {
-                      onSelectVideo(item, index);
-                      setIsPlaylistOpen(false);
-                    }}
-                    className={`group/card relative p-3 rounded-2xl cursor-pointer border transition-all duration-200 ${
-                      isItemPlaying
-                        ? "bg-[#FF466B]/15 border-[#FF466B]/50 shadow-[0_0_15px_rgba(255,70,107,0.2)]"
-                        : "bg-white/5 border-white/5 hover:border-white/20 hover:bg-white/10"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={`text-xs font-semibold truncate max-w-[70%] ${
-                          isItemPlaying
-                            ? "text-[#FF466B]"
-                            : "text-neutral-200 group-hover/card:text-white"
-                        }`}
-                        title={item.name}
+            {isPlaylistOpen &&
+              (videos.length === 0 ? (
+                <div className="py-12 text-center text-xs text-neutral-500">
+                  本地片库暂无视频
+                </div>
+              ) : (
+                <div
+                  className="relative w-full"
+                  style={{ height: `${drawerVirtualizer.getTotalSize()}px` }}
+                >
+                  {drawerVirtualizer.getVirtualItems().map((vRow) => {
+                    const item = videos[vRow.index];
+                    const index = vRow.index;
+                    const itemKey = item.id || item.name;
+                    return (
+                      <div
+                        key={itemKey}
+                        data-index={vRow.index}
+                        ref={drawerVirtualizer.measureElement}
+                        className="absolute left-0 top-0 w-full pb-2.5"
+                        style={{
+                          height: `${vRow.size}px`,
+                          transform: `translate3d(0, ${vRow.start}px, 0)`,
+                        }}
                       >
-                        {item.title || item.code || item.name}
-                      </span>
-                      {isItemPlaying ? (
-                        <div className="flex items-end space-x-0.5 h-3">
-                          <span className="w-0.5 h-full bg-[#FF466B] animate-pulse" />
-                          <span className="w-0.5 h-2/3 bg-[#FF466B] animate-ping" />
-                          <span className="w-0.5 h-4/5 bg-[#FF466B] animate-pulse" />
-                        </div>
-                      ) : (
-                        <span className="text-[10px] font-mono text-neutral-400">
-                          {item.duration || item.resolution || "本地"}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-neutral-400 line-clamp-1 mt-1">
-                      {item.actors?.length
-                        ? item.actors.join(", ")
-                        : item.plot || item.name}
-                    </p>
-                  </div>
-                );
-              })
-            )}
+                        <DrawerCard
+                          item={item}
+                          index={index}
+                          isPlaying={
+                            item.id === selectedVideoId ||
+                            item.name === activeVideo.name
+                          }
+                          isPreview={drawerPreviewId === itemKey}
+                          isFav={isFavoriteVideo?.(item) ?? false}
+                          hasActions={!!(
+                            onDeleteVideo ||
+                            onRepairVideo ||
+                            onToggleFavorite ||
+                            onOpenFolder
+                          )}
+                          onPlay={handleCardPlay}
+                          onEnter={handleDrawerEnter}
+                          onLeave={handleDrawerLeave}
+                          onToggleFavorite={
+                            onToggleFavorite ? handleCardFav : undefined
+                          }
+                          onOpenFolder={
+                            onOpenFolder ? handleCardFolder : undefined
+                          }
+                          onRepair={onRepairVideo ? handleCardRepair : undefined}
+                          onDelete={onDeleteVideo ? handleCardDelete : undefined}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
           </div>
 
           <div className="pt-3 border-t border-white/10 text-[11px] text-neutral-400 flex items-center justify-between">

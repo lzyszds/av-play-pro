@@ -1252,6 +1252,50 @@ export const downloadRouter = t.router({
             if (fs.existsSync(previewLocalPath)) fs.unlinkSync(previewLocalPath);
           }
 
+          // 封面/预览源站在国内需代理才能直连：环境变量 → 本地常见端口探测（Clash 7890 / V2Ray 10809）
+          // 与 metaRouter 刮削同一套选取顺序
+          let coverProxyAgent: any = undefined;
+          {
+            let proxyUrl =
+              process.env.HTTPS_PROXY ||
+              process.env.https_proxy ||
+              process.env.HTTP_PROXY ||
+              process.env.http_proxy ||
+              "";
+            if (!proxyUrl) {
+              const net = require("net") as typeof import("net");
+              for (const port of [7890, 10809, 1080]) {
+                const ok = await new Promise<boolean>((resolve) => {
+                  const sock = new net.Socket();
+                  const done = (v: boolean) => {
+                    sock.destroy();
+                    resolve(v);
+                  };
+                  sock.setTimeout(500);
+                  sock.once("connect", () => done(true));
+                  sock.once("timeout", () => done(false));
+                  sock.once("error", () => done(false));
+                  sock.connect(port, "127.0.0.1");
+                });
+                if (ok) {
+                  proxyUrl = `http://127.0.0.1:${port}`;
+                  break;
+                }
+              }
+            }
+            if (proxyUrl) {
+              try {
+                const { HttpsProxyAgent } = require("https-proxy-agent");
+                coverProxyAgent = new HttpsProxyAgent(proxyUrl);
+                clog("INFO", `封面/预览下载使用代理: ${proxyUrl}`);
+              } catch (e: any) {
+                clog("WARNING", `封面/预览代理初始化失败 (${proxyUrl}): ${e?.message}`);
+              }
+            } else {
+              clog("WARNING", "封面/预览下载未找到可用代理，可能直连失败");
+            }
+          }
+
           const downloadFile = (
             url: string,
             localPath: string,
@@ -1268,6 +1312,9 @@ export const downloadRouter = t.router({
                   path: parsed.pathname + parsed.search,
                   method: "GET",
                   timeout: 15000,
+                  // https 请求经代理隧道转发；http 源极少出现，保持直连
+                  agent:
+                    parsed.protocol === "https:" ? coverProxyAgent : undefined,
                   headers: {
                     "User-Agent":
                       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",

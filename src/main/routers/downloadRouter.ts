@@ -10,6 +10,7 @@ import { getMainWindow, getDownloadWidgetWindow } from "../windowState";
 import { enqueue as enqueuePostProcess } from "../postprocess/queue";
 import { MISSAV_WEB_PARTITION } from "../webview/missavWebSession";
 import { isCdnUrl, toLocalProxyUrl } from "../protocols/localMediaProxy";
+import { resolveFfmpeg } from "../whisper/whisperManager";
 
 /** 从 headers JSON 里取出 Referer（不区分大小写） */
 function getRefererFromHeaders(headers?: string): string {
@@ -228,6 +229,26 @@ function resolveToolPath(customPath?: string): string | null {
     }
   }
   return null;
+}
+
+/** 用 ffmpeg -i 探测媒体时长（秒）；失败返回 0 */
+async function probeDuration(filePath: string): Promise<number> {
+  return new Promise((resolve) => {
+    let stderr = "";
+    const child = spawn("ffmpeg", ["-hide_banner", "-i", filePath], {
+      windowsHide: true,
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    child.stderr?.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    child.on("close", () => {
+      const m = /Duration:\s*(\d+):(\d+):([\d.]+)/.exec(stderr);
+      if (!m) return resolve(0);
+      resolve(Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]));
+    });
+    child.on("error", () => resolve(0));
+  });
 }
 
 function sanitizeName(name: string): string {
@@ -731,6 +752,312 @@ export const downloadRouter = t.router({
         }
         activeDownloads.clear();
         return { success: true };
+      }),
+
+    // 重新合成：分片已在 temp 目录但合并失败/未执行时，重跑 N_m3u8DL-RE。
+    // 它检测到分片已全部下载会直接进入合并阶段，不会重新下载分片。
+    remerge: t.procedure
+      .input(
+        (input: unknown) =>
+          input as {
+            taskId?: string;
+            saveDir: string;
+            saveName: string;
+            tmpDir?: string;
+            format: string;
+            threads?: number;
+            headers?: string;
+            toolPath?: string;
+          },
+      )
+      .mutation(async ({ input }) => {
+        const taskId = input.taskId;
+
+        // 与 download.start 一致的番号临时目录
+        const baseTmp = input.tmpDir || path.join(input.saveDir, "temp");
+        const folderName = path.basename(input.saveDir.replace(/[\\/]+$/, ""));
+        const taskKey = sanitizeName(
+          extractCode(folderName) || taskId || folderName,
+        );
+        const tmpDir = path.join(baseTmp, taskKey);
+        const saveNameDir = path.join(tmpDir, sanitizeName(input.saveName));
+
+        if (!fs.existsSync(saveNameDir)) {
+          throw new Error(`临时分片目录不存在: ${saveNameDir}`);
+        }
+
+        // 找分片子目录（N_m3u8DL-RE 结构：<tmpDir>/<saveName>/<索引目录>/*.ts）
+        let segDir: string | null = null;
+        let segFiles: string[] = [];
+        for (const d of fs.readdirSync(saveNameDir, { withFileTypes: true })) {
+          if (!d.isDirectory()) continue;
+          const dirPath = path.join(saveNameDir, d.name);
+          const files = fs
+            .readdirSync(dirPath)
+            .filter((f) => /\.(ts|m4s|mp4|mpg)$/i.test(f));
+          if (files.length > segFiles.length) {
+            segDir = dirPath;
+            segFiles = files;
+          }
+        }
+        if (!segDir || segFiles.length === 0) {
+          throw new Error(`分片目录里没有已下载的分片: ${saveNameDir}`);
+        }
+
+        // 加密检测：AES 分片无法本地直接 concat
+        const metaPath = path.join(saveNameDir, "meta.json");
+        if (fs.existsSync(metaPath)) {
+          const metaText = fs.readFileSync(metaPath, "utf8");
+          if (/AES/i.test(metaText)) {
+            throw new Error("分片内容已加密（AES），无法本地直接合成");
+          }
+        }
+
+        const ff = resolveFfmpeg();
+        if (!ff) {
+          throw new Error("未找到 ffmpeg，无法本地合成");
+        }
+
+        // 同一任务已有进程在跑：先杀掉
+        if (taskId && activeDownloads.has(taskId)) {
+          const old = activeDownloads.get(taskId)!;
+          sendTaskProgress(taskId, {
+            line: `[系统] 同一任务的旧进程仍在运行 (PID: ${old.pid})，重启中…`,
+            percent: null,
+            done: false,
+            success: false,
+          });
+          old.stopping = true;
+          killProcessTree(old.pid);
+          activeDownloads.delete(taskId);
+        }
+
+        const incomplete = fs
+          .readdirSync(segDir)
+          .filter((f) => f.toLowerCase().endsWith(".tmp"));
+
+        // 读取 meta.json：总时长 / 应有分片数（用于对账与大块裁剪）
+        let totalDuration = 0;
+        let expectedCount = 0;
+        try {
+          const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+          const playlist = meta?.[0]?.Playlist;
+          totalDuration = Number(playlist?.TotalDuration) || 0;
+          expectedCount = (playlist?.MediaParts ?? []).reduce(
+            (acc: number, part: any) => acc + (part?.MediaSegments?.length ?? 0),
+            0,
+          );
+        } catch {
+          /* meta 缺损时跳过对账 */
+        }
+
+        // 数字命名的普通分片（N_m3u8DL-RE 常规输出：<序号>.ts）
+        const numericObjs = segFiles
+          .map((f) => ({ f, n: parseInt(f, 10) }))
+          .filter((x) => /^\d/.test(x.f) && Number.isFinite(x.n))
+          .sort((a, b) => a.n - b.n);
+
+        // 大块分片（T####，某些下载按整块落盘，一块含上百个分段）
+        const chunked = segFiles
+          .filter((f) => /^T\d+\.(ts|m4s|mp4|mpg)$/i.test(f))
+          .sort(
+            (a, b) =>
+              parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10),
+          );
+
+        // 大块与数字分片共存时：大块覆盖头部内容，按数字分片起点（序号 × 平均段长）
+        // 裁掉越过起点的大块（通常是上次中断留下的、与数字分片重叠的半截块）
+        const keptChunks: string[] = [];
+        const droppedChunks: string[] = [];
+        if (chunked.length > 0) {
+          let boundary = Number.POSITIVE_INFINITY;
+          if (
+            numericObjs.length > 0 &&
+            totalDuration > 0 &&
+            expectedCount > 0
+          ) {
+            boundary = numericObjs[0].n * (totalDuration / expectedCount);
+          }
+          let acc = 0;
+          for (const f of chunked) {
+            if (acc >= boundary - 0.5) {
+              droppedChunks.push(f);
+              continue;
+            }
+            const d = await probeDuration(path.join(segDir, f));
+            acc += d > 0 ? d : 0;
+            keptChunks.push(f);
+          }
+        }
+
+        const ordered = [...keptChunks, ...numericObjs.map((x) => x.f)];
+        if (ordered.length === 0) {
+          throw new Error("分片文件名无法解析序号，无法排序合并");
+        }
+
+        // 对账：报告缺失分片与被裁剪的大块
+        if (expectedCount > 0 && ordered.length < expectedCount) {
+          sendTaskProgress(taskId, {
+            line: `[警告] 分片不完整：应有 ${expectedCount} 个，磁盘上只有 ${ordered.length} 个（缺 ${expectedCount - ordered.length} 个），成品会缺段`,
+            percent: null,
+            done: false,
+            success: false,
+          });
+        }
+        for (const f of droppedChunks) {
+          sendTaskProgress(taskId, {
+            line: `[警告] 跳过与正片重叠的冗余分块: ${f}`,
+            percent: null,
+            done: false,
+            success: false,
+          });
+        }
+        for (const f of incomplete) {
+          sendTaskProgress(taskId, {
+            line: `[警告] 跳过未完成分片: ${f}`,
+            percent: null,
+            done: false,
+            success: false,
+          });
+        }
+
+        // 写 ffmpeg concat 列表
+        const listPath = path.join(tmpDir, `concat-${Date.now()}.txt`);
+        const listContent = ordered
+          .map(
+            (f) =>
+              `file '${path.join(segDir!, f).replace(/\\/g, "/").replace(/'/g, "'\\''")}'`,
+          )
+          .join("\n");
+        fs.writeFileSync(listPath, listContent, "utf8");
+
+        // 输出路径与容器参数
+        const cleanSaveDir = input.saveDir.replace(/[\\/]+$/, "");
+        const ext =
+          input.format === "MKV" ? ".mkv" : input.format === "TS" ? ".ts" : ".mp4";
+        const outPath = path.join(
+          cleanSaveDir,
+          `${sanitizeName(input.saveName)}${ext}`,
+        );
+
+        const args: string[] = [
+          "-y",
+          "-hide_banner",
+          "-loglevel", "info",
+          "-f", "concat",
+          "-safe", "0",
+          "-i", listPath,
+          "-c", "copy",
+        ];
+        if (ext === ".mp4") args.push("-movflags", "+faststart");
+        args.push(outPath);
+
+        sendTaskProgress(taskId, {
+          line: `[合成] 本地合并 ${ordered.length} 个分片 → ${outPath}`,
+          percent: null,
+          done: false,
+          success: false,
+        });
+
+        const proc = spawn(ff.path, args, {
+          windowsHide: true,
+          detached: false,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+        const pid = proc.pid || 0;
+        const slot: ActiveDownload = { proc, pid, stopping: false };
+        if (taskId) activeDownloads.set(taskId, slot);
+
+        // 进度：从 ffmpeg stderr 的 time= 换算百分比
+        const totalSecs = totalDuration > 0 ? totalDuration : ordered.length * 4;
+        const timeRe = /time=(\d+):(\d+):(\d+(?:\.\d+)?)/;
+        proc.stderr?.on("data", (data: Buffer) => {
+          const text = data.toString();
+          for (const line of text.split(/[\r\n]+/)) {
+            const m = timeRe.exec(line);
+            if (m) {
+              const secs = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+              const pct =
+                totalSecs > 0 ? Math.min(99, Math.round((secs / totalSecs) * 100)) : null;
+              sendTaskProgress(taskId, {
+                line: `[合并] ${pct != null ? `${pct}% ` : ""}${path.basename(outPath)}`,
+                percent: pct,
+                done: false,
+                success: false,
+                merging: true,
+              });
+            } else if (/error|invalid|failed/i.test(line) && line.trim()) {
+              sendTaskProgress(taskId, {
+                line: line.trim(),
+                percent: null,
+                done: false,
+                success: false,
+              });
+            }
+          }
+        });
+        proc.stdout?.on("data", () => {
+          /* ffmpeg 进度走 stderr，stdout 忽略 */
+        });
+
+        proc.on("close", (code: number | null) => {
+          console.log(`[本地合成 ${taskId ?? ""}] 进程关闭: code=${code}`);
+          const wasStopping = slot.stopping;
+          if (taskId) activeDownloads.delete(taskId);
+          try {
+            fs.unlinkSync(listPath);
+          } catch {
+            /* ignore */
+          }
+
+          if (wasStopping) {
+            sendTaskProgress(taskId, {
+              line: `[系统] 合成已停止`,
+              percent: null,
+              done: false,
+              success: false,
+            });
+            return;
+          }
+
+          if (code === 0 && fs.existsSync(outPath)) {
+            sendTaskProgress(taskId, {
+              line: `[系统] 本地合并完成: ${outPath}`,
+              percent: 100,
+              done: true,
+              success: true,
+            });
+            // 与下载完成一致：自动入队后处理（整理 → 刮削 → 通知）
+            try {
+              enqueuePostProcess({
+                saveDir: path.dirname(cleanSaveDir),
+                saveName: path.basename(cleanSaveDir),
+              });
+            } catch (e: any) {
+              console.warn(`[postprocess] enqueue failed: ${e?.message}`);
+            }
+          } else {
+            sendTaskProgress(taskId, {
+              line: `[系统] 本地合并失败 (code: ${code})`,
+              percent: null,
+              done: true,
+              success: false,
+            });
+          }
+        });
+
+        proc.on("error", (err: Error) => {
+          console.error(`[本地合成 ${taskId ?? ""}] 启动失败: ${err.message}`);
+          sendTaskProgress(taskId, {
+            line: `[错误] 启动失败: ${err.message}`,
+            percent: null,
+            done: true,
+            success: false,
+          });
+          if (taskId) activeDownloads.delete(taskId);
+        });
+
+        return { success: true, pid, taskId };
       }),
 
     onProgress: t.procedure.subscription(() => {

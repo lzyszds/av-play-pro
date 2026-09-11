@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Play, Pause, Trash2, Copy, Check, RotateCcw, FolderOpen, AlertCircle, Clock } from "lucide-react";
+import { Play, Pause, Trash2, Copy, Check, RotateCcw, FolderOpen, AlertCircle, Clock, Layers } from "lucide-react";
 import { CoverImage } from "../CoverImage";
 import type { DownloadTask } from "../../pages/download/types";
 import {
@@ -25,6 +25,7 @@ export interface DownloadTaskRowProps {
   onCopyCommand: (e: React.MouseEvent, task: DownloadTask) => void;
   onPlayCompleted?: (task: DownloadTask) => void;
   onRedownload?: (id: string) => void;
+  onRemerge?: (task: DownloadTask) => void;
   onOpenSegments?: (task: DownloadTask) => void;
 }
 
@@ -103,6 +104,7 @@ function DownloadTaskRowImpl({
   onCopyCommand,
   onPlayCompleted,
   onRedownload,
+  onRemerge,
   onOpenSegments,
 }: DownloadTaskRowProps) {
   const coverUrl = resolveTaskCoverUrl(task, {
@@ -173,10 +175,10 @@ function DownloadTaskRowImpl({
       style={{ ["--i" as string]: Math.min(index, 14) }}
       className={`anim-fade-stagger group flex items-center gap-3.5 rounded-xl p-3.5 transition-all duration-150 cursor-pointer border backdrop-blur-xl ${
         isFlashing
-          ? "bg-rose-50/90 dark:bg-[#1c2438] border-accent-500 ring-2 ring-accent-500/60 shadow-[0_4px_25px_rgba(244,63,94,0.35)]"
+          ? "bg-rose-50/90 dark:bg-[#424954] border-accent-500 ring-2 ring-accent-500/60 shadow-[0_4px_25px_rgba(244,63,94,0.35)]"
           : isSelected
-            ? "bg-white/70 dark:bg-[#182135] border-accent-400/70 ring-1 ring-accent-500/30 shadow-sm dark:shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
-            : "bg-white/40 hover:bg-white/65 dark:bg-[#0f1523]/85 dark:hover:bg-[#151c2d] border-white/60 dark:border-white/[0.12] hover:border-white/90 dark:hover:border-white/[0.22] shadow-sm dark:shadow-[0_4px_16px_rgba(0,0,0,0.35)]"
+            ? "bg-white/70 dark:bg-[#3f4650] border-accent-400/70 ring-1 ring-accent-500/30 shadow-sm dark:shadow-[0_4px_20px_rgba(0,0,0,0.5)]"
+            : "bg-white/40 hover:bg-white/65 dark:bg-[#323741]/85 dark:hover:bg-[#3a4049] border-white/60 dark:border-white/[0.12] hover:border-white/90 dark:hover:border-white/[0.22] shadow-sm dark:shadow-[0_4px_16px_rgba(0,0,0,0.35)]"
       } ${task.status === "PAUSED" ? "opacity-75" : ""}`}
     >
       {/* 缩略图 / 番号占位 */}
@@ -266,15 +268,28 @@ function DownloadTaskRowImpl({
                 </Tooltip>
               </>
             ) : task.status === "FAILED" ? (
-              <Tooltip content="重试下载（清零进度后重新入队）" placement="top">
-                <button
-                  onClick={() => onTriggerPauseResume(task.id)}
-                  className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500 dark:bg-rose-500/25 dark:hover:bg-rose-500/40 border border-rose-500/40 text-rose-600 hover:text-white dark:text-rose-300 dark:hover:text-white transition cursor-pointer"
-                  title="重试下载"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                </button>
-              </Tooltip>
+              <>
+                {onRemerge && (
+                  <Tooltip content="再次合成（本地合并已下载分片，不联网）" placement="top">
+                    <button
+                      onClick={() => onRemerge(task)}
+                      className="p-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500 dark:bg-amber-500/25 dark:hover:bg-amber-500/40 border border-amber-500/40 text-amber-600 hover:text-white dark:text-amber-300 dark:hover:text-white transition cursor-pointer"
+                      title="重新合成"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                    </button>
+                  </Tooltip>
+                )}
+                <Tooltip content="重试下载（清零进度后重新入队）" placement="top">
+                  <button
+                    onClick={() => onTriggerPauseResume(task.id)}
+                    className="p-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500 dark:bg-rose-500/25 dark:hover:bg-rose-500/40 border border-rose-500/40 text-rose-600 hover:text-white dark:text-rose-300 dark:hover:text-white transition cursor-pointer"
+                    title="重试下载"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                </Tooltip>
+              </>
             ) : (
               <Tooltip content={task.status === "DOWNLOADING" ? "暂停下载" : "继续下载"} placement="top">
                 <button

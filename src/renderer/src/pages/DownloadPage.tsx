@@ -343,11 +343,22 @@ export function DownloadPage({
         const raw = Array.isArray(state.tasks)
           ? (state.tasks as DownloadTask[])
           : [];
-        const normalized = raw.map((t) =>
-          t.status === "DOWNLOADING" || t.status === "PARSING"
-            ? { ...t, status: "PENDING" as const, speed: 0 }
-            : t,
-        );
+        const normalized = raw.map((t) => {
+          if (t.status === "DOWNLOADING" || t.status === "PARSING") {
+            return { ...t, status: "PENDING" as const, speed: 0 };
+          }
+          // 重启后合并进程已不存在，卡在“合并中”的任务归一化为失败，
+          // 让「再次合成」按钮可用（分片仍在 temp，本地合并即可出片）
+          if (t.status === "MERGING") {
+            return {
+              ...t,
+              status: "FAILED" as const,
+              speed: 0,
+              logs: [...t.logs, "[系统] 应用重启导致合并中断，可点「再次合成」用本地分片直接合并。"],
+            };
+          }
+          return t;
+        });
         setTasks(normalized);
         const resumed = normalized.filter(
           (t, i) => raw[i].status !== t.status,
@@ -1264,6 +1275,47 @@ export function DownloadPage({
     [addLog],
   );
 
+  // 重新合成：分片已在 temp 目录，仅重跑合并阶段（N_m3u8DL-RE 检测到分片齐全会跳过下载）
+  const handleRemerge = useCallback(
+    async (t: DownloadTask) => {
+      if (t.status === "DOWNLOADING" || t.status === "PENDING") return;
+      addLog(`🧩 重新合成：${t.name}`, "INFO");
+      setTasks((prev) =>
+        prev.map((x) =>
+          x.id === t.id
+            ? {
+              ...x,
+              status: "DOWNLOADING",
+              speed: 0,
+              logs: [...x.logs, "[操作] 重新触发合成（不重新下载分片）。"],
+            }
+            : x,
+        ),
+      );
+      const taskDir =
+        t.savePath.replace(/[\/]+$/, "") +
+        "\\" +
+        t.name.replace(/[\\/:*?"<>|]/g, "_");
+      try {
+        await trpc.download.remerge.mutate({
+          taskId: t.id,
+          saveDir: taskDir,
+          saveName: "video",
+          format: t.format,
+          threads: t.threads,
+          headers: t.headers,
+          tmpDir: settings.temp_path,
+        });
+      } catch (err: any) {
+        addLog(`重新合成失败: ${err?.message || err}`, "ERROR");
+        setTasks((cur) =>
+          cur.map((x) => (x.id === t.id ? { ...x, status: "FAILED" } : x)),
+        );
+      }
+    },
+    [addLog, settings.temp_path],
+  );
+
   /* ---- delete task ---- */
   const handleDeleteTask = useCallback(
     (id: string) => {
@@ -1533,7 +1585,7 @@ export function DownloadPage({
 
   /* ---- render ---- */
   return (
-    <div className="relative h-full flex flex-col min-h-0 overflow-hidden p-4 sm:p-5 bg-[#f2ece9] dark:bg-[#07090e] text-slate-800 dark:text-slate-100">
+    <div className="relative h-full flex flex-col min-h-0 overflow-hidden p-4 sm:p-5 bg-[#f2ece9] dark:bg-[#2a2d33] text-slate-800 dark:text-slate-100">
       {/* 虚现质感背景层（深浅色分别调光） */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden select-none">
         {settings.downloadBgVisible !== false && (
@@ -1557,8 +1609,8 @@ export function DownloadPage({
           />
         )}
         {/* 虚现蒙层：浅色只留边缘极薄暖白渐隐，中部壁纸清晰可见；深色暗夜压暗 */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_20%,rgba(255,255,255,0.05)_0%,rgba(242,236,233,0.10)_50%,rgba(242,236,233,0.40)_100%)] dark:bg-[radial-gradient(ellipse_at_50%_20%,rgba(15,23,42,0.15)_0%,rgba(7,9,14,0.70)_55%,#07090e_100%)]" />
-        <div className="absolute inset-0 bg-gradient-to-b from-[#f2ece9]/5 via-transparent to-[#f2ece9]/60 dark:from-[#07090e]/20 dark:via-[#07090e]/50 dark:to-[#07090e]/95" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_20%,rgba(255,255,255,0.05)_0%,rgba(242,236,233,0.10)_50%,rgba(242,236,233,0.40)_100%)] dark:bg-[radial-gradient(ellipse_at_50%_20%,rgba(38,41,47,0.15)_0%,rgba(42,45,51,0.70)_55%,#2a2d33_100%)]" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#f2ece9]/5 via-transparent to-[#f2ece9]/60 dark:from-[#2a2d33]/20 dark:via-[#2a2d33]/50 dark:to-[#2a2d33]/95" />
         {/* 暗化蒙层：可调的额外压暗（仅深色主题生效，浅色自动跳过避免浑浊） */}
         {isDark && settings.downloadBgDim !== undefined && settings.downloadBgDim > 0 && (
           <div
@@ -1573,7 +1625,7 @@ export function DownloadPage({
       <PageLoader active={!storageLoaded} label="加载任务列表" />
 
       {/* ====== 下载主视口容器（浅色全透明仅描边，壁纸由卡片间透出 / 深色暗夜玻璃） ====== */}
-      <div className="relative z-10 flex-1 flex h-full flex-col min-h-0 bg-transparent dark:bg-[#0c1017]/80 border border-white/50 dark:border-white/[0.08] shadow-xl shadow-slate-400/10 dark:shadow-2xl rounded-2xl overflow-hidden">
+      <div className="relative z-10 flex-1 flex h-full flex-col min-h-0 bg-transparent dark:bg-[#2f333a]/80 border border-white/50 dark:border-white/[0.08] shadow-xl shadow-slate-400/10 dark:shadow-2xl rounded-2xl overflow-hidden">
         {/* 1. 顶栏：标题 + 实时状态 + 聚合快捷操作 */}
         <div className="shrink-0 px-5 pt-4 pb-3 border-b border-white/60 dark:border-white/[0.06] bg-white/45 dark:bg-white/[0.02] backdrop-blur-md flex items-center justify-between flex-wrap gap-3">
           {/* 左侧：标题与硬件概况 */}
@@ -1838,6 +1890,7 @@ export function DownloadPage({
                 onCopyCommand={handleCopyCommand}
                 onPlayCompleted={handlePlayCompleted}
                 onRedownload={handleRedownload}
+                onRemerge={handleRemerge}
                 onOpenSegments={handleOpenSegments}
               />
             ))}

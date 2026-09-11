@@ -61,7 +61,7 @@ class ModalErrorBoundary extends Component<
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative z-10 w-full max-w-md rounded-2xl bg-white dark:bg-[#0c1017] border border-slate-200 dark:border-rose-500/30 p-6 text-slate-800 dark:text-slate-100 shadow-2xl space-y-4 text-center"
+            className="relative z-10 w-full max-w-md rounded-2xl bg-white dark:bg-[#2f333a] border border-slate-200 dark:border-rose-500/30 p-6 text-slate-800 dark:text-slate-100 shadow-2xl space-y-4 text-center"
           >
             <div className="w-12 h-12 rounded-full bg-rose-500/15 border border-rose-500/30 flex items-center justify-center mx-auto text-rose-500 dark:text-rose-400">
               <AlertTriangle className="w-6 h-6" />
@@ -164,6 +164,43 @@ function TaskSegmentsModalContent({
   const safeName = task.name || "未命名切片任务";
   const videoCode = extractVideoCode(safeName);
 
+  // 合并阶段进度：解析最新一条 [合并] xx% 日志（本地合成为 ffmpeg time= 换算的百分比）
+  const mergeInfo = useMemo(() => {
+    let percent: number | null = null;
+    let lastLine = "";
+    if (task.logs && Array.isArray(task.logs)) {
+      for (let i = task.logs.length - 1; i >= 0; i--) {
+        const item = task.logs[i];
+        let str = "";
+        if (typeof item === "string") {
+          str = item;
+        } else if (item && typeof item === "object" && "text" in item && typeof (item as { text: unknown }).text === "string") {
+          str = (item as { text: string }).text;
+        }
+        if (!str) continue;
+        if (!lastLine && /^\[(合并|合成|警告|错误|系统)\]/.test(str)) {
+          lastLine = str;
+        }
+        const m = /\[合并\]\s*(\d+(?:\.\d+)?)%/.exec(str);
+        if (m) {
+          percent = Number(m[1]);
+          lastLine = str;
+          break;
+        }
+      }
+    }
+    if (
+      percent == null &&
+      task.status === "MERGING" &&
+      typeof task.progress === "number" &&
+      Number.isFinite(task.progress) &&
+      task.progress > 0
+    ) {
+      percent = Math.min(99, Math.round(task.progress));
+    }
+    return { percent, lastLine };
+  }, [task.logs, task.status, task.progress]);
+
   // 极度安全的日志提取（彻底防止 line 不是 string 时 line.includes 报 TypeError）
   const segmentLogs = useMemo(() => {
     if (!task.logs || !Array.isArray(task.logs) || task.logs.length === 0) return [];
@@ -191,7 +228,8 @@ function TaskSegmentsModalContent({
         lower.includes("segment") ||
         lower.includes("part") ||
         lower.includes("download") ||
-        str.includes("%")
+        str.includes("%") ||
+        /^\[(合并|合成|警告|错误|系统)\]/.test(str)
       ) {
         valid.push(str);
       }
@@ -224,7 +262,7 @@ function TaskSegmentsModalContent({
       {/* 模态卡片 */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative z-10 w-full max-w-2xl rounded-2xl bg-white dark:bg-[#0c1017] border border-slate-200 dark:border-white/[0.1] shadow-2xl shadow-slate-400/25 dark:shadow-black/80 overflow-hidden flex flex-col text-slate-800 dark:text-slate-100 max-h-[90vh]"
+        className="relative z-10 w-full max-w-2xl rounded-2xl bg-white dark:bg-[#2f333a] border border-slate-200 dark:border-white/[0.1] shadow-2xl shadow-slate-400/25 dark:shadow-black/80 overflow-hidden flex flex-col text-slate-800 dark:text-slate-100 max-h-[90vh]"
       >
         {/* 1. 顶栏 */}
         <div className="h-12 px-5 border-b border-slate-100 dark:border-white/[0.06] bg-slate-50/70 dark:bg-white/[0.02] flex items-center justify-between gap-3 shrink-0">
@@ -329,6 +367,35 @@ function TaskSegmentsModalContent({
               </div>
             </div>
           </div>
+
+          {/* 合成进度（本地 ffmpeg 拼接阶段） */}
+          {task.status === "MERGING" && (
+            <div className="p-4 rounded-xl bg-slate-100/70 dark:bg-black/40 border border-slate-200 dark:border-white/[0.06] space-y-2.5">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">合成进度</span>
+                  <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                    (ffmpeg 无损拼接分片，不联网)
+                  </span>
+                </div>
+                <span className="text-[11px] font-mono font-bold text-violet-600 dark:text-violet-300">
+                  {mergeInfo.percent != null ? `${mergeInfo.percent}%` : "准备中…"}
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-slate-200 dark:bg-white/[0.06] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-violet-500 to-accent-500 transition-all duration-300"
+                  style={{ width: `${mergeInfo.percent ?? 0}%` }}
+                />
+              </div>
+              {mergeInfo.lastLine && (
+                <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 truncate select-all" title={mergeInfo.lastLine}>
+                  {mergeInfo.lastLine}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* 分片块状全景分布图 (Segment Chunk Grid) */}
           <div className="p-4 rounded-xl bg-slate-100/70 dark:bg-black/40 border border-slate-200 dark:border-white/[0.06] space-y-2.5">
@@ -474,7 +541,11 @@ function TaskSegmentsModalContent({
         {/* 3. 底栏 */}
         <div className="h-12 px-5 border-t border-slate-100 dark:border-white/[0.06] bg-slate-50/70 dark:bg-white/[0.015] flex items-center justify-between text-xs shrink-0">
           <div className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">
-            {task.status === "COMPLETED" ? "所有分片已完全合并入库" : "后台线程自动分批拉取校验中"}
+            {task.status === "COMPLETED"
+              ? "所有分片已完全合并入库"
+              : task.status === "MERGING"
+              ? "ffmpeg 正在无损拼接分片，请勿关闭任务"
+              : "后台线程自动分批拉取校验中"}
           </div>
           <button
             type="button"
